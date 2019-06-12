@@ -34,6 +34,7 @@ struct prog_data {
 	clockid_t clkid;
 	long iterations;
 	int priority;
+	int tx_len;
 	int fd;
 };
 
@@ -126,7 +127,7 @@ static void usage(char *progname)
 {
 	fprintf(stderr,
 		"usage: \n"
-		"%s <netdev> <dest-mac> <prio> <base-time> <period> <iterations>\n"
+		"%s <netdev> <dest-mac> <prio> <base-time> <period> <iterations> <length>\n"
 		"\n",
 		progname);
 }
@@ -134,15 +135,14 @@ static void usage(char *progname)
 static void app_init(void *data)
 {
 	struct app_private *priv = data;
-
-	priv->tx_len = sizeof(struct ether_header);
+	int i = sizeof(struct ether_header);
 
 	/* Packet data */
-	while (priv->tx_len < 64) {
-		priv->sendbuf[priv->tx_len++] = 0xde;
-		priv->sendbuf[priv->tx_len++] = 0xad;
-		priv->sendbuf[priv->tx_len++] = 0xbe;
-		priv->sendbuf[priv->tx_len++] = 0xef;
+	while (i < priv->tx_len) {
+		priv->sendbuf[i++] = 0xde;
+		priv->sendbuf[i++] = 0xad;
+		priv->sendbuf[i++] = 0xbe;
+		priv->sendbuf[i++] = 0xef;
 	}
 }
 
@@ -319,7 +319,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 {
 	int rc;
 
-	if (argc != 7) {
+	if (argc != 8) {
 		usage(argv[0]);
 		return -1;
 	}
@@ -388,6 +388,18 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		argc--; argv++;
 	}
 
+	/* Get frame length */
+	if (argc > 1) {
+		errno = 0;
+		prog->tx_len = strtol(argv[1], NULL, 0);
+		if (errno) {
+			printf("Integer overflow occured while reading length: %s\n",
+				strerror(errno));
+			return -1;
+		}
+		argc--; argv++;
+	}
+
 	return 0;
 }
 
@@ -408,6 +420,7 @@ int main(int argc, char *argv[])
 	priv.sockaddr = (struct sockaddr *)&prog.socket_address;
 	priv.sendbuf = prog.sendbuf;
 	priv.fd = prog.fd;
+	priv.tx_len = prog.tx_len;
 
 	app_init(&priv);
 
