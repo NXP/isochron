@@ -238,7 +238,7 @@ static int prog_init(struct prog_data *prog)
 	return 0;
 }
 
-int mac_addr_from_string(uint8_t *to, char *from)
+static int mac_addr_from_string(uint8_t *to, char *from)
 {
 	unsigned long byte;
 	char *p = from;
@@ -257,7 +257,8 @@ int mac_addr_from_string(uint8_t *to, char *from)
 	return 0;
 }
 
-int get_time_from_string(clockid_t clkid, struct timespec *to, char *from)
+static int get_time_from_string(clockid_t clkid, struct timespec *to,
+				char *from)
 {
 	char nsec_buf[] = "000000000";
 	struct timespec now = {0};
