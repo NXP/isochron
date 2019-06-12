@@ -37,7 +37,7 @@ struct app_header {
 };
 
 #define app_fmt \
-	"[%ld.%09ld] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d\n"
+	"[%ld.%09ld] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d rxtstamp %ld.%09ld\n"
 
 /**
  * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
@@ -56,7 +56,8 @@ static inline uint64_t ether_addr_to_u64(const unsigned char *addr)
 	return u;
 }
 
-static int app_loop(void *app_data, char *rcvbuf, size_t len)
+static int app_loop(void *app_data, char *rcvbuf, size_t len,
+		    const struct timespec *hwts)
 {
 	/* Header structures */
 	struct ether_header *eth_hdr = (struct ether_header *)rcvbuf;
@@ -81,7 +82,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len)
 	       eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
 	       eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
 	       eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5],
-	       ntohs(eth_hdr->ether_type), ntohs(app_hdr->seqid));
+	       ntohs(eth_hdr->ether_type), ntohs(app_hdr->seqid),
+	       hwts->tv_sec, hwts->tv_nsec);
 
 	return 0;
 }
@@ -138,11 +140,12 @@ static int multicast_listen(int fd, unsigned int if_index,
 static int server_loop(struct prog_data *prog, void *app_data)
 {
 	struct ether_header *eth_hdr = (struct ether_header *)prog->rcvbuf;
+	struct timespec hwts;
 	ssize_t len;
 	int rc = 0;
 
 	do {
-		len = recvfrom(prog->fd, prog->rcvbuf, BUF_SIZ, 0, NULL, NULL);
+		len = sk_receive(prog->fd, prog->rcvbuf, BUF_SIZ, &hwts, 0);
 		if (len < 0) {
 			fprintf(stderr, "recvfrom returned %d: %s\n",
 				errno, strerror(errno));
@@ -152,7 +155,7 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		if (ether_addr_to_u64(prog->dest_mac) &&
 		    ether_addr_to_u64(prog->dest_mac) != ether_addr_to_u64(eth_hdr->ether_dhost))
 			continue;
-		rc = app_loop(app_data, prog->rcvbuf, len);
+		rc = app_loop(app_data, prog->rcvbuf, len, &hwts);
 		if (rc < 0)
 			break;
 	} while (1);
@@ -202,11 +205,11 @@ static int prog_init(struct prog_data *prog)
 		close(prog->fd);
 		return -errno;
 	}
-	memset(&addr, 0, sizeof(addr));
+	memset(&addr, 0, sizeof(struct sockaddr_ll));
 	addr.sll_ifindex = prog->if_index;
 	addr.sll_family = AF_PACKET;
 	addr.sll_protocol = htons(ETH_P_ALL);
-	rc = bind(prog->fd, (struct sockaddr *) &addr, sizeof(addr));
+	rc = bind(prog->fd, (struct sockaddr *) &addr, sizeof(struct sockaddr_ll));
 	if (rc < 0) {
 		fprintf(stderr, "bind failed: %s\n", strerror(errno));
 		close(prog->fd);
@@ -224,7 +227,7 @@ static int prog_init(struct prog_data *prog)
 	if (ether_addr_to_u64(prog->dest_mac))
 		rc = multicast_listen(prog->fd, prog->if_index, prog->dest_mac, 1);
 
-	return rc;
+	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
 
 static void usage(char *progname)

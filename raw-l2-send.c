@@ -68,13 +68,12 @@ struct timespec timespec_add(struct timespec a, struct timespec b)
 static int do_work(void *data, int iteration, clockid_t clkid)
 {
 	struct app_private *priv = data;
+	unsigned char err_pkt[BUF_SIZ];
 	struct app_header *app_hdr;
-	struct timespec ts;
+	struct timespec now, hwts;
 	int rc;
 
-	clock_gettime(clkid, &ts);
-	printf("[%ld.%09ld] Send frame with seqid %d\n",
-	       ts.tv_sec, ts.tv_nsec, iteration);
+	clock_gettime(clkid, &now);
 	app_hdr = (struct app_header *)(priv->sendbuf +
 					sizeof(struct ether_header));
 	app_hdr->seqid = htons(iteration);
@@ -86,7 +85,11 @@ static int do_work(void *data, int iteration, clockid_t clkid)
 		perror("send\n");
 		return rc;
 	}
-
+	rc = sk_receive(priv->fd, err_pkt, BUF_SIZ, &hwts, MSG_ERRQUEUE);
+	if (rc < 0)
+		return rc;
+	printf("[%ld.%09ld] Sent frame with seqid %d txtstamp %ld.%09ld\n",
+	       now.tv_sec, now.tv_nsec, iteration, hwts.tv_sec, hwts.tv_nsec);
 	return 0;
 }
 
@@ -236,7 +239,7 @@ static int prog_init(struct prog_data *prog)
 
 	printf("%10s: %d.%09ld\n", "Now", now.tv_sec, now.tv_nsec);
 
-	return 0;
+	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
 
 static int get_time_from_string(clockid_t clkid, struct timespec *to,

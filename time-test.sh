@@ -212,7 +212,7 @@ do_send_traffic() {
 
 	while IFS= read -r line; do
 		seqid=$(echo "${line}" | awk '/seqid/ { print $6; }')
-		otherline=$(cat rx.log | grep "seqid ${seqid}$" || :)
+		otherline=$(cat rx.log | grep "seqid ${seqid} " || :)
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
