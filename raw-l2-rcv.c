@@ -14,6 +14,7 @@
 #include <net/if.h>
 #include <netinet/ether.h>
 #include <unistd.h>
+#include <signal.h>
 #include <errno.h>
 #include <time.h>
 #include "common.h"
@@ -35,6 +36,8 @@ struct app_private {
 struct app_header {
 	short seqid;
 };
+
+int signal_received = 0;
 
 #define app_fmt \
 	"[%ld.%09ld] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d rxtstamp %ld.%09ld\n"
@@ -158,7 +161,14 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		rc = app_loop(app_data, prog->rcvbuf, len, &hwts);
 		if (rc < 0)
 			break;
+		if (signal_received)
+			break;
 	} while (1);
+
+	/* Avoid the nanosecond portion of last output line
+	 * from getting truncated when process is killed
+	 */
+	fflush(stdout);
 
 	close(prog->fd);
 
@@ -175,11 +185,33 @@ static void app_init(void *data)
 	priv->clkid = CLOCK_REALTIME;
 }
 
+void sig_handler(int signo)
+{
+	switch (signo) {
+	case SIGTERM:
+	case SIGINT:
+		signal_received = 1;
+		break;
+	default:
+		break;
+	}
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	struct sockaddr_ll addr;
 	int sockopt = 1;
 	int rc;
+
+	if (signal(SIGTERM, sig_handler) == SIG_ERR) {
+		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
+		return -errno;
+	}
+
+	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
+		return -errno;
+	}
 
 	prog->if_index = if_nametoindex(prog->if_name);
 	if (!prog->if_index) {
