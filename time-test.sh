@@ -216,80 +216,9 @@ do_send_traffic() {
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
-	awk_program='								\
-		BEGIN								\
-		{								\
-			period_nsec = period * 1000000000;			\
-			expect = 0;						\
-		}								\
-										\
-		/Send frame/							\
-		{								\
-			seqid = $6;						\
-			send_time = gensub(/^\[(.*)\]/, "\\1", "g", $1);	\
-			split(send_time, t, ".");				\
-			send_sec = t[1];					\
-			send_nsec = t[2];					\
-			tx_jitter[seqid] = send_nsec - expect;			\
-			expect = expect + period_nsec;				\
-			if (expect >= 1000000000)				\
-				expect = expect - 1000000000;			\
-			if (NF < 7) {						\
-				path_delay_nsec[seqid] = "n/a";			\
-				next;						\
-			}							\
-			rcv_time = gensub(/^\[(.*)\]/, "\\1", "g", $7);		\
-			split(rcv_time, t, ".");				\
-			rcv_sec = t[1];						\
-			rcv_nsec = t[2];					\
-			path_delay_nsec[seqid]  = rcv_sec - send_sec;		\
-			path_delay_nsec[seqid] *= 1000000000;			\
-			path_delay_nsec[seqid] += rcv_nsec - send_nsec;		\
-			print "seqid " seqid " "				\
-			      "sent at [" send_sec "." send_nsec "] "		\
-			      "received at [" rcv_sec "." rcv_nsec "] "		\
-			      "path delay " path_delay_nsec[seqid] " ns";	\
-		};								\
-										\
-		END								\
-		{								\
-			count=0;						\
-			sum = 0;						\
-			for (i = 1; i <= seqid; i++) {				\
-				if (path_delay_nsec[i] == "n/a")		\
-					continue;				\
-				sum += path_delay_nsec[i];			\
-				sumsq += path_delay_nsec[i] ^ 2;		\
-				count++;					\
-			}							\
-			mean = sum / count;					\
-			sumsq = 0;						\
-			for (i = 1; i <= count; i++) {				\
-				if (path_delay_nsec[i] == "n/a")		\
-					continue;				\
-				sumsq += (path_delay_nsec[i] - mean) ^ 2;	\
-			}							\
-			stdev = sqrt(sumsq / count);				\
-			print "Mean path delay: " mean " ns";			\
-			print "Standard deviation: " stdev " ns";		\
-										\
-			count=0;						\
-			sum = 0;						\
-			for (i = 1; i <= seqid; i++) {				\
-				sum += tx_jitter[i];				\
-				sumsq += tx_jitter[i] ^ 2;			\
-				count++;					\
-			}							\
-			mean = sum / count;					\
-			sumsq = 0;						\
-			for (i = 1; i <= count; i++) {				\
-				sumsq += (tx_jitter[i] - mean) ^ 2;		\
-			}							\
-			stdev = sqrt(sumsq / count);				\
-			print "Mean TX jitter: " mean " ns";			\
-			print "Standard deviation: " stdev " ns";		\
-		}'
-	cat combined.log | gawk -v "period=${period}" "${awk_program}"
+	cat combined.log | gawk --bignum -f time-test.awk \
+		-v "period=${period}" \
+		-v "base_time_nsec=${base_time_nsec}"
 }
 
 do_start_rcv_traffic() {
