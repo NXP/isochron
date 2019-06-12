@@ -20,8 +20,10 @@
 #define BUF_SIZ		1522
 
 struct prog_data {
+	uint8_t dest_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	uint8_t rcvbuf[BUF_SIZ];
+	unsigned int if_index;
 	int fd;
 };
 
@@ -35,6 +37,23 @@ struct app_header {
 
 #define app_fmt \
 	"[%ld.%09ld] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d\n"
+
+/**
+ * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return a u64 value of the address
+ */
+static inline uint64_t ether_addr_to_u64(const unsigned char *addr)
+{
+	uint64_t u = 0;
+	int i;
+
+	for (i = 0; i < ETH_ALEN; i++)
+		u = u << 8 | addr[i];
+
+	return u;
+}
 
 static int app_loop(void *app_data, char *rcvbuf, size_t len)
 {
@@ -66,8 +85,58 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len)
 	return 0;
 }
 
+/* Borrowed from raw_configure in linuxptp */
+static int multicast_listen(int fd, unsigned int if_index,
+			    unsigned char *macaddr, int enable)
+{
+	int rc, filter_test, option;
+	struct packet_mreq mreq;
+
+	if (enable)
+		option = PACKET_ADD_MEMBERSHIP;
+	else
+		option = PACKET_DROP_MEMBERSHIP;
+
+	memset(&mreq, 0, sizeof(mreq));
+	mreq.mr_ifindex = if_index;
+	mreq.mr_type = PACKET_MR_MULTICAST;
+	mreq.mr_alen = ETH_ALEN;
+	memcpy(mreq.mr_address, macaddr, ETH_ALEN);
+
+	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
+	if (!rc)
+		return 0;
+
+	fprintf(stderr, "setsockopt PACKET_MR_MULTICAST failed: %s\n",
+		strerror(errno));
+
+	mreq.mr_ifindex = if_index;
+	mreq.mr_type = PACKET_MR_ALLMULTI;
+	mreq.mr_alen = 0;
+	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
+	if (!rc)
+		return 0;
+
+	fprintf(stderr, "setsockopt PACKET_MR_ALLMULTI failed: %s\n",
+		strerror(errno));
+
+	mreq.mr_ifindex = if_index;
+	mreq.mr_type = PACKET_MR_PROMISC;
+	mreq.mr_alen = 0;
+	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
+	if (!rc)
+		return 0;
+
+	fprintf(stderr, "setsockopt PACKET_MR_PROMISC failed: %s\n",
+		strerror(errno));
+
+	fprintf(stderr, "all socket options failed\n");
+	return -1;
+}
+
 static int server_loop(struct prog_data *prog, void *app_data)
 {
+	struct ether_header *eth_hdr = (struct ether_header *)prog->rcvbuf;
 	ssize_t len;
 	int rc = 0;
 
@@ -79,12 +148,19 @@ static int server_loop(struct prog_data *prog, void *app_data)
 			rc = -errno;
 			break;
 		}
+		if (ether_addr_to_u64(prog->dest_mac) &&
+		    ether_addr_to_u64(prog->dest_mac) != ether_addr_to_u64(eth_hdr->ether_dhost))
+			continue;
 		rc = app_loop(app_data, prog->rcvbuf, len);
 		if (rc < 0)
 			break;
 	} while (1);
 
 	close(prog->fd);
+
+	if (ether_addr_to_u64(prog->dest_mac))
+		rc = multicast_listen(prog->fd, prog->if_index, prog->dest_mac, 0);
+
 	return rc;
 }
 
@@ -97,8 +173,16 @@ static void app_init(void *data)
 
 static int prog_init(struct prog_data *prog)
 {
+	struct sockaddr_ll addr;
 	int sockopt = 1;
 	int rc;
+
+	prog->if_index = if_nametoindex(prog->if_name);
+	if (!prog->if_index) {
+		fprintf(stderr, "if_nametoindex(%s) returned %s\n", prog->if_name,
+			strerror(errno));
+		return -errno;
+	}
 
 	/* Open PF_PACKET socket, listening for EtherType ETH_P_802_EX1 */
 	prog->fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_802_EX1));
@@ -117,6 +201,16 @@ static int prog_init(struct prog_data *prog)
 		close(prog->fd);
 		return -errno;
 	}
+	memset(&addr, 0, sizeof(addr));
+	addr.sll_ifindex = prog->if_index;
+	addr.sll_family = AF_PACKET;
+	addr.sll_protocol = htons(ETH_P_ALL);
+	rc = bind(prog->fd, (struct sockaddr *) &addr, sizeof(addr));
+	if (rc < 0) {
+		fprintf(stderr, "bind failed: %s\n", strerror(errno));
+		close(prog->fd);
+		return -errno;
+	}
 	/* Bind to device */
 	rc = setsockopt(prog->fd, SOL_SOCKET, SO_BINDTODEVICE,
 			prog->if_name, IFNAMSIZ - 1);
@@ -126,23 +220,45 @@ static int prog_init(struct prog_data *prog)
 		exit(EXIT_FAILURE);
 	}
 
-	return 0;
+	if (ether_addr_to_u64(prog->dest_mac))
+		rc = multicast_listen(prog->fd, prog->if_index, prog->dest_mac, 1);
+
+	return rc;
 }
 
 static void usage(char *progname)
 {
 	fprintf(stderr,
 		"usage: \n"
-		"%s <netdev>\n"
+		"%s <netdev> [<mac-addr>]\n"
 		"\n",
 		progname);
+}
+
+static int mac_addr_from_string(uint8_t *to, char *from)
+{
+	unsigned long byte;
+	char *p = from;
+	int i;
+
+	for (i = 0; i < ETH_ALEN; i++) {
+		byte = strtoul(p, &p, 16);
+		to[i] = (uint8_t )byte;
+		if (i == (ETH_ALEN - 1) && *p != 0)
+			/* 6 bytes processed but more are present */
+			return -EFBIG;
+		else if (i != (ETH_ALEN - 1) && *p == ':')
+			p++;
+	}
+
+	return 0;
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 {
 	int rc;
 
-	if (argc != 2) {
+	if (argc < 2) {
 		usage(argv[0]);
 		return -1;
 	}
@@ -150,6 +266,17 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	/* Get interface name */
 	if (argc > 1) {
 		strncpy(prog->if_name, argv[1], IFNAMSIZ - 1);
+		argc--; argv++;
+	}
+
+	/* Get destination MAC */
+	if (argc > 1) {
+		rc = mac_addr_from_string(prog->dest_mac, argv[1]);
+		if (rc < 0) {
+			fprintf(stderr, "Could not read MAC address: %s\n",
+				strerror(-rc));
+			return -1;
+		}
 		argc--; argv++;
 	}
 
@@ -166,7 +293,7 @@ int main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	rc= prog_init(&prog);
+	rc = prog_init(&prog);
 	if (rc < 0)
 		return rc;
 
