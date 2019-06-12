@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "common.h"
 
 #define NSEC_PER_SEC	1000000000
 #define BUF_SIZ		1522
@@ -234,25 +235,6 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	printf("%10s: %d.%09ld\n", "Now", now.tv_sec, now.tv_nsec);
-
-	return 0;
-}
-
-static int mac_addr_from_string(uint8_t *to, char *from)
-{
-	unsigned long byte;
-	char *p = from;
-	int i;
-
-	for (i = 0; i < ETH_ALEN; i++) {
-		byte = strtoul(p, &p, 16);
-		to[i] = (uint8_t )byte;
-		if (i == (ETH_ALEN - 1) && *p != 0)
-			/* 6 bytes processed but more are present */
-			return -EFBIG;
-		else if (i != (ETH_ALEN - 1) && *p == ':')
-			p++;
-	}
 
 	return 0;
 }
