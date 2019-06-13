@@ -216,9 +216,10 @@ do_send_traffic() {
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
-	cat combined.log | gawk --bignum -f time-test.awk \
+	cat combined.log | gawk -f time-test.awk \
 		-v "period=${period}" \
-		-v "base_time_nsec=${base_time_nsec}"
+		-v "mac_base_time=${mac_base_time}" \
+		-v "advance_time=${advance_time}"
 }
 
 do_start_rcv_traffic() {
