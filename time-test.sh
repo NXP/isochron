@@ -143,6 +143,18 @@ get_local_mac() {
 	ip link show dev ${port} | awk "${awk_program}"
 }
 
+qbv_window() {
+	local frame_len=$1
+	local count=$2
+	local link_speed=$3
+	local bit_time=$((1000 / ${link_speed}))
+	# 7 bytes preamble, 1 byte SFD, 4 bytes FCS and 12 bytes IFG
+	local overhead=24
+	local octets=$((${frame_len} + ${overhead}))
+
+	echo "$((${octets} * 8 * ${bit_time}))"
+}
+
 do_8021qbv() {
 	# https://www.tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.qdisc.filters.html
 	# The below command creates an mqprio qdisc with 8 netdev queues. The
@@ -161,18 +173,19 @@ do_8021qbv() {
 	tc filter add dev eno2 egress prio 1 u32 match u16 0x88b5 0xffff \
 		action skbedit priority 5
 
+	speed_mbps=$(ethtool eno2 | awk \
+		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
+	window="$(qbv_window 500 1 ${speed_mbps})"
 	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
 	# (10,000,000 ns).
-	# A bit time at 1Gbps is 1 ns => transmission time of a 64B frame
-	# (plus 7 bytes preamble, 1 byte SFD, 4 bytes FCS and 12 bytes IFG)
-	# is 704 ns.
 	cat > qbv0.txt <<-EOF
-		t0 00100000    1000
-		t1 00000001 9999000
+		t0 00100000 ${window}
+		t1 00000001 $((10000000 - ${window}))
 	EOF
 	tsntool qbvset --device eno2 --disable
+	return
 	tsntool qbvset --device eno2 --entryfile qbv0.txt --enable \
-		--basetime "$((${base_time_nsec} + ${advance_time_nsec}))"
+		--basetime "${mac_base_time_nsec}"
 }
 
 do_8021qci() {
