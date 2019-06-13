@@ -149,7 +149,8 @@ static int server_loop(struct prog_data *prog, void *app_data)
 
 	do {
 		len = sk_receive(prog->fd, prog->rcvbuf, BUF_SIZ, &hwts, 0);
-		if (len < 0) {
+		/* Suppress "Interrupted system call" message */
+		if (len < 0 && errno != EINTR) {
 			fprintf(stderr, "recvfrom returned %d: %s\n",
 				errno, strerror(errno));
 			rc = -errno;
@@ -200,15 +201,21 @@ void sig_handler(int signo)
 static int prog_init(struct prog_data *prog)
 {
 	struct sockaddr_ll addr;
+	struct sigaction sa;
 	int sockopt = 1;
 	int rc;
 
-	if (signal(SIGTERM, sig_handler) == SIG_ERR) {
+	sa.sa_handler = sig_handler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+
+	rc = sigaction(SIGTERM, &sa, NULL);
+	if (rc < 0) {
 		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
 		return -errno;
 	}
-
-	if (signal(SIGINT, sig_handler) == SIG_ERR) {
+	rc = sigaction(SIGINT, &sa, NULL);
+	if (rc < 0) {
 		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
 		return -errno;
 	}

@@ -143,7 +143,8 @@ int sk_receive(int fd, void *buf, int buflen, struct timespec *hwts, int flags)
 	}
 
 	len = recvmsg(fd, &msg, flags);
-	if (len < 1)
+	/* Suppress "Interrupted system call" message */
+	if (len < 1 && errno != EINTR)
 		fprintf(stderr, "recvmsg%sfailed: %s\n",
 			flags == MSG_ERRQUEUE ? " tx timestamp " : " ",
 			strerror(errno));
