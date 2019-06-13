@@ -246,7 +246,7 @@ do_send_traffic() {
 do_start_rcv_traffic() {
 	check_sync
 
-	rm -f ./raw-l2-rcv.pid
+	rm -f ./raw-l2-rcv.pid rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
 		-c 'exec ./raw-l2-rcv eno2 > rx.log 2>&1' \
