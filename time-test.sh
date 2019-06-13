@@ -193,11 +193,7 @@ do_8021qci() {
 }
 
 do_send_traffic() {
-	remote="root@${b3_eno0}"
-	iterations="100"
-	period="0.01"
-	length="64"
-	txq=5
+	local remote="root@${b3_eno0}"
 
 	check_sync
 
@@ -318,6 +314,22 @@ do_cut_through() {
 	done
 }
 
+set_params() {
+	local now=$(phc_ctl CLOCK_REALTIME get | awk '/clock time is/ { print $5; }')
+	# Round the base time to the start of the next second.
+	local sec=$(echo "${now}" | awk -F. '{ print $1; }')
+	local utc_offset="36"
+
+	os_base_time="$((${sec} + 3)).0"
+	mac_base_time="$((${sec} + 3 + ${utc_offset})).0"
+	mac_base_time_nsec="$(((${sec} + 3 + ${utc_offset}) * ${NSEC_PER_SEC}))"
+	advance_time="0.0001"
+	period="0.01"
+	length="100"
+	frames="100"
+	txq=5
+}
+
 required_configs="CONFIG_NET_INGRESS"
 for config in ${required_configs}; do
 	if ! zcat /proc/config.gz | grep "${config}=y" >/dev/null; then
@@ -326,15 +338,9 @@ for config in ${required_configs}; do
 	fi
 done
 
+set_params
 do_bridging
 do_cut_through
-
-now=$(phc_ctl CLOCK_REALTIME get | awk '/clock time is/ { print $5; }')
-# Round the base time to the start of the next second.
-sec=$(echo "${now}" | awk -F. '{ print $1; }')
-base_time="$((${sec} + 3)).0"
-base_time_nsec="$(((${sec} + 3) * 1000000000))"
-advance_time_nsec="70000"
 
 if [ $# -lt 1 ]; then
 	usage
