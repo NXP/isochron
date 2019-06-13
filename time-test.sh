@@ -48,6 +48,8 @@ b1_eno0="10.0.0.101"
 b1_eno2="192.168.1.1"
 b3_eno0="10.0.0.103"
 b3_eno2="192.168.1.3"
+NSEC_PER_SEC="1000000000"
+receiver_open=false
 
 error() {
 	local lineno="$1"
@@ -60,6 +62,10 @@ trap 'error ${LINENO}' ERR
 
 do_cleanup() {
 	rm -f tx.log combined.log ptp.log
+	if [ ${receiver_open} = true ]; then
+		printf "Stopping receiver process... "
+		ssh "${remote}" "./time-test.sh 3 stop"
+	fi
 }
 trap do_cleanup EXIT
 
@@ -182,23 +188,29 @@ do_send_traffic() {
 
 	check_sync
 
-	printf "Opening receiver process... "
-	ssh "${remote}" "./time-test.sh 3 start"
-
 	printf "Getting destination MAC address... "
 	dmac="$(get_remote_mac ${b3_eno2} iproute2)" || {
 		echo "failed: $?"
+		echo "Have you run \"./time-test.sh 3 prepare\"?"
 		ssh "${remote}" "./time-test.sh 3 stop"
 		return 1
 	}
 	echo "${dmac}"
 
+	printf "Opening receiver process... "
+	ssh "${remote}" "./time-test.sh 3 start"
+
+	receiver_open=true
+
 	echo "Opening transmitter process..."
-	./raw-l2-send eno2 "${dmac}" "${txq}" "${base_time}" \
-		"${period}" "${iterations}" "${length}" > tx.log
+	./raw-l2-send eno2 "${dmac}" "${txq}" "${os_base_time}" \
+		"${advance_time}" "${period}" "${frames}" \
+		"${length}" > tx.log
 
 	printf "Stopping receiver process... "
 	ssh "${remote}" "./time-test.sh 3 stop"
+
+	receiver_open=false
 
 	echo "Collecting logs..."
 	scp "${remote}:rx.log" .
