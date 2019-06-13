@@ -30,6 +30,7 @@ struct prog_data {
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;
+	struct timespec advance_time;
 	struct timespec base_time;
 	struct timespec period;
 	clockid_t clkid;
@@ -49,6 +50,21 @@ struct app_private {
 struct app_header {
 	short seqid;
 };
+
+struct timespec timespec_sub(struct timespec a, struct timespec b)
+{
+	struct timespec ts = {
+		.tv_sec = a.tv_sec - b.tv_sec,
+		.tv_nsec = a.tv_nsec - b.tv_nsec,
+	};
+
+	while (ts.tv_nsec < 0) {
+		ts.tv_sec -= 1;
+		ts.tv_nsec += NSEC_PER_SEC;
+	}
+
+	return ts;
+}
 
 struct timespec timespec_add(struct timespec a, struct timespec b)
 {
@@ -131,7 +147,7 @@ static void usage(char *progname)
 {
 	fprintf(stderr,
 		"usage: \n"
-		"%s <netdev> <dest-mac> <prio> <base-time> <period> <iterations> <length>\n"
+		"%s <netdev> <dest-mac> <prio> <base-time> <advance-time> <period> <iterations> <length>\n"
 		"\n",
 		progname);
 }
@@ -225,6 +241,8 @@ static int prog_init(struct prog_data *prog)
 		return rc;
 	}
 
+	prog->base_time = timespec_sub(prog->base_time, prog->advance_time);
+
 	while (timespec_smaller(prog->base_time, now)) {
 		if (warn_once) {
 			fprintf(stderr,
@@ -305,7 +323,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 {
 	int rc;
 
-	if (argc != 8) {
+	if (argc != 9) {
 		usage(argv[0]);
 		return -1;
 	}
@@ -345,6 +363,17 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 					  argv[1]);
 		if (rc < 0) {
 			fprintf(stderr, "Could not read base time: %s\n",
+				strerror(-rc));
+			return -1;
+		}
+		argc--; argv++;
+	}
+
+	/* Get advance time */
+	if (argc > 1) {
+		rc = get_time_from_string(prog->clkid, &prog->advance_time, argv[1]);
+		if (rc < 0) {
+			fprintf(stderr, "Could not read advance_time: %s\n",
 				strerror(-rc));
 			return -1;
 		}
