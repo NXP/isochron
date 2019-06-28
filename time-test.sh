@@ -4,19 +4,19 @@
 
 set -e -u -o pipefail
 
-# This example will send a unidirectional traffic stream from Board 2 to
-# Board 1 through two paths:
-#
-# - Directly through B2.SWP4 -> B2.SWP1 -> B1.SWP1 -> B1.SWP4
-# - Through Board 3: B2.SWP4 -> B2.SWP2 -> B3.SWP2 -> B1.SWP0 -> B1.SWP4
+export TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
+source "${TOPDIR}/common.sh"
+
+# This example will send a unidirectional traffic stream from Board 1 to
+# Board 2 and measure its latency.
 #
 #   Board 1:
 #
 #   +---------------------------------------------------------------------------------+
-#   |                                                                                 |
+#   |                                          send through eno2                      |
 #   | +------------+   +------------+  +------------+  +------------+  +------------+ |
-#   | |            |   | To Board 3 |  | To Board 2 |  |            |  |            | |
-#   | |            | +-|    SW0     |  |    SW1     |  |            |  |            | |
+#   | | To Board 2 |   |            |  | To Board 2 |  |            |  |            | |
+#   | |    MAC0    |-+ |            |  |    SW1     |  |            |  |            | |
 #   | |            | | |            |  |            |  |            |  |            | |
 #   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
 #          MAC0      |      SW0             SW1             SW2              SW3
@@ -24,22 +24,10 @@ set -e -u -o pipefail
 #   Board 2:         |                       |
 #                    |                       |
 #   +----------------|-----------------------+----------------------------------------+
-#   |                |                       |                                        |
+#   |                |                       |  receive through eno2                  |
 #   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
-#   | |            | | |            |  | To Board 1 |  | To Board 3 |  |            | |
-#   | |            | | |            |  |    SW1     |  |    SW2     |  |            | |
-#   | |            | | |            |  |            |  |            |  |            | |
-#   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
-#          MAC0      |      SW0             SW1             SW2              SW3
-#                    |                                       |
-#                    |                                       |
-#   Board 3:         |                                       |
-#                    |                                       |
-#   +----------------|---------------------------------------+------------------------+
-#   |                |                                       |                        |
-#   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
-#   | |            | | | To Board 1 |  |            |  | To Board 2 |  |            | |
-#   | |            | +-|    SW0     |  |            |  |    SW2     |  |            | |
+#   | | To Board 1 | | |            |  | To Board 1 |  |            |  |            | |
+#   | |    MAC0    |-+ |            |  |    SW1     |  |            |  |            | |
 #   | |            |   |            |  |            |  |            |  |            | |
 #   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
 #          MAC0             SW0             SW1             SW2              SW3
@@ -74,73 +62,6 @@ usage() {
 	echo "$0 1"
 	echo "$0 2"
 	echo "$0 3 start|stop|prepare"
-}
-
-do_bridging() {
-	[ -d /sys/class/net/br0 ] && ip link del dev br0
-
-	ip link add name br0 type bridge stp_state 0 vlan_filtering 1 && ip link set br0 up
-	for eth in $(ls /sys/bus/pci/devices/0000:00:00.5/net/); do
-		ip addr flush dev ${eth};
-		ip link set ${eth} master br0
-		ip link set ${eth} up
-	done
-	ip link set br0 arp off
-}
-
-get_remote_mac() {
-	local ip="$1"
-	local format="$2"
-	local awk_program=
-
-	case "${format}" in
-	tsntool)
-		awk_program='							\
-			/Unicast reply from/					\
-			{							\
-				mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);	\
-				split(mac, m, ":");				\
-				print "0x" m[1] m[2] m[3] m[4] m[5] m[6];	\
-			}'
-		;;
-	iproute2)
-		awk_program='							\
-			/Unicast reply from/					\
-			{							\
-			       mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);		\
-			       print mac;					\
-			}'
-		;;
-	*)
-		return
-	esac
-
-	arping -I eno2 -c 1 "${ip}" | awk "${awk_program}"
-}
-
-get_local_mac() {
-	local port="$1"
-	local format="$2"
-	local awk_program=
-
-	case "${format}" in
-	tsntool)
-		awk_program='							\
-			/link[\/]ether/ {					\
-				split($2, m, ":");				\
-				print "0x" m[1] m[2] m[3] m[4] m[5] m[6];	\
-			}'
-		;;
-	iproute2)
-		awk_program='							\
-			/link[\/]ether/ {					\
-				print $2;					\
-			}'
-		;;
-	*)
-		return
-	esac
-	ip link show dev ${port} | awk "${awk_program}"
 }
 
 qbv_window() {
@@ -198,7 +119,7 @@ do_send_traffic() {
 	check_sync
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac ${b3_eno2} iproute2)" || {
+	dmac="$(get_remote_mac ${b3_eno2} iproute2 eno2)" || {
 		echo "failed: $?"
 		echo "Have you run \"./time-test.sh 3 prepare\"?"
 		ssh "${remote}" "./time-test.sh 3 stop"
@@ -338,10 +259,6 @@ for config in ${required_configs}; do
 	fi
 done
 
-set_params
-do_bridging
-do_cut_through
-
 if [ $# -lt 1 ]; then
 	usage
 	exit 1
@@ -352,10 +269,13 @@ case "${board}" in
 1)
 	ip addr flush dev eno0; ip addr add "${b1_eno0}/24" dev eno0; ip link set dev eno0 up
 	ip addr flush dev eno2; ip addr add "${b1_eno2}/24" dev eno2; ip link set dev eno2 up
+	set_params
+	do_bridging ls1028ardb
+	do_cut_through
 	do_8021qbv
 	do_send_traffic
 	;;
-3)
+2)
 	if [ $# -lt 1 ]; then
 		usage
 		exit 1

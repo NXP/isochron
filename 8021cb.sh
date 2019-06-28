@@ -4,6 +4,9 @@
 
 set -e -u -o pipefail
 
+export TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
+source "${TOPDIR}/common.sh"
+
 # This example will send a unidirectional traffic stream from Board 2 to
 # Board 1 through two paths:
 #
@@ -44,32 +47,10 @@ set -e -u -o pipefail
 #   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
 #          MAC0             SW0             SW1             SW2              SW3
 
-error() {
-	local lineno="$1"
-	local code="${2:-1}"
-
-	echo "Error on line ${lineno}; status ${code}. Are all cables plugged in?"
-	exit "${code}"
-}
-trap 'error ${LINENO}' ERR
-
 usage() {
 	echo "Usage:"
 	echo "$0 1|2|3"
-}
-
-do_bridging() {
-	[ -d /sys/class/net/br0 ] && ip link del dev br0
-
-	ip link add name br0 type bridge stp_state 0 vlan_filtering 1 && ip link set br0 up
-	for eth in $(ls /sys/bus/pci/devices/0000:00:00.5/net/); do
-		ip addr flush dev ${eth};
-		ip link set ${eth} master br0
-		ip link set ${eth} up
-		# No pvid by default
-		bridge vlan del vid 1 dev ${eth}
-	done
-	ip link set br0 arp off
+	return 1
 }
 
 do_vlan() {
@@ -89,73 +70,17 @@ do_vlan() {
 	done
 }
 
-get_remote_mac() {
-	local ip="$1"
-	local format="$2"
-	local awk_program=
-
-	case "${format}" in
-	tsntool)
-		awk_program='							\
-			/Unicast reply from/					\
-			{							\
-				mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);	\
-				split(mac, m, ":");				\
-				print "0x" m[1] m[2] m[3] m[4] m[5] m[6];	\
-			}'
-		;;
-	iproute2)
-		awk_program='							\
-			/Unicast reply from/					\
-			{							\
-			       mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);		\
-			       print mac;					\
-			}'
-		;;
-	*)
-		return
-	esac
-
-	arping -I eno2 -c 1 "${ip}" | awk "${awk_program}"
-}
-
-get_local_mac() {
-	local port="$1"
-	local format="$2"
-	local awk_program=
-
-	case "${format}" in
-	tsntool)
-		awk_program='							\
-			/link[\/]ether/ {					\
-				split($2, m, ":");				\
-				print "0x" m[1] m[2] m[3] m[4] m[5] m[6];	\
-			}'
-		;;
-	iproute2)
-		awk_program='							\
-			/link[\/]ether/ {					\
-				print $2;					\
-			}'
-		;;
-	*)
-		return
-	esac
-	ip link show dev ${port} | awk "${awk_program}"
-}
-
 [ $# = 1 ] || usage
 board=$1; shift
 
-do_bridging
+do_bridging ls1028ardb
 iptables -t nat --flush
 iptables -t filter --flush
 
 case "${board}" in
 1)
+	ip addr flush dev eno2; ip addr add 192.168.1.1/24 dev eno2; ip link set dev eno2 up
 	do_vlan 1 "swp0 swp1 swp4" "pvid untagged"
-	ip addr flush dev eno2; ip addr add 192.168.1.1/24 dev eno2
-	ip link set dev eno2 up
 
 	# Terminates replicated, unidirectional L2 traffic from Board 1,
 	# over VID 100
@@ -170,7 +95,7 @@ case "${board}" in
 	done
 
 	# And return path...
-	board2=$(get_remote_mac 192.168.1.2 tsntool)
+	board2=$(get_remote_mac 192.168.1.2 tsntool eno2)
 	tsntool cbstreamidset --device swp0 --streamhandle 2 \
 		--nullstreamid --nulldmac "${board2}" --nullvid 100
 	tsntool cbstreamidset --device swp1 --streamhandle 3 \
@@ -180,7 +105,7 @@ case "${board}" in
 	tsntool cbgen --device swp5 --index 3 --seq_len 16 --seq_num 0 \
 		--iport_mask $((1<<4)) --split_mask $((1<<0))
 
-	board2=$(get_remote_mac 192.168.1.2 iproute2)
+	board2=$(get_remote_mac 192.168.1.2 iproute2 eno2)
 	arp -s 192.168.100.2 "${board2}" dev eno2.100
 
 	echo "To test with traffic, run:"
@@ -191,14 +116,13 @@ case "${board}" in
 	echo "ip link set dev swp1 up"
 	;;
 2)
+	ip addr flush dev eno2; ip addr add 192.168.1.2/24 dev eno2; ip link set dev eno2 up
 	do_vlan 1 "swp1 swp2 swp4" "pvid untagged"
-	ip addr flush dev eno2; ip addr add 192.168.1.2/24 dev eno2
-	ip link set dev eno2 up
 
 	# Originates replicated, unidirectional L2 traffic to Board 1
 	do_vlan 100 "swp1 swp2 swp4" ""
 	ip addr flush dev eno2.100; ip addr add 192.168.100.2/24 dev eno2.100
-	board1=$(get_remote_mac 192.168.1.1 tsntool)
+	board1=$(get_remote_mac 192.168.1.1 tsntool eno2)
 	# Configure two Seamless Stream IDs (SSID) for outbound traffic to
 	# board 1.  This configuration needs to be applied over each switch
 	# port that will be performing egress.  Otherwise when one of the
@@ -229,7 +153,7 @@ case "${board}" in
 	tsntool cbgen --device swp5 --index 2 --seq_len 16 --seq_num 0 \
 		--iport_mask $((1<<4)) --split_mask $((1<<1))
 
-	board1=$(get_remote_mac 192.168.1.1 iproute2)
+	board1=$(get_remote_mac 192.168.1.1 iproute2 eno2)
 	arp -s 192.168.100.1 "${board1}" dev eno2.100
 
 	# And return path...
@@ -255,9 +179,8 @@ case "${board}" in
 	# traffic.
 	# We allow loops in the VID 100 used for redundancy but explicitly
 	# control which frames are tagged with that VLAN.
+	ip addr flush dev eno2; ip addr add 192.168.1.3/24 dev eno2; ip link set dev eno2 up
 	do_vlan 1 "swp2 swp4" "pvid untagged"
-	ip addr flush dev eno2; ip addr add 192.168.1.3/24 dev eno2
-	ip link set dev eno2 up
 
 	# Forwards one member stream of the replicated traffic
 	do_vlan 100 "swp0 swp2" ""
