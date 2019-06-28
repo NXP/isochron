@@ -74,8 +74,6 @@ do_vlan() {
 board=$1; shift
 
 do_bridging ls1028ardb
-iptables -t nat --flush
-iptables -t filter --flush
 
 case "${board}" in
 1)
@@ -93,20 +91,6 @@ case "${board}" in
 		tsntool cbrec --device "${eth}" --index 1 \
 			--seq_len 16 --his_len 31 --rtag_pop_en
 	done
-
-	# And return path...
-	board2=$(get_remote_mac 192.168.1.2 tsntool eno2)
-	tsntool cbstreamidset --device swp0 --streamhandle 2 \
-		--nullstreamid --nulldmac "${board2}" --nullvid 100
-	tsntool cbstreamidset --device swp1 --streamhandle 3 \
-		--nullstreamid --nulldmac "${board2}" --nullvid 100
-	tsntool cbgen --device swp5 --index 2 --seq_len 16 --seq_num 0 \
-		--iport_mask $((1<<4)) --split_mask $((1<<1))
-	tsntool cbgen --device swp5 --index 3 --seq_len 16 --seq_num 0 \
-		--iport_mask $((1<<4)) --split_mask $((1<<0))
-
-	board2=$(get_remote_mac 192.168.1.2 iproute2 eno2)
-	arp -s 192.168.100.2 "${board2}" dev eno2.100
 
 	echo "To test with traffic, run:"
 	echo "./raw-l2-rcv eno2.100"
@@ -155,19 +139,6 @@ case "${board}" in
 
 	board1=$(get_remote_mac 192.168.1.1 iproute2 eno2)
 	arp -s 192.168.100.1 "${board1}" dev eno2.100
-
-	# And return path...
-	board2=$(get_local_mac eno2 tsntool)
-	tsntool cbstreamidset --device swp4 --streamhandle 3 \
-		--nullstreamid --nulldmac "${board2}" --nullvid 100
-	for eth in swp1 swp2; do
-		tsntool cbrec --device "${eth}" --index 3 \
-			--seq_len 16 --his_len 31 --rtag_pop_en
-	done
-	# Rewrite destination address of ping request
-	iptables -t nat -A PREROUTING -d 192.168.1.1 -p icmp --icmp-type echo-request -j DNAT --to 192.168.100.1
-	iptables -t filter -A FORWARD -p icmp -d 192.168.100.1 -j ACCEPT
-	iptables -t nat -A POSTROUTING -s 192.168.100.2 -p icmp --icmp-type echo-reply -j SNAT --to 192.168.1.2
 	echo "To test with traffic, run:"
 	echo "./raw-l2-send eno2.100 ${board1} 7 +0.1 0.2 10"
 	;;
