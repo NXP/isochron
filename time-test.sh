@@ -94,7 +94,7 @@ do_8021qbv() {
 	tc filter add dev eno2 egress prio 1 u32 match u16 0x88b5 0xffff \
 		action skbedit priority 5
 
-	speed_mbps=$(ethtool eno2 | awk \
+	speed_mbps=$(ethtool eno2 | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
 	window="$(qbv_window 500 1 ${speed_mbps})"
 	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
@@ -153,7 +153,7 @@ do_send_traffic() {
 	rm -f combined.log
 
 	while IFS= read -r line; do
-		seqid=$(echo "${line}" | awk '/seqid/ { print $6; }')
+		seqid=$(echo "${line}" | gawk '/seqid/ { print $6; }')
 		otherline=$(cat rx.log | grep "seqid ${seqid} " || :)
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
@@ -187,7 +187,7 @@ check_sync() {
 
 	while :; do
 		tail -50 /var/log/messages > ptp.log
-		phc_offset=$(cat ptp.log | awk '/ptp4l/ { print $10; exit; }')
+		phc_offset=$(cat ptp.log | gawk '/ptp4l/ { print $10; exit; }')
 		if [ -z "${phc_offset}" ]; then
 			if [ -z $(pidof ptp4l) ]; then
 				echo "Please run '/etc/init.d/S65linuxptp start'"
@@ -206,7 +206,7 @@ check_sync() {
 			continue
 		fi
 
-		system_clock_offset=$(cat ptp.log | awk '/phc2sys/ { print $11; exit; }')
+		system_clock_offset=$(cat ptp.log | gawk '/phc2sys/ { print $11; exit; }')
 		if [ -z "${system_clock_offset}" ]; then
 			if [ -z $(pidof phc2sys) ]; then
 				echo "Please run '/etc/init.d/S65linuxptp start'"
@@ -236,9 +236,9 @@ do_cut_through() {
 }
 
 set_params() {
-	local now=$(phc_ctl CLOCK_REALTIME get | awk '/clock time is/ { print $5; }')
+	local now=$(phc_ctl CLOCK_REALTIME get | gawk '/clock time is/ { print $5; }')
 	# Round the base time to the start of the next second.
-	local sec=$(echo "${now}" | awk -F. '{ print $1; }')
+	local sec=$(echo "${now}" | gawk -F. '{ print $1; }')
 	local utc_offset="36"
 
 	os_base_time="$((${sec} + 3)).0"

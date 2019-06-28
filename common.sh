@@ -69,7 +69,7 @@ get_remote_mac() {
 		return
 	esac
 
-	arping -I "${iface}" -c 1 "${ip}" | awk "${awk_program}"
+	arping -I "${iface}" -c 1 "${ip}" | gawk "${awk_program}"
 }
 
 get_local_mac() {
@@ -94,5 +94,5 @@ get_local_mac() {
 	*)
 		return
 	esac
-	ip link show dev ${port} | awk "${awk_program}"
+	ip link show dev ${port} | gawk "${awk_program}"
 }
