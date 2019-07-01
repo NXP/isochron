@@ -70,6 +70,43 @@ do_vlan() {
 	done
 }
 
+prerequisites() {
+	# With more complex systemd-based distributions, these extra things
+	# need to be disabled first, otherwise there will be uncontrolled
+	# loops:
+	# 1. No DHCP over the VLAN interfaces.
+	if ! grep -q 'denyinterfaces eno*.*' /etc/dhcpcd.conf; then
+		echo 'Please add the following line to /etc/dhcpcd.conf:'
+		echo 'denyinterfaces eno*.*'
+		echo 'and then run "systemctl restart dhcpcd"'
+		return 1
+	fi
+	# 2. Disable Link-Local Multicast Name Resolution over VLAN interfaces
+	if ! [ -f /etc/systemd/network/90-vlan-nollmnr.network ]; then
+		echo 'Please create /etc/systemd/network/90-vlan-nollmnr.network with the content between bars:'
+		echo '==========================='
+		echo '[Match]'
+		echo 'Name=eno*.*'
+		echo ''
+		echo '[Network]'
+		echo 'LLMNR=no'
+		echo '==========================='
+		return 1
+	fi
+	# Please note that depending on system configuration, there might be
+	# other programs that try to access the VLAN interfaces automatically.
+
+	packages="arping gawk"
+	for pkg in ${packages}; do
+		if ! command -v ${pkg} > /dev/null; then
+			echo "Please install the ${pkg} package"
+			return 1
+		fi
+	done
+}
+
+prerequisites
+
 [ $# = 1 ] || usage
 board=$1; shift
 
