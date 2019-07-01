@@ -32,12 +32,11 @@ source "${TOPDIR}/common.sh"
 #   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
 #          MAC0             SW0             SW1             SW2              SW3
 
-b1_eno0="10.0.0.101"
 b1_eno2="192.168.1.1"
-b3_eno0="10.0.0.103"
 b3_eno2="192.168.1.3"
 NSEC_PER_SEC="1000000000"
 receiver_open=false
+SSH="ssh -o IPQoS=0"
 
 error() {
 	local lineno="$1"
@@ -52,7 +51,7 @@ do_cleanup() {
 	rm -f tx.log combined.log ptp.log
 	if [ ${receiver_open} = true ]; then
 		printf "Stopping receiver process... "
-		ssh "${remote}" "./time-test.sh 3 stop"
+		"${SSH}" "${remote}" "./time-test.sh 3 stop"
 	fi
 }
 trap do_cleanup EXIT
@@ -114,7 +113,7 @@ do_8021qci() {
 }
 
 do_send_traffic() {
-	local remote="root@${b3_eno0}"
+	local remote="root@${b3_eno2}"
 
 	check_sync
 
@@ -122,13 +121,13 @@ do_send_traffic() {
 	dmac="$(get_remote_mac ${b3_eno2} iproute2 eno2)" || {
 		echo "failed: $?"
 		echo "Have you run \"./time-test.sh 3 prepare\"?"
-		ssh "${remote}" "./time-test.sh 3 stop"
+		"${SSH}" "${remote}" "./time-test.sh 3 stop"
 		return 1
 	}
 	echo "${dmac}"
 
 	printf "Opening receiver process... "
-	ssh "${remote}" "./time-test.sh 3 start"
+	"${SSH}" "${remote}" "./time-test.sh 3 start"
 
 	receiver_open=true
 
@@ -138,7 +137,7 @@ do_send_traffic() {
 		"${length}" > tx.log
 
 	printf "Stopping receiver process... "
-	ssh "${remote}" "./time-test.sh 3 stop"
+	"${SSH}" "${remote}" "./time-test.sh 3 stop"
 
 	receiver_open=false
 
@@ -267,7 +266,6 @@ board="$1"; shift
 
 case "${board}" in
 1)
-	ip addr flush dev eno0; ip addr add "${b1_eno0}/24" dev eno0; ip link set dev eno0 up
 	ip addr flush dev eno2; ip addr add "${b1_eno2}/24" dev eno2; ip link set dev eno2 up
 	set_params
 	do_bridging ls1028ardb
@@ -289,7 +287,6 @@ case "${board}" in
 		do_stop_rcv_traffic
 		;;
 	prepare)
-		ip addr flush dev eno0; ip addr add "${b3_eno0}/24" dev eno0; ip link set dev eno0 up
 		ip addr flush dev eno2; ip addr add "${b3_eno2}/24" dev eno2; ip link set dev eno2 up
 		do_8021qci
 		;;
