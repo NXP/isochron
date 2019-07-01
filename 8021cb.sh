@@ -74,6 +74,10 @@ do_vlan() {
 board=$1; shift
 
 do_bridging ls1028ardb
+# No pvid by default
+for eth in $(get_switch_ports ls1028ardb); do
+	bridge vlan del vid 1 dev ${eth}
+done
 
 case "${board}" in
 1)
