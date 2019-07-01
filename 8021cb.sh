@@ -133,6 +133,7 @@ case "${board}" in
 			--seq_len 16 --his_len 31 --rtag_pop_en
 	done
 
+	echo "Configuration successful."
 	echo "To test with traffic, run:"
 	echo "${TOPDIR}/raw-l2-rcv eno2.100"
 	echo "ip link set dev swp0 down"
@@ -180,6 +181,7 @@ case "${board}" in
 
 	board1=$(get_remote_mac 192.168.1.1 iproute2 eno2)
 	arp -s 192.168.100.1 "${board1}" dev eno2.100
+	echo "Configuration successful."
 	echo "To test with traffic, run:"
 	echo "${TOPDIR}/raw-l2-send eno2.100 ${board1} 7 +0.1 0.0 0.2 30 64"
 	;;
@@ -196,6 +198,7 @@ case "${board}" in
 
 	# Forwards one member stream of the replicated traffic
 	do_vlan 100 "swp0 swp2" ""
+	echo "Configuration successful."
 	echo "This board is forwarding redundant traffic, no further configuration needed."
 	;;
 *)
