@@ -86,24 +86,26 @@ qbv_window() {
 }
 
 do_8021qbv() {
+	local iface=$1
+
 	# https://www.tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.qdisc.filters.html
 	# The below command creates an mqprio qdisc with 8 netdev queues. The
 	# 'map' parameter means that queue 0 corresponds to TC 0, queue 1 to TC
 	# 1, ... queue 7 to TC 7. Those TC values are what Qbv uses. The queues
 	# are what 'tc filter' uses. A 1-to-1 mapping should be easy to manage.
-	tc qdisc del dev eno2 root || :
-	tc qdisc del dev eno2 clsact || :
-	tc qdisc replace dev eno2 root handle 1: \
+	tc qdisc del dev "${iface}" root || :
+	tc qdisc del dev "${iface}" clsact || :
+	tc qdisc replace dev "${iface}" root handle 1: \
 		mqprio num_tc 8 map 0 1 2 3 4 5 6 7 hw 1
 	# Add the qdisc holding the classifiers
-	tc qdisc add dev eno2 clsact
+	tc qdisc add dev "${iface}" clsact
 	# Match EtherType ETH_P_802_EX1.
 	# Since we use u32 filter which starts from IP protocol,
 	# we need to go back and specify -2 negative offset.
-	tc filter add dev eno2 egress prio 1 u32 match u16 0x88b5 0xffff \
+	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88b5 0xffff \
 		action skbedit priority 5
 
-	speed_mbps=$(ethtool eno2 | gawk \
+	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
 	window="$(qbv_window 500 1 ${speed_mbps})"
 	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
@@ -112,9 +114,9 @@ do_8021qbv() {
 		t0 00100000 ${window}
 		t1 00000001 $((10000000 - ${window}))
 	EOF
-	tsntool qbvset --device eno2 --disable
+	tsntool qbvset --device "${iface}" --disable
 	return
-	tsntool qbvset --device eno2 --entryfile qbv0.txt --enable \
+	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
 }
 
@@ -345,7 +347,7 @@ case "${board}" in
 		ip link set dev swp0 up
 
 		do_cut_through
-		do_8021qbv
+		do_8021qbv eno2
 		;;
 	run)
 		do_send_traffic
