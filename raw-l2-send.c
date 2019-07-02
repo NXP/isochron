@@ -20,7 +20,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "common.h"
+#include "raw-l2-common.h"
 
 #define NSEC_PER_SEC	1000000000
 #define BUF_SIZ		1522

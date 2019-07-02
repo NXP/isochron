@@ -17,7 +17,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
-#include "common.h"
+#include "raw-l2-common.h"
 
 #define BUF_SIZ		1522
 
