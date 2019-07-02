@@ -98,7 +98,7 @@ ip link add name br0 type bridge stp_state 0 vlan_filtering 1
 ip link set br0 arp off
 ip link set br0 up
 
-for eth in $(get_switch_ports ls1028ardb); do
+for eth in swp0 swp1 swp2 swp3 swp4 swp5; do
 	ip addr flush dev ${eth}
 	ip link set ${eth} master br0
 	ip link set ${eth} up

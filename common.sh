@@ -28,21 +28,6 @@ do_vlan() {
 	done
 }
 
-get_switch_ports() {
-	local board=$1
-
-	case "${board}" in
-	ls1021atsn)
-		ls /sys/devices/platform/soc/2100000.spi/spi_master/spi0/spi0.1/net/
-		;;
-	ls1028ardb)
-		ls /sys/bus/pci/devices/0000:00:00.5/net/
-		;;
-	*)
-		;;
-	esac
-}
-
 get_remote_mac() {
 	local ip="$1"
 	local format="$2"
