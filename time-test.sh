@@ -361,6 +361,14 @@ prerequisites() {
 			exit 1
 		fi
 	done
+
+	packages="arping gawk"
+	for pkg in ${packages}; do
+		if ! command -v ${pkg} > /dev/null; then
+			echo "Please install the ${pkg} package"
+			return 1
+		fi
+	done
 }
 
 if [ $# -lt 1 ]; then
