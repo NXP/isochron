@@ -283,6 +283,54 @@ check_sync() {
 	done
 }
 
+# The PTP clocks tick Jan 1st 1970 at boot time.
+# This function temporarily disables any PTP service and resets the PTP clock
+# to a known state, be it master or slave. The time is based on the RTC clock
+# and should be "in the ballpark" for the slave. For the master, CLOCK_REALTIME
+# will also become the time source (phc2sys -r -r).
+# We only care that the clocks are synchronized to one another.
+# We make sure that the PTP clocks tick in 2019 and not in 1970 because there
+# are bugs in phc2sys (?) when you try to discipline it to a retro time.
+set_phc_time() {
+	local phc=$1
+	local distro=$2
+
+	case "${distro}" in
+	openil)
+		# Make sure the S65linuxptp included in this archive is
+		# installed at /etc/init.d/ on the board.
+		/etc/init.d/S65linuxptp stop
+		hwclock --hctosys
+		phc_ctl "${phc}" set
+		phc_ctl "${phc}" freq 0
+		/etc/init.d/S65linuxptp start
+		;;
+	ubuntu)
+		# Make sure /lib/systemd/system/phc2sys.service contains:
+		#
+		#   ExecStart=/usr/sbin/phc2sys -a -r -r
+		#
+		# and /lib/systemd/system/phc2sys.service contains:
+		#
+		#   ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ptp4l.conf -i eno0 -2
+		#
+		# then run:
+		# systemctl daemon-reload
+		# systemctl enable phc2sys
+		# systemctl restart phc2sys
+		# systemctl enable ptp4l
+		# systemctl restart ptp4l
+		systemctl stop ptp4l
+		systemctl stop phc2sys
+		hwclock --hctosys
+		phc_ctl "${phc}" set
+		phc_ctl "${phc}" freq 0
+		systemctl start ptp4l
+		systemctl start phc2sys
+		;;
+	esac
+}
+
 do_cut_through() {
 	for eth in $(ls /sys/bus/pci/devices/0000:00:00.5/net/); do
 		tsntool ctset --device ${eth} --queue_stat 0xff;
