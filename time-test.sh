@@ -208,7 +208,9 @@ check_sync() {
 
 	echo "Checking synchronization status..."
 
-	port_state=$(pmc -u -b 0 'GET PORT_DATA_SET' | gawk '/portState/ { print $2; }')
+	port_state=$(pmc -u -b 0 'GET PORT_DATA_SET' | \
+			gawk '/portState/ { print $2; }')
+	echo "port state is $port_state"
 	if [ "${port_state}" = "MASTER" ]; then
 		return
 	fi
@@ -216,7 +218,7 @@ check_sync() {
 	while :; do
 		case ${distro} in
 		ubuntu)
-			journalctl -b -u ptp4l > ptp.log
+			journalctl -b -u ptp4l | tail -50 > ptp.log
 			awk_program='/ptp4l/ { print $9; exit; }'
 			;;
 		openil)
@@ -224,10 +226,10 @@ check_sync() {
 			awk_program='/ptp4l/ { print $10; exit; }'
 			;;
 		esac
-		phc_offset=$(cat ptp.log | gawk "${awk_program}" || :)
+		phc_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${phc_offset}" in
-		''|*[!0-9]*)
+		''|[!\-][!0-9]*)
 			if [ -z $(pidof ptp4l) ]; then
 				echo "Please run '/etc/init.d/S65linuxptp start'"
 				return 1
@@ -248,21 +250,22 @@ check_sync() {
 
 		case ${distro} in
 		ubuntu)
-			journalctl -b -u phc2sys > ptp.log
-			awk_program='/phc2sys/ { print $10; exit; }'
+			journalctl -b -u phc2sys | tail -50 > ptp.log
+			awk_program='/phc2sys/ { print $9; exit; }'
 			;;
 		openil)
 			awk_program='/phc2sys/ { print $11; exit; }'
 		esac
-		system_clock_offset=$(cat ptp.log | gawk "${awk_program}")
+		system_clock_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${system_clock_offset}" in
-		''|*[!0-9]*)
+		''|[!\-][!0-9]*)
 			if [ -z $(pidof phc2sys) ]; then
 				echo "Please run '/etc/init.d/S65linuxptp start'"
 				return 1
 			else
 				echo "Trying again..."
+				sleep 1
 				continue
 			fi
 			;;
