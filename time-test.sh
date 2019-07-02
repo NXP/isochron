@@ -105,8 +105,13 @@ do_8021qbv() {
 	# Match EtherType ETH_P_802_EX1.
 	# Since we use u32 filter which starts from IP protocol,
 	# we need to go back and specify -2 negative offset.
+	# You can see that this works because it overwrites the ${txq}
+	# parameter given to raw-l2-send.
 	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88b5 0xffff \
 		action skbedit priority 5
+	# Match L2 PTP frames by EtherType
+	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88f7 0xffff \
+		action skbedit priority 7
 
 	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
@@ -114,8 +119,9 @@ do_8021qbv() {
 	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
 	# (10,000,000 ns).
 	cat > qbv0.txt <<-EOF
-		t0 00100000 ${window}
-		t1 00000001 $((10000000 - ${window}))
+		t0 00100000 ${window} # raw-l2-send
+		t1 10000000 ${window} # PTP
+		t2 00000001 $((10000000 - 2 * ${window})) # everything else
 	EOF
 	tsntool qbvset --device "${iface}" --disable
 	return
@@ -295,7 +301,7 @@ set_params() {
 	period="0.01"
 	length="100"
 	frames="100"
-	txq=5
+	txq=7
 }
 
 prerequisites() {
