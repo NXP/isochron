@@ -53,23 +53,6 @@ usage() {
 	return 1
 }
 
-do_vlan() {
-	local vid="$1"
-	local ports="$2"
-	local flags="$3"
-
-	[ -d "/sys/class/net/eno2.${vid}" ] && ip link del dev "eno2.${vid}"
-
-	ip link add link eno2 name "eno2.${vid}" type vlan id ${vid} \
-		ingress-qos-map 0:0 1:1 2:2 3:3 4:4 5:5 6:6 7:7 \
-		egress-qos-map 0:0 1:1 2:2 3:3 4:4 5:5 6:6 7:7
-	ip link set dev "eno2.${vid}" up
-
-	for port in ${ports}; do
-		bridge vlan add vid ${vid} dev ${port} ${flags}
-	done
-}
-
 prerequisites() {
 	# With more complex systemd-based distributions, these extra things
 	# need to be disabled first, otherwise there will be uncontrolled
