@@ -7,3 +7,5 @@ raw-l2-send: raw-l2-send.o common.o
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^ -o $@
 
+clean:
+	rm -f raw-l2-rcv.o raw-l2-send.o common.o
