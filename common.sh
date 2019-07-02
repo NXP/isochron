@@ -43,21 +43,6 @@ get_switch_ports() {
 	esac
 }
 
-do_bridging() {
-	local board=$1
-
-	[ -d /sys/class/net/br0 ] && ip link del dev br0
-
-	ip link add name br0 type bridge stp_state 0 vlan_filtering 1
-	ip link set br0 up
-	for eth in $(get_switch_ports "${board}"); do
-		ip addr flush dev ${eth};
-		ip link set ${eth} master br0
-		ip link set ${eth} up
-	done
-	ip link set br0 arp off
-}
-
 get_remote_mac() {
 	local ip="$1"
 	local format="$2"
