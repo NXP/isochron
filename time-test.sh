@@ -73,6 +73,9 @@ usage() {
 	echo "$0 3 start|stop|prepare"
 }
 
+# Given @frame_len bytes, @count frames and @link_speed in Mbps,
+# returns the minimum number of nanoseconds required to keep a Qbv gate open
+# to transmit that.
 qbv_window() {
 	local frame_len=$1
 	local count=$2
