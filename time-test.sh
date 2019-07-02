@@ -8,15 +8,20 @@ export TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
 source "${TOPDIR}/common.sh"
 
 # This example will send a unidirectional traffic stream from Board 1 to
-# Board 3 and measure its latency.
+# Board 2 and measure its latency by taking MAC TX and RX timestamp.
+# This is currently not supported for the Felix switch ports. The switch
+# is currently only used to pass SSH traffic.
+# The 1588 hardware clocks of ENETC (/dev/ptp0) are kept in sync via the
+# ptp4l which runs as a service, and the system clocks are kept in sync
+# via phc2sys. One of the boards runs as PTP master and the other as PTP slave.
 #
 #   Board 1:
 #
 #   +---------------------------------------------------------------------------------+
-#   |                   192.168.0.1     192.168.1.1 (on eno2.1)                       |
+#   |   10.0.0.101                      192.168.1.1 (on eno2)                         |
 #   | +------------+   +------------+  +------------+  +------------+  +------------+ |
-#   | |            |   | To Board 3 |  | To Board 2 |  |            |  |            | |
-#   | |            | +-|    SW0     |  |    SW1     |  |            |  |            | |
+#   | |            |   |            |  | To Board 2 |  |            |  |            | |
+#   | |            |-+ |            |  |    SW1     |  |            |  |            | |
 #   | |            | | |            |  |            |  |            |  |            | |
 #   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
 #          MAC0      |      SW0             SW1             SW2              SW3
@@ -24,22 +29,10 @@ source "${TOPDIR}/common.sh"
 #   Board 2:         |                       |
 #                    |                       |
 #   +----------------|-----------------------+----------------------------------------+
-#   |                |                       | 192.168.1.2 (on br0)                   |
+#   |   10.0.0.102   |                       | 192.168.1.2 (on eno2)                  |
 #   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
-#   | |            | | |            |  | To Board 1 |  | To Board 3 |  |            | |
-#   | |            | | |            |  |    SW1     |  |    SW2     |  |            | |
-#   | |            | | |            |  |            |  |            |  |            | |
-#   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
-#          MAC0      |      SW0             SW1             SW2              SW3
-#                    |                                       |
-#                    |                                       |
-#   Board 3:         |                                       |
-#                    |                                       |
-#   +----------------|---------------------------------------+------------------------+
-#   |                |  192.168.0.3                      192.|168.1.3 (on eno2.1)     |
-#   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
-#   | |            | | | To Board 1 |  |            |  | To Board 2 |  |            | |
-#   | |            | +-|    SW0     |  |            |  |    SW2     |  |            | |
+#   | |            | | |            |  | To Board 1 |  |            |  |            | |
+#   | |            |-+ |            |  |    SW1     |  |            |  |            | |
 #   | |            |   |            |  |            |  |            |  |            | |
 #   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
 #          MAC0             SW0             SW1             SW2              SW3
@@ -61,16 +54,15 @@ do_cleanup() {
 	rm -f tx.log combined.log ptp.log
 	if [ ${receiver_open} = true ]; then
 		printf "Stopping receiver process... "
-		${SSH} "${remote}" "./time-test.sh 3 stop"
+		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
 	fi
 }
 trap do_cleanup EXIT
 
 usage() {
 	echo "Usage:"
-	echo "$0 1 prepare|run"
-	echo "$0 2"
-	echo "$0 3 start|stop|prepare"
+	echo "$0 1 prepare|start|stop"
+	echo "$0 2 prepare|start|stop"
 }
 
 # Given @frame_len bytes, @count frames and @link_speed in Mbps,
@@ -124,7 +116,6 @@ do_8021qbv() {
 		t2 00000001 $((10000000 - 2 * ${window})) # everything else
 	EOF
 	tsntool qbvset --device "${iface}" --disable
-	return
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
 }
@@ -134,36 +125,36 @@ do_8021qci() {
 }
 
 do_send_traffic() {
-	local remote="root@192.168.0.3"
+	local remote="root@192.168.1.2"
 
 	check_sync ubuntu
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac 192.168.0.3 iproute2 swp0)" || {
+	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno0)" || {
 		echo "failed: $?"
-		echo "Have you run \"./time-test.sh 3 prepare\"?"
-		${SSH} "${remote}" "./time-test.sh 3 stop"
+		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
+		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
 		return 1
 	}
 	echo "${dmac}"
 
 	printf "Opening receiver process... "
-	${SSH} "${remote}" "./time-test.sh 3 start"
+	${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 start"
 
 	receiver_open=true
 
 	echo "Opening transmitter process..."
-	./raw-l2-send eno2 "${dmac}" "${txq}" "${os_base_time}" \
+	"${TOPDIR}/raw-l2-send" eno0 "${dmac}" "${txq}" "${os_base_time}" \
 		"${advance_time}" "${period}" "${frames}" \
 		"${length}" > tx.log
 
 	printf "Stopping receiver process... "
-	${SSH} "${remote}" "./time-test.sh 3 stop"
+	${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
 
 	receiver_open=false
 
 	echo "Collecting logs..."
-	scp "${remote}:rx.log" .
+	scp "${remote}:${TOPDIR}/rx.log" .
 
 	[ -s rx.log ] || {
 		echo "No frame received by ${remote} (MAC ${dmac})."
@@ -178,7 +169,7 @@ do_send_traffic() {
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
-	cat combined.log | gawk -f time-test.awk \
+	cat combined.log | gawk -f "${TOPDIR}/time-test.awk" \
 		-v "period=${period}" \
 		-v "mac_base_time=${mac_base_time}" \
 		-v "advance_time=${advance_time}"
@@ -187,7 +178,7 @@ do_send_traffic() {
 do_start_rcv_traffic() {
 	check_sync ubuntu
 
-	rm -f ./raw-l2-rcv.pid rx.log
+	rm -f rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
 		-c "exec ${TOPDIR}/raw-l2-rcv eno0 > ${TOPDIR}/rx.log 2>&1" \
@@ -337,7 +328,7 @@ do_cut_through() {
 	done
 }
 
-set_params() {
+set_qbv_params() {
 	local now=$(phc_ctl CLOCK_REALTIME get | gawk '/clock time is/ { print $5; }')
 	# Round the base time to the start of the next second.
 	local sec=$(echo "${now}" | gawk -F. '{ print $1; }')
@@ -379,15 +370,8 @@ board="$1"; shift
 
 prerequisites
 
-[ -d /sys/class/net/br0 ] && ip link del dev br0
-ip link add name br0 type bridge stp_state 0 vlan_filtering 1
-ip link set br0 arp off
-ip link set br0 up
-
 case "${board}" in
 1)
-	set_params
-
 	if [ $# -lt 1 ]; then
 		usage
 		exit 1
@@ -395,48 +379,46 @@ case "${board}" in
 	cmd="$1"; shift
 	case "${cmd}" in
 	prepare)
+		[ -d /sys/class/net/br0 ] && ip link del dev br0
+		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
+		ip link set br0 arp off
+		ip link set br0 up
+
 		for eth in swp1 swp4 swp5; do
 			ip addr flush dev ${eth}
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
 
-		# This also creates eno2.1
-		do_vlan 1 "swp1 swp4 swp5" "pvid untagged"
-		bridge vlan add vid 1 dev swp4 pvid
-		ip addr flush dev eno2.1
-		ip addr add 192.168.1.1/24 dev eno2.1
-		ip link set dev eno2.1 up
+		ip addr flush dev eno0
+		ip addr add 10.0.0.101/24 dev eno0
+		ip link set dev eno0 up
 
-		ip addr flush dev swp0
-		ip addr add 192.168.0.1/24 dev swp0
-		ip link set dev swp0 up
+		ip addr flush dev eno2
+		ip addr add 192.168.1.1/24 dev eno2
+		ip link set dev eno2 up
 
-		do_cut_through
-		do_8021qbv eno2
+		set_phc_time /dev/ptp0 ubuntu
+		set_qbv_params
+
+		#do_cut_through
+		do_8021qbv eno0
+
+		echo "Configuration successful."
 		;;
-	run)
+	start)
+		set_qbv_params
+
 		do_send_traffic
+		;;
+	stop)
+		tsntool qbvset --device eno0 --disable
 		;;
 	*)
 		usage
 	esac
 	;;
 2)
-	for eth in swp1 swp2 swp4 swp5; do
-		ip addr flush dev ${eth}
-		ip link set ${eth} master br0
-		ip link set ${eth} up
-	done
-
-	# This also creates eno2.1
-	do_vlan 1 "swp1 swp2 swp4 swp5" "pvid untagged"
-	bridge vlan add vid 1 dev swp4 pvid
-	ip addr flush dev eno2.1
-	ip addr add 192.168.1.1/24 dev eno2.1
-	ip link set dev eno2.1 up
-	;;
-3)
 	if [ $# -lt 1 ]; then
 		usage
 		exit 1
@@ -450,24 +432,30 @@ case "${board}" in
 		do_stop_rcv_traffic
 		;;
 	prepare)
+		[ -d /sys/class/net/br0 ] && ip link del dev br0
+		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
+		ip link set br0 arp off
+		ip link set br0 up
+
 		for eth in swp1 swp4 swp5; do
 			ip addr flush dev ${eth}
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
 
-		# This also creates eno2.1
-		do_vlan 1 "swp1 swp4 swp5" "pvid untagged"
-		bridge vlan add vid 1 dev swp4 pvid
-		ip addr flush dev eno2.1
-		ip addr add 192.168.1.2/24 dev eno2.1
-		ip link set dev eno2.1 up
+		ip addr flush dev eno0
+		ip addr add 10.0.0.102/24 dev eno0
+		ip link set dev eno0 up
 
-		ip addr flush dev swp0
-		ip addr add 192.168.0.3/24 dev swp0
-		ip link set dev swp0 up
+		ip addr flush dev eno2
+		ip addr add 192.168.1.2/24 dev eno2
+		ip link set dev eno2 up
 
 		do_8021qci
+
+		set_phc_time /dev/ptp0 ubuntu
+
+		echo "Configuration successful."
 		;;
 	*)
 		usage
