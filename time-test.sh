@@ -190,15 +190,13 @@ do_start_rcv_traffic() {
 	rm -f ./raw-l2-rcv.pid rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
-		-c 'exec ./raw-l2-rcv eno2 > rx.log 2>&1' \
-		&& status=$? || status=$?
-	[ ${status} = 0 ] && echo "OK" || echo "FAIL"
+		-c "exec ${TOPDIR}/raw-l2-rcv eno0 > ${TOPDIR}/rx.log 2>&1" \
+		&& echo "OK" || echo "FAIL"
 }
 
 do_stop_rcv_traffic() {
 	start-stop-daemon -K -p "/var/run/raw-l2-rcv.pid" \
-		&& status=$? || status=$?
-	[ ${status} = 0 ] && echo "OK" || echo "FAIL"
+		&& echo "OK" || echo "FAIL"
 }
 
 check_sync() {
