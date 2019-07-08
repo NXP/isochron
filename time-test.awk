@@ -141,26 +141,26 @@ END {
 	os_tx_latency_std_dev = get_std_dev(os_tx_latency, seqid,
 					    os_tx_latency_mean);
 	print "Mean OS TX latency (OS TX - expected TX time): " \
-		os_tx_latency_mean " ns";
-	print "Standard deviation: " os_tx_latency_std_dev " ns";
+		int(os_tx_latency_mean) " ns";
+	print "Standard deviation: " int(os_tx_latency_std_dev) " ns";
 
 	mac_tx_latency_mean = get_mean(mac_tx_latency, seqid);
 	mac_tx_latency_std_dev = get_std_dev(mac_tx_latency, seqid,
 					     mac_tx_latency_mean);
 	print "Mean MAC TX latency (MAC TX - gate event time): " \
-		mac_tx_latency_mean " ns";
-	print "Standard deviation: " mac_tx_latency_std_dev " ns";
+		int(mac_tx_latency_mean) " ns";
+	print "Standard deviation: " int(mac_tx_latency_std_dev) " ns";
 
 	path_delay_mean = get_mean(path_delay, seqid);
 	path_delay_std_dev = get_std_dev(path_delay, seqid,
 					 path_delay_mean);
-	print "Mean path delay (MAC RX - MAC TX): " path_delay_mean " ns";
-	print "Standard deviation: " path_delay_std_dev " ns";
+	print "Mean path delay (MAC RX - MAC TX): " int(path_delay_mean) " ns";
+	print "Standard deviation: " int(path_delay_std_dev) " ns";
 
 	os_rx_latency_mean = get_mean(os_rx_latency, seqid);
 	os_rx_latency_std_dev = get_std_dev(os_rx_latency, seqid,
 					    os_rx_latency_mean);
 	print "Mean OS RX latency (OS RX - MAC RX): " \
-		os_rx_latency_mean " ns";
-	print "Standard deviation: " os_rx_latency_std_dev " ns";
+		int(os_rx_latency_mean) " ns";
+	print "Standard deviation: " int(os_rx_latency_std_dev) " ns";
 }
