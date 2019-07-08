@@ -1,3 +1,5 @@
+all: raw-l2-send raw-l2-rcv
+
 raw-l2-rcv: raw-l2-rcv.o raw-l2-common.o
 	$(CC) $^ -o $@ $(LDFLAGS)
 
