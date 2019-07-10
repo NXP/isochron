@@ -227,8 +227,8 @@ static int prog_init(struct prog_data *prog)
 		return -errno;
 	}
 
-	/* Open PF_PACKET socket, listening for EtherType ETH_P_802_EX1 */
-	prog->fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_802_EX1));
+	/* Open PF_PACKET socket, listening for EtherType ETH_P_TSN */
+	prog->fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_TSN));
 	if (prog->fd < 0) {
 		perror("listener: socket");
 		return -errno;

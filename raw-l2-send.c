@@ -225,7 +225,7 @@ static int prog_init(struct prog_data *prog)
 	memcpy(eh->ether_shost, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
 	memcpy(eh->ether_dhost, prog->dest_mac, ETH_ALEN);
 	/* Ethertype field */
-	eh->ether_type = htons(ETH_P_802_EX1);
+	eh->ether_type = htons(ETH_P_TSN);
 
 	/* Index of the network device */
 	prog->socket_address.sll_ifindex = if_idx.ifr_ifindex;
