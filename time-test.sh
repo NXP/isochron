@@ -121,7 +121,22 @@ do_8021qbv() {
 }
 
 do_8021qci() {
-	:
+	local iface=$1
+	local board1="$(get_remote_mac 10.0.0.101 tsntool-reverse eno0)"
+
+	tsntool qcisfiget --device "${iface}" --index 2
+	tsntool cbstreamidset --device "${iface}" --index 1 --streamhandle 100 \
+		 --sourcemacvid --sourcemac "${board1}" --sourcetagged 3 --sourcevid 20
+	tsntool qcisfiset --device "${iface}" --streamhandle 100 --index 1 --gateid 1
+	cat > sgi1.txt <<-EOF
+	# Example
+	# 'NUMBER' 'GATE_VALUE' 'IPV' 'TIME_LONG' 'OCTET_MAX'
+	# t0        0b           1     500         2000
+	# t1        1b           3     1000        1580
+	t0          0b          -1     1000         0
+	t1 1b -1 1000 0
+	EOF
+	tsntool qcisgiset --device "${iface}" --index 1 --initgate 0 --gatelistfile sgi1.txt --basetime "${mac_base_time_nsec}"
 }
 
 do_send_traffic() {
@@ -451,7 +466,8 @@ case "${board}" in
 		ip addr add 192.168.1.2/24 dev eno2
 		ip link set dev eno2 up
 
-		do_8021qci
+		set_qbv_params
+		do_8021qci eno0
 
 		set_phc_time /dev/ptp0 ubuntu
 
