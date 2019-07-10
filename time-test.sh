@@ -145,7 +145,7 @@ do_send_traffic() {
 	check_sync ubuntu
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno0)" || {
+	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno0.100)" || {
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
@@ -159,7 +159,7 @@ do_send_traffic() {
 	receiver_open=true
 
 	echo "Opening transmitter process..."
-	"${TOPDIR}/raw-l2-send" eno0 "${dmac}" "${txq}" "${os_base_time}" \
+	"${TOPDIR}/raw-l2-send" eno0.100 "${dmac}" "${txq}" "${os_base_time}" \
 		"${advance_time}" "${period}" "${frames}" \
 		"${length}" > tx.log
 
@@ -394,6 +394,9 @@ case "${board}" in
 	cmd="$1"; shift
 	case "${cmd}" in
 	prepare)
+		ip addr flush dev eno0
+		do_vlan_subinterface eno0 100 10.0.0.101/24
+
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
 		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
 		ip link set br0 arp off
@@ -404,10 +407,6 @@ case "${board}" in
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
-
-		ip addr flush dev eno0
-		ip addr add 10.0.0.101/24 dev eno0
-		ip link set dev eno0 up
 
 		ip addr flush dev eno2
 		ip addr add 192.168.1.1/24 dev eno2
@@ -428,6 +427,8 @@ case "${board}" in
 		;;
 	stop)
 		tsntool qbvset --device eno0 --disable
+		ip link del dev eno0.100
+		ip addr add 10.0.0.101/24 dev eno0
 		;;
 	*)
 		usage
@@ -445,8 +446,13 @@ case "${board}" in
 		;;
 	stop)
 		do_stop_rcv_traffic
+		ip link del dev eno0.100
+		ip addr add 10.0.0.103/24 dev eno0
 		;;
 	prepare)
+		ip addr flush dev eno0
+		do_vlan_subinterface eno0 100 10.0.0.102/24
+
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
 		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
 		ip link set br0 arp off
@@ -457,10 +463,6 @@ case "${board}" in
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
-
-		ip addr flush dev eno0
-		ip addr add 10.0.0.102/24 dev eno0
-		ip link set dev eno0 up
 
 		ip addr flush dev eno2
 		ip addr add 192.168.1.2/24 dev eno2
