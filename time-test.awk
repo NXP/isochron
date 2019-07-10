@@ -123,6 +123,7 @@ BEGIN {
 	      ", MAC TX " timespec_to_string(mac_tx_time_ts) \
 	      ", MAC RX " timespec_to_string(mac_rx_time_ts) \
 	      ", OS RX " timespec_to_string(os_rx_time_ts);
+	      ", path " timespec_to_string(os_rx_time_ts);
 
 	os_tx_latency[seqid] = timespec_to_ns(os_tx_latency_ts);
 	path_delay[seqid] = timespec_to_ns(path_delay_ts);
