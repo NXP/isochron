@@ -61,8 +61,8 @@ trap do_cleanup EXIT
 
 usage() {
 	echo "Usage:"
-	echo "$0 1 prepare|start|stop"
-	echo "$0 2 prepare|start|stop"
+	echo "$0 1 prepare|run|teardown"
+	echo "$0 2 prepare|start|stop|teardown"
 }
 
 # Given @frame_len bytes, @count frames and @link_speed in Mbps,
@@ -412,21 +412,20 @@ case "${board}" in
 		ip link set dev eno2 up
 
 		set_phc_time /dev/ptp0 ubuntu
-		set_qbv_params
 
 		do_cut_through
-		do_8021qbv eno0
 
 		echo "Configuration successful."
 		;;
-	start)
+	run)
 		set_qbv_params
+		do_8021qbv eno0
 
 		do_send_traffic
 		;;
-	stop)
+	teardown)
 		tsntool qbvset --device eno0 --disable
-		ip link del dev eno0.100
+		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		ip addr add 10.0.0.101/24 dev eno0
 		;;
 	*)
@@ -445,8 +444,6 @@ case "${board}" in
 		;;
 	stop)
 		do_stop_rcv_traffic
-		ip link del dev eno0.100
-		ip addr add 10.0.0.103/24 dev eno0
 		;;
 	prepare)
 		ip addr flush dev eno0
@@ -474,6 +471,10 @@ case "${board}" in
 		set_phc_time /dev/ptp0 ubuntu
 
 		echo "Configuration successful."
+		;;
+	teardown)
+		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
+		ip addr add 10.0.0.102/24 dev eno0
 		;;
 	*)
 		usage
