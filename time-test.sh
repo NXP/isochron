@@ -350,10 +350,11 @@ set_qbv_params() {
 	local sec=$(echo "${now}" | gawk -F. '{ print $1; }')
 	local utc_offset="36"
 
-	os_base_time="$((${sec} + 3)).0"
-	mac_base_time="$((${sec} + 3 + ${utc_offset})).0"
-	mac_base_time_nsec="$(((${sec} + 3 + ${utc_offset}) * ${NSEC_PER_SEC}))"
-	advance_time="0.0001"
+	os_base_time="$((${sec} + 1)).0"
+	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
+	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"
+	# OS TX latency ~= 0,000085 s
+	advance_time="0.009999"
 	period="0.01"
 	length="100"
 	frames="100"
