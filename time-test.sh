@@ -357,7 +357,7 @@ set_qbv_params() {
 	advance_time="0.009999"
 	period="0.01"
 	length="100"
-	frames="100"
+	frames="200"
 	txq=7
 }
 
