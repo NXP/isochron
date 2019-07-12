@@ -76,72 +76,67 @@ function get_std_dev(array, n, mean) {
 BEGIN {
 	NSEC_PER_SEC = 1000000000;
 	timespec_from_string(utc_offset_ts, "36.0");
-	timespec_from_string(period_ts, period);
-	timespec_from_string(mac_base_time_ts, mac_base_time);
+	# The offset between the OS and the MAC schedule is passed as
+	# an argument
 	timespec_from_string(advance_time_ts, advance_time);
-
-	timespec_assign(mac_expect_ts, mac_base_time_ts);
-	# HW timestamps are in CLOCK_TAI domain, and system clock is in
-	# CLOCK_REALTIME domain. Conversion is required.
-	timespec_sub(tmp, mac_base_time_ts, utc_offset_ts);
-	timespec_sub(os_expect_ts, tmp, advance_time_ts);
 }
 
 # Sample tx.log output:
-# [1560349006.576843228] Sent frame with seqid 1 txtstamp 1560349042.576867991
+# [1562942866.668933107] Sent frame scheduled for 1562942866.668796787 with seqid 10 txtstamp 1562942902.668973166
 # Sample rx.log output:
 # [1560348942.609750141] src 00:04:9f:05:f6:27 dst 01:02:03:04:05:06 ethertype 0x88b5 seqid 1 rxtstamp 1560348978.609704376
-/Sent frame with seqid/ {
-	seqid = $6;
+/Sent frame/ {
+	seqid = $9;
 
 	timespec_from_string(os_tx_time_ts, gensub(/^\[(.*)\]/, "\\1", "g", $1));
-	timespec_from_string(mac_tx_time_ts, $8);
+	timespec_from_string(os_scheduled_tx_time_ts, $6);
+	timespec_from_string(mac_tx_time_ts, $11);
 
-	if (NF < 9) {
+	if (NF < 12) {
 		# This frame was not received
 		path_delay[seqid] = "n/a";
 		os_rx_latency[seqid] = "n/a";
 		next;
 	}
 
-	timespec_from_string(os_rx_time_ts, gensub(/^\[(.*)\]/, "\\1", "g", $9));
-	timespec_from_string(mac_rx_time_ts, $19);
+	timespec_from_string(os_rx_time_ts, gensub(/^\[(.*)\]/, "\\1", "g", $12));
+	timespec_from_string(mac_rx_time_ts, $22);
 
-	timespec_sub(os_tx_latency_ts, os_tx_time_ts, os_expect_ts);
+	timespec_add(tmp, os_scheduled_tx_time_ts, utc_offset_ts);
+	timespec_add(mac_gate_time_ts, tmp, advance_time_ts);
+	timespec_sub(os_tx_latency_ts, os_tx_time_ts, os_scheduled_tx_time_ts);
+	timespec_sub(os_rx_latency_ts, os_rx_time_ts, os_tx_time_ts);
 	timespec_sub(path_delay_ts, mac_rx_time_ts, mac_tx_time_ts);
-	# HW timestamps are in CLOCK_TAI domain, and system clock is in
-	# CLOCK_REALTIME domain. Conversion is required.
-	timespec_add(tmp, os_rx_time_ts, utc_offset_ts);
-	timespec_sub(os_rx_latency_ts, tmp, mac_rx_time_ts);
 
-	timespec_sub(mac_tx_latency_ts, mac_tx_time_ts, mac_expect_ts);
+	timespec_sub(mac_tx_latency_ts, mac_tx_time_ts, mac_gate_time_ts);
+	timespec_sub(mac_rx_latency_ts, mac_rx_time_ts, mac_tx_time_ts);
 
+	# OS TX is latency of transmission compared to scheduled time ($2 - $1)"
+	# OS RX is latency of OS reception compared to OS transmission time ($3 - $2)"
+	# MAC TX is latency of transmission compared to gate event time ($5 - $4)"
+	# MAC RX is latency of reception compared to MAC transmission time ($6 - $5)"
 	print "seqid " seqid \
-	      ", OS expected TX " timespec_to_string(os_expect_ts) \
-	      ", OS TX " timespec_to_string(os_tx_time_ts) \
-	      ", MAC gate time " timespec_to_string(mac_expect_ts) \
-	      ", MAC TX " timespec_to_string(mac_tx_time_ts) \
-	      ", MAC RX " timespec_to_string(mac_rx_time_ts) \
-	      ", OS RX " timespec_to_string(os_rx_time_ts);
-	      ", path " timespec_to_string(os_rx_time_ts);
+	      ", OS scheduled TX " timespec_to_string(os_scheduled_tx_time_ts) \
+	      ", OS TX +" timespec_to_string(os_tx_latency_ts) \
+	      ", OS RX +" timespec_to_string(os_rx_latency_ts) \
+	      ", MAC gate time " timespec_to_string(mac_gate_time_ts) \
+	      ", MAC TX +" timespec_to_string(mac_tx_latency_ts) \
+	      ", MAC RX +" timespec_to_string(mac_rx_latency_ts);
 
 	os_tx_latency[seqid] = timespec_to_ns(os_tx_latency_ts);
 	path_delay[seqid] = timespec_to_ns(path_delay_ts);
 	os_rx_latency[seqid] = timespec_to_ns(os_rx_latency_ts);
 	mac_tx_latency[seqid] = timespec_to_ns(mac_tx_latency_ts);
-
-	timespec_add(tmp, mac_expect_ts, period_ts);
-	timespec_assign(mac_expect_ts, tmp);
-
-	timespec_add(tmp, os_expect_ts, period_ts);
-	timespec_assign(os_expect_ts, tmp);
 };
 
 END {
+	if (seqid < 1)
+		exit;
+
 	os_tx_latency_mean = get_mean(os_tx_latency, seqid);
 	os_tx_latency_std_dev = get_std_dev(os_tx_latency, seqid,
 					    os_tx_latency_mean);
-	print "Mean OS TX latency (OS TX - expected TX time): " \
+	print "Mean OS TX latency (OS TX - scheduled TX time): " \
 		int(os_tx_latency_mean) " ns";
 	print "Standard deviation: " int(os_tx_latency_std_dev) " ns";
 

@@ -179,14 +179,12 @@ do_send_traffic() {
 	rm -f combined.log
 
 	while IFS= read -r line; do
-		seqid=$(echo "${line}" | gawk '/seqid/ { print $6; }')
+		seqid=$(echo "${line}" | gawk '/seqid/ { print $9; }')
 		otherline=$(cat rx.log | grep "seqid ${seqid} " || :)
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
 	cat combined.log | gawk -f "${TOPDIR}/time-test.awk" \
-		-v "period=${period}" \
-		-v "mac_base_time=${mac_base_time}" \
 		-v "advance_time=${advance_time}"
 }
 

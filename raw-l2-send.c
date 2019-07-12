@@ -81,7 +81,8 @@ struct timespec timespec_add(struct timespec a, struct timespec b)
 	return ts;
 }
 
-static int do_work(void *data, int iteration, clockid_t clkid)
+static int do_work(void *data, int iteration, const struct timespec *ts,
+		   clockid_t clkid)
 {
 	struct app_private *priv = data;
 	unsigned char err_pkt[BUF_SIZ];
@@ -104,8 +105,9 @@ static int do_work(void *data, int iteration, clockid_t clkid)
 	rc = sk_receive(priv->fd, err_pkt, BUF_SIZ, &hwts, MSG_ERRQUEUE);
 	if (rc < 0)
 		return rc;
-	printf("[%ld.%09ld] Sent frame with seqid %d txtstamp %ld.%09ld\n",
-	       now.tv_sec, now.tv_nsec, iteration, hwts.tv_sec, hwts.tv_nsec);
+	printf("[%ld.%09ld] Sent frame scheduled for %ld.%09ld with seqid %d txtstamp %ld.%09ld\n",
+	       now.tv_sec, now.tv_nsec, ts->tv_sec, ts->tv_nsec, iteration,
+	       hwts.tv_sec, hwts.tv_nsec);
 	return 0;
 }
 
@@ -125,7 +127,7 @@ static int run_nanosleep(struct prog_data *prog, void *app_data)
 		rc = clock_nanosleep(prog->clkid, TIMER_ABSTIME, &ts, NULL);
 		switch (rc) {
 		case 0:
-			rc = do_work(app_data, i, prog->clkid);
+			rc = do_work(app_data, i, &ts, prog->clkid);
 			if (rc < 0)
 				break;
 
