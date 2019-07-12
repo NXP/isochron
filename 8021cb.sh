@@ -109,12 +109,12 @@ done
 case "${board}" in
 1)
 	ip addr flush dev eno2; ip addr add 192.168.1.1/24 dev eno2; ip link set dev eno2 up
-	do_vlan 1 "swp0 swp1 swp4" "pvid untagged"
+	do_switch_vlan 1 "swp0 swp1 swp4" "pvid untagged"
 
 	# Terminates replicated, unidirectional L2 traffic from Board 1,
 	# over VID 100
-	do_vlan 100 "swp0 swp1 swp4" ""
-	ip addr flush dev eno2.100; ip addr add 192.168.100.1/24 dev eno2.100
+	do_switch_vlan 100 "swp0 swp1 swp4" ""
+	do_vlan_subinterface eno2 100 192.168.100.1/24
 	board1=$(get_local_mac eno2 tsntool)
 	tsntool cbstreamidset --device swp4 --streamhandle 1 \
 		--nullstreamid --nulldmac "${board1}" --nullvid 100
@@ -133,11 +133,11 @@ case "${board}" in
 	;;
 2)
 	ip addr flush dev eno2; ip addr add 192.168.1.2/24 dev eno2; ip link set dev eno2 up
-	do_vlan 1 "swp1 swp2 swp4" "pvid untagged"
+	do_switch_vlan 1 "swp1 swp2 swp4" "pvid untagged"
 
 	# Originates replicated, unidirectional L2 traffic to Board 1
-	do_vlan 100 "swp1 swp2 swp4" ""
-	ip addr flush dev eno2.100; ip addr add 192.168.100.2/24 dev eno2.100
+	do_switch_vlan 100 "swp1 swp2 swp4" ""
+	do_vlan_subinterface eno2 100 192.168.100.2/24
 	board1=$(get_remote_mac 192.168.1.1 tsntool eno2)
 	# Configure two Seamless Stream IDs (SSID) for outbound traffic to
 	# board 1.  This configuration needs to be applied over each switch
@@ -184,10 +184,10 @@ case "${board}" in
 	# We allow loops in the VID 100 used for redundancy but explicitly
 	# control which frames are tagged with that VLAN.
 	ip addr flush dev eno2; ip addr add 192.168.1.3/24 dev eno2; ip link set dev eno2 up
-	do_vlan 1 "swp2 swp4" "pvid untagged"
+	do_switch_vlan 1 "swp2 swp4" "pvid untagged"
 
 	# Forwards one member stream of the replicated traffic
-	do_vlan 100 "swp0 swp2" ""
+	do_switch_vlan 100 "swp0 swp2" ""
 	echo "Configuration successful."
 	echo "This board is forwarding redundant traffic, no further configuration needed."
 	;;
