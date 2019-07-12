@@ -145,7 +145,7 @@ do_send_traffic() {
 	check_sync ubuntu
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno0.100)" || {
+	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno2)" || {
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
