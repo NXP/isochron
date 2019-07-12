@@ -338,9 +338,10 @@ set_phc_time() {
 }
 
 do_cut_through() {
-	for eth in $(ls /sys/bus/pci/devices/0000:00:00.5/net/); do
+	for eth in swp0 swp1 swp2 swp3 swp5; do
 		tsntool ctset --device ${eth} --queue_stat 0xff;
 	done
+	tsntool ctset --device swp4 --queue_stat 0x00
 }
 
 set_qbv_params() {
@@ -415,7 +416,7 @@ case "${board}" in
 		set_phc_time /dev/ptp0 ubuntu
 		set_qbv_params
 
-		#do_cut_through
+		do_cut_through
 		do_8021qbv eno0
 
 		echo "Configuration successful."
@@ -469,6 +470,7 @@ case "${board}" in
 		ip link set dev eno2 up
 
 		set_qbv_params
+		do_cut_through
 		do_8021qci eno0
 
 		set_phc_time /dev/ptp0 ubuntu
