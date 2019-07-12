@@ -324,6 +324,8 @@ set_phc_time() {
 		# systemctl restart phc2sys
 		# systemctl enable ptp4l
 		# systemctl restart ptp4l
+		# systemctl disable systemd-timesyncd
+		# systemctl stop systemd-timesyncd
 		systemctl stop ptp4l
 		systemctl stop phc2sys
 		hwclock --hctosys
