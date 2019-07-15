@@ -123,15 +123,19 @@ do_8021qci() {
 	tsntool cbstreamidset --device "${iface}" --index 1 --streamhandle 100 \
 		 --sourcemacvid --sourcemac "${board1}" --sourcetagged 3 --sourcevid 20
 	tsntool qcisfiset --device "${iface}" --streamhandle 100 --index 1 --gateid 1
+
+	speed_mbps=$(ethtool "${iface}" | gawk \
+		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
+	window="$(qbv_window 500 1 ${speed_mbps})"
+
 	cat > sgi1.txt <<-EOF
-	# Example
-	# 'NUMBER' 'GATE_VALUE' 'IPV' 'TIME_LONG' 'OCTET_MAX'
-	# t0        0b           1     500         2000
-	# t1        1b           3     1000        1580
-	t0          0b          -1     1000         0
-	t1 1b -1 1000 0
+	# entry  gate status IPV delta (ns)                    SDU limit
+	t0       1b          1   ${window}                     0   # raw-l2-send
+	t1       1b          1   ${window}                     0   # PTP
+	t2       1b          0   $((10000000 - 2 * ${window})) 0   # everything else
 	EOF
-	tsntool qcisgiset --device "${iface}" --index 1 --initgate 0 --gatelistfile sgi1.txt --basetime "${mac_base_time_nsec}"
+	tsntool qcisgiset --device "${iface}" --index 1 --initgate 0 \
+		 --gatelistfile sgi1.txt --basetime "${mac_base_time_nsec}"
 }
 
 do_send_traffic() {
