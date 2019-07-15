@@ -469,10 +469,15 @@ case "${board}" in
 
 		set_phc_time /dev/ptp0 ubuntu
 
+		ip link set dev eno0 promisc on
+
 		echo "Configuration successful."
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
+
+		ip link set dev eno0 promisc off
+
 		ip addr add 10.0.0.102/24 dev eno0
 		;;
 	*)
