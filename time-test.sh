@@ -94,14 +94,9 @@ do_8021qbv() {
 		mqprio num_tc 8 map 0 1 2 3 4 5 6 7 hw 1
 	# Add the qdisc holding the classifiers
 	tc qdisc add dev "${iface}" clsact
-	# Match EtherType ETH_P_802_EX1.
+	# Match L2 PTP frames by EtherType
 	# Since we use u32 filter which starts from IP protocol,
 	# we need to go back and specify -2 negative offset.
-	# You can see that this works because it overwrites the ${txq}
-	# parameter given to raw-l2-send.
-	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88b5 0xffff \
-		action skbedit priority 5
-	# Match L2 PTP frames by EtherType
 	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88f7 0xffff \
 		action skbedit priority 7
 
@@ -359,7 +354,7 @@ set_qbv_params() {
 	period="0.01"
 	length="100"
 	frames="200"
-	txq=7
+	txq=5
 }
 
 prerequisites() {
