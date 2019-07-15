@@ -478,6 +478,7 @@ case "${board}" in
 
 		ip link set dev eno0 promisc off
 
+		ip addr flush dev eno0
 		ip addr add 10.0.0.102/24 dev eno0
 		;;
 	*)
