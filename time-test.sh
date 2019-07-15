@@ -220,6 +220,8 @@ check_sync() {
 	fi
 
 	while :; do
+		sleep 1
+
 		case ${distro} in
 		ubuntu)
 			journalctl -b -u ptp4l | tail -50 > ptp.log
@@ -269,7 +271,6 @@ check_sync() {
 				return 1
 			else
 				echo "Trying again..."
-				sleep 1
 				continue
 			fi
 			;;
