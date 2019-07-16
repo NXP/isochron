@@ -150,7 +150,7 @@ do_send_traffic() {
 	check_sync ubuntu
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno2)" || {
+	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno0)" || {
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
@@ -479,14 +479,10 @@ case "${board}" in
 
 		set_phc_time /dev/ptp0 ubuntu
 
-		ip link set dev eno0 promisc on
-
 		echo "Configuration successful."
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
-
-		ip link set dev eno0 promisc off
 
 		ip addr flush dev eno0
 		ip addr add 10.0.0.102/24 dev eno0
