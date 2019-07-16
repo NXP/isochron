@@ -200,7 +200,6 @@ void sig_handler(int signo)
 
 static int prog_init(struct prog_data *prog)
 {
-	struct sockaddr_ll addr;
 	struct sigaction sa;
 	int sockopt = 1;
 	int rc;
@@ -241,16 +240,6 @@ static int prog_init(struct prog_data *prog)
 			sizeof sockopt);
 	if (rc < 0) {
 		perror("setsockopt");
-		close(prog->fd);
-		return -errno;
-	}
-	memset(&addr, 0, sizeof(struct sockaddr_ll));
-	addr.sll_ifindex = prog->if_index;
-	addr.sll_family = AF_PACKET;
-	addr.sll_protocol = htons(ETH_P_ALL);
-	rc = bind(prog->fd, (struct sockaddr *) &addr, sizeof(struct sockaddr_ll));
-	if (rc < 0) {
-		fprintf(stderr, "bind failed: %s\n", strerror(errno));
 		close(prog->fd);
 		return -errno;
 	}
