@@ -122,7 +122,6 @@ do_8021qci() {
 	local iface=$1
 	local board1="$(get_remote_mac 10.0.0.101 tsntool-reverse eno0)"
 
-	tsntool qcisfiget --device "${iface}" --index 2
 	tsntool cbstreamidset --device "${iface}" --index 1 --streamhandle 100 \
 		 --sourcemacvid --sourcemac "${board1}" --sourcetagged 3 --sourcevid 20
 	tsntool qcisfiset --device "${iface}" --streamhandle 100 --index 1 --gateid 1
