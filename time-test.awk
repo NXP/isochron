@@ -1,3 +1,5 @@
+# WARNING: All timespec operations are simplified and assume positive times
+# (including results of timespec_sub).
 function timespec_from_string(ts, string) {
 	split(string, t, ".");
 
@@ -9,6 +11,9 @@ function timespec_from_string(ts, string) {
 }
 
 function timespec_to_string(ts) {
+	if (ts["tv_sec"] < 0 || ts["tv_nsec"] < 0)
+		return "(missed)";
+
 	return sprintf("%d.%09d", ts["tv_sec"], ts["tv_nsec"]);
 }
 
