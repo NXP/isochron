@@ -81,7 +81,8 @@ struct timespec timespec_add(struct timespec a, struct timespec b)
 	return ts;
 }
 
-static int do_work(void *data, int iteration, const struct timespec *ts,
+static int do_work(void *data, int iteration,
+		   const struct timespec *scheduled_ts,
 		   clockid_t clkid)
 {
 	struct app_private *priv = data;
@@ -106,13 +107,16 @@ static int do_work(void *data, int iteration, const struct timespec *ts,
 	if (rc < 0)
 		return rc;
 	printf("[%ld.%09ld] Sent frame scheduled for %ld.%09ld with seqid %d txtstamp %ld.%09ld\n",
-	       now.tv_sec, now.tv_nsec, ts->tv_sec, ts->tv_nsec, iteration,
-	       hwts.tv_sec, hwts.tv_nsec);
+	       now.tv_sec, now.tv_nsec,
+	       scheduled_ts->tv_sec, scheduled_ts->tv_nsec,
+	       iteration, hwts.tv_sec, hwts.tv_nsec);
 	return 0;
 }
 
 static int run_nanosleep(struct prog_data *prog, void *app_data)
 {
+	struct timespec scheduled_ts = timespec_add(prog->base_time,
+						    prog->advance_time);
 	struct timespec ts = prog->base_time;
 	long i;
 	int rc;
@@ -127,11 +131,12 @@ static int run_nanosleep(struct prog_data *prog, void *app_data)
 		rc = clock_nanosleep(prog->clkid, TIMER_ABSTIME, &ts, NULL);
 		switch (rc) {
 		case 0:
-			rc = do_work(app_data, i, &ts, prog->clkid);
+			rc = do_work(app_data, i, &scheduled_ts, prog->clkid);
 			if (rc < 0)
 				break;
 
 			ts = timespec_add(ts, prog->period);
+			scheduled_ts = timespec_add(ts, prog->advance_time);
 			break;
 		case EINTR:
 			continue;
