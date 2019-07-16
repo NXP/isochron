@@ -103,12 +103,15 @@ do_8021qbv() {
 	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
 	window="$(qbv_window 500 1 ${speed_mbps})"
+	guard="$(qbv_window 64 1 ${speed_mbps})"
+	best_effort="$((10000000 - 2 * ${window} - ${guard}))"
 	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
 	# (10,000,000 ns).
 	cat > qbv0.txt <<-EOF
-		t0 00100000 ${window} # raw-l2-send
-		t1 10000000 ${window} # PTP
-		t2 00000001 $((10000000 - 2 * ${window})) # everything else
+		t0 00100000 ${window}      # raw-l2-send
+		t1 10000000 ${window}      # PTP
+		t2 00000001 ${best_effort} # everything else
+		t3 00000000 ${guard}
 	EOF
 	tsntool qbvset --device "${iface}" --disable
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
@@ -127,12 +130,15 @@ do_8021qci() {
 	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
 	window="$(qbv_window 500 1 ${speed_mbps})"
+	guard="$(qbv_window 64 1 ${speed_mbps})"
+	best_effort="$((10000000 - 2 * ${window} - ${guard}))"
 
 	cat > sgi1.txt <<-EOF
-	# entry  gate status IPV delta (ns)                    SDU limit
-	t0       1b          1   ${window}                     0   # raw-l2-send
-	t1       1b          1   ${window}                     0   # PTP
-	t2       1b          0   $((10000000 - 2 * ${window})) 0   # everything else
+	# entry  gate status IPV delta (ns)     SDU limit
+	t0       1b          1   ${window}      0   # raw-l2-send
+	t1       1b          1   ${window}      0   # PTP
+	t2       1b          0   ${best_effort} 0   # everything else
+	t3       1b          0   ${guard}       0
 	EOF
 	tsntool qcisgiset --device "${iface}" --index 1 --initgate 0 \
 		 --gatelistfile sgi1.txt --basetime "${mac_base_time_nsec}"
