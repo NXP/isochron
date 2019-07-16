@@ -183,8 +183,7 @@ do_send_traffic() {
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
-	cat combined.log | gawk -f "${TOPDIR}/time-test.awk" \
-		-v "advance_time=${advance_time}"
+	cat combined.log | gawk -f "${TOPDIR}/time-test.awk"
 }
 
 do_start_rcv_traffic() {
@@ -354,8 +353,8 @@ set_qbv_params() {
 	os_base_time="$((${sec} + 1)).0"
 	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
 	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"
-	# OS TX latency ~= 0,000085 s
-	advance_time="0.009999"
+	advance_time="0.00818000"
+	#advance_time="0.00018000" <- experimentally smallest possible at length 400
 	period="0.01"
 	length="100"
 	frames="200"

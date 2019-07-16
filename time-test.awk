@@ -76,9 +76,6 @@ function get_std_dev(array, n, mean) {
 BEGIN {
 	NSEC_PER_SEC = 1000000000;
 	timespec_from_string(utc_offset_ts, "36.0");
-	# The offset between the OS and the MAC schedule is passed as
-	# an argument
-	timespec_from_string(advance_time_ts, advance_time);
 }
 
 # Sample tx.log output:
@@ -102,26 +99,24 @@ BEGIN {
 	timespec_from_string(os_rx_time_ts, gensub(/^\[(.*)\]/, "\\1", "g", $12));
 	timespec_from_string(mac_rx_time_ts, $22);
 
-	timespec_add(tmp, os_scheduled_tx_time_ts, utc_offset_ts);
-	timespec_add(mac_gate_time_ts, tmp, advance_time_ts);
-	timespec_sub(os_tx_latency_ts, os_tx_time_ts, os_scheduled_tx_time_ts);
-	timespec_sub(os_rx_latency_ts, os_rx_time_ts, os_tx_time_ts);
+	timespec_add(mac_gate_time_ts, os_scheduled_tx_time_ts, utc_offset_ts);
+	timespec_sub(os_tx_latency_ts, os_scheduled_tx_time_ts, os_tx_time_ts);
+	timespec_add(tmp, os_rx_time_ts, utc_offset_ts);
+	timespec_sub(os_rx_latency_ts, tmp, mac_rx_time_ts);
 	timespec_sub(path_delay_ts, mac_rx_time_ts, mac_tx_time_ts);
-
 	timespec_sub(mac_tx_latency_ts, mac_tx_time_ts, mac_gate_time_ts);
-	timespec_sub(mac_rx_latency_ts, mac_rx_time_ts, mac_tx_time_ts);
 
 	# OS TX is latency of transmission compared to scheduled time ($2 - $1)"
 	# OS RX is latency of OS reception compared to OS transmission time ($3 - $2)"
 	# MAC TX is latency of transmission compared to gate event time ($5 - $4)"
 	# MAC RX is latency of reception compared to MAC transmission time ($6 - $5)"
 	print "seqid " seqid \
-	      ", OS scheduled TX " timespec_to_string(os_scheduled_tx_time_ts) \
-	      ", OS TX +" timespec_to_string(os_tx_latency_ts) \
-	      ", OS RX +" timespec_to_string(os_rx_latency_ts) \
+	      ", OS TX " timespec_to_string(os_tx_time_ts) \
+	      ", OS scheduled TX +" timespec_to_string(os_tx_latency_ts) \
 	      ", MAC gate time " timespec_to_string(mac_gate_time_ts) \
 	      ", MAC TX +" timespec_to_string(mac_tx_latency_ts) \
-	      ", MAC RX +" timespec_to_string(mac_rx_latency_ts);
+	      ", MAC RX +" timespec_to_string(path_delay_ts) \
+	      ", OS RX +" timespec_to_string(os_rx_latency_ts);
 
 	os_tx_latency[seqid] = timespec_to_ns(os_tx_latency_ts);
 	path_delay[seqid] = timespec_to_ns(path_delay_ts);
