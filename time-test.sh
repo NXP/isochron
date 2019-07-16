@@ -211,14 +211,15 @@ check_sync() {
 
 	echo "Checking synchronization status..."
 
-	port_state=$(pmc -u -b 0 'GET PORT_DATA_SET' | \
-			gawk '/portState/ { print $2; }')
-	echo "port state is $port_state"
-	if [ "${port_state}" = "MASTER" ]; then
-		return
-	fi
-
 	while :; do
+		port_state=$(pmc -u -b 0 'GET PORT_DATA_SET' | \
+				gawk '/portState/ { print $2; }')
+		echo "port state is $port_state"
+		if [ "${port_state}" = "MASTER" ] &&
+		   [ "${board}" = 1 ]; then
+			return
+		fi
+
 		sleep 1
 
 		case ${distro} in
