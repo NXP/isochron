@@ -121,10 +121,10 @@ static int run_nanosleep(struct prog_data *prog, void *app_data)
 	long i;
 	int rc;
 
-	printf("%10s: %d.%09ld\n", "Base time", prog->base_time.tv_sec,
-		prog->base_time.tv_nsec);
-	printf("%10s: %d.%09ld\n", "Period", prog->period.tv_sec,
-		prog->period.tv_nsec);
+	fprintf(stderr, "%10s: %d.%09ld\n", "Base time",
+		prog->base_time.tv_sec, prog->base_time.tv_nsec);
+	fprintf(stderr, "%10s: %d.%09ld\n", "Period",
+		prog->period.tv_sec, prog->period.tv_nsec);
 
 	/* Play nice with awk's array indexing */
 	for (i = 1; i <= prog->iterations; i++) {
@@ -262,7 +262,7 @@ static int prog_init(struct prog_data *prog)
 		prog->base_time = timespec_add(prog->base_time, prog->period);
 	}
 
-	printf("%10s: %d.%09ld\n", "Now", now.tv_sec, now.tv_nsec);
+	fprintf(stderr, "%10s: %d.%09ld\n", "Now", now.tv_sec, now.tv_nsec);
 
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
