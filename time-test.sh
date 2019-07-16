@@ -208,6 +208,7 @@ do_stop_rcv_traffic() {
 
 check_sync() {
 	local distro=$1
+	local threshold_ns=50
 	local system_clock_offset
 	local phc_offset
 	local awk_program
@@ -253,7 +254,7 @@ check_sync() {
 		if [ "${phc_offset}" -lt 0 ]; then
 			phc_offset=$((-${phc_offset}))
 		fi
-		if [ "${phc_offset}" -gt 100 ]; then
+		if [ "${phc_offset}" -gt "${threshold_ns}" ]; then
 			echo "PTP clock is not yet synchronized..."
 			continue
 		fi
@@ -283,7 +284,7 @@ check_sync() {
 			system_clock_offset=$((-${system_clock_offset}))
 		fi
 		echo "System clock offset ${system_clock_offset} ns"
-		if [ "${system_clock_offset}" -gt 100 ]; then
+		if [ "${system_clock_offset}" -gt "${threshold_ns}" ]; then
 			echo "System clock is not yet synchronized..."
 			continue
 		fi
