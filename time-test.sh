@@ -188,7 +188,8 @@ do_send_traffic() {
 		echo "${line} ${otherline}" >> combined.log
 	done < tx.log
 
-	cat combined.log | gawk -f "${TOPDIR}/time-test.awk"
+	cat combined.log | gawk -f "${TOPDIR}/time-test.awk" \
+		-v utc_offset="${utc_offset}.0"
 }
 
 do_start_rcv_traffic() {
@@ -354,8 +355,9 @@ set_qbv_params() {
 	local now=$(phc_ctl CLOCK_REALTIME get | gawk '/clock time is/ { print $5; }')
 	# Round the base time to the start of the next second.
 	local sec=$(echo "${now}" | gawk -F. '{ print $1; }')
-	local utc_offset="36"
 
+	utc_offset=$(pmc -u -b 0 'GET TIME_PROPERTIES_DATA_SET' | \
+			gawk '/\<currentUtcOffset\>/ { print $2; }')
 	os_base_time="$((${sec} + 1)).0"
 	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
 	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"

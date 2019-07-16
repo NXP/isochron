@@ -80,7 +80,7 @@ function get_std_dev(array, n, mean) {
 
 BEGIN {
 	NSEC_PER_SEC = 1000000000;
-	timespec_from_string(utc_offset_ts, "36.0");
+	timespec_from_string(utc_offset_ts, utc_offset);
 }
 
 # Sample tx.log output:
