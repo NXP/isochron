@@ -191,7 +191,7 @@ do_send_traffic() {
 	receiver_open=true
 
 	echo "Opening transmitter process..."
-	"${TOPDIR}/raw-l2-send" eno0 "${dmac}" "${txq}" "${os_base_time}" \
+	"${TOPDIR}/raw-l2-send" eno0.100 "${dmac}" "${txq}" "${os_base_time}" \
 		"${advance_time}" "${period}" "${frames}" \
 		"${length}" > tx.log
 
@@ -226,7 +226,7 @@ do_start_rcv_traffic() {
 	rm -f rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
-		-c "exec ${TOPDIR}/raw-l2-rcv eno0 > ${TOPDIR}/rx.log 2>&1" \
+		-c "exec ${TOPDIR}/raw-l2-rcv eno0.100 > ${TOPDIR}/rx.log 2>&1" \
 		&& echo "OK" || echo "FAIL"
 }
 
@@ -432,6 +432,8 @@ case "${board}" in
 	cmd="$1"; shift
 	case "${cmd}" in
 	prepare)
+		do_vlan_subinterface eno0 100
+
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
 		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
 		ip link set br0 arp off
@@ -461,6 +463,7 @@ case "${board}" in
 		;;
 	teardown)
 		tsntool qbvset --device eno0 --disable
+		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		;;
 	*)
 		usage
@@ -480,6 +483,8 @@ case "${board}" in
 		do_stop_rcv_traffic
 		;;
 	prepare)
+		do_vlan_subinterface eno0 100
+
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
 		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
 		ip link set br0 arp off
@@ -505,9 +510,6 @@ case "${board}" in
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
-
-		ip addr flush dev eno0
-		ip addr add 10.0.0.102/24 dev eno0
 		;;
 	*)
 		usage
