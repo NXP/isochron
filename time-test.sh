@@ -82,6 +82,32 @@ qbv_window() {
 
 do_8021qbv() {
 	local iface=$1
+	local enetc_pf0="0x1F8000000"
+	local enetc_pf2="0x1F8080000"
+	local ierb="0x1F0800000"
+	# Time gating lookahead scheduling time register
+	local tglstr=
+	# Port egress selection manager advance time offset register
+	local pesmator=
+
+	case "${iface}" in
+	eno0)
+		tglstr="$((${ierb} + 0xa200))"
+		pesmator="$((${enetc_pf0} + 0x11A24))"
+		;;
+	eno2)
+		tglstr="$((${ierb} + 0xa200))"
+		pesmator="$((${enetc_pf2} + 0x11A24))"
+		;;
+	esac
+
+	if [ -n "${tglstr}" ]; then
+		busybox devmem "${tglstr}" 32 0x2ee
+	fi
+
+	if [ -n "${pesmator}" ]; then
+		busybox devmem "${pesmator}" 32 0
+	fi
 
 	# https://www.tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.qdisc.filters.html
 	# The below command creates an mqprio qdisc with 8 netdev queues. The
