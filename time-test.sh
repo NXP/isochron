@@ -39,7 +39,7 @@ source "${TOPDIR}/common.sh"
 
 NSEC_PER_SEC="1000000000"
 receiver_open=false
-SSH="ssh -o IPQoS=0"
+SSH="ssh -o IPQoS=0 -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no"
 
 error() {
 	local lineno="$1"
