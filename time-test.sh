@@ -92,6 +92,9 @@ do_8021qbv() {
 	# Port egress selection manager advance time offset register
 	local pesmator=
 
+	speed_mbps=$(ethtool "${iface}" | gawk \
+		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
+
 	case "${iface}" in
 	eno0)
 		tglstr="$((${ierb} + 0xa200))"
@@ -107,8 +110,32 @@ do_8021qbv() {
 		busybox devmem "${tglstr}" 32 0x2ee
 	fi
 
+	# Advance time offset (ADV_TIME_OFFSET)
+	# This value needs to be changed based on the line rate and the
+	# protocol of the port to eliminate the added latency of the MAC and
+	# MAC Merge layer.
+	# XGMII
+	# - 2.5G: 270ns
+	# - 1G: 550ns
+	# - 100M: 4870ns
+	# - 10M: 48070ns
+	# GMII
+	# - 2.5G: 117ns
+	# - 1G: 152ns
+	# - 100M: 692ns
+	# - 10M: 6092ns
 	if [ -n "${pesmator}" ]; then
-		busybox devmem "${pesmator}" 32 0
+		case "${speed_mbps}" in
+		10)
+			busybox devmem "${pesmator}" 32 6092
+			;;
+		100)
+			busybox devmem "${pesmator}" 32 692
+			;;
+		1000)
+			busybox devmem "${pesmator}" 32 152
+			;;
+		esac
 	fi
 
 	# https://www.tldp.org/HOWTO/Adv-Routing-HOWTO/lartc.qdisc.filters.html
@@ -128,8 +155,6 @@ do_8021qbv() {
 	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88f7 0xffff \
 		action skbedit priority 7
 
-	speed_mbps=$(ethtool "${iface}" | gawk \
-		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
 	window="$(qbv_window 500 1 ${speed_mbps})"
 	guard="$(qbv_window 64 1 ${speed_mbps})"
 	best_effort="$((10000000 - 2 * ${window} - ${guard}))"
