@@ -14,7 +14,7 @@ trap 'error ${LINENO}' ERR
 do_vlan_subinterface() {
 	local iface="$1"
 	local vid="$2"
-	local ip="$3"
+	local ip="${3-}"
 	local vlan_subiface="${iface}.${vid}"
 
 	[ -d "/sys/class/net/${vlan_subiface}" ] && ip link del dev "${vlan_subiface}"
@@ -23,8 +23,10 @@ do_vlan_subinterface() {
 		ingress-qos-map 0:0 1:1 2:2 3:3 4:4 5:5 6:6 7:7 \
 		egress-qos-map 0:0 1:1 2:2 3:3 4:4 5:5 6:6 7:7
 	ip link set dev ${vlan_subiface} up
-	ip addr flush dev ${vlan_subiface}
-	ip addr add ${ip} dev ${vlan_subiface}
+	if [ -n "${ip}" ]; then
+		ip addr flush dev ${vlan_subiface}
+		ip addr add ${ip} dev ${vlan_subiface}
+	fi
 }
 
 do_switch_vlan() {

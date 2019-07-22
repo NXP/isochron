@@ -170,7 +170,7 @@ do_8021qci() {
 }
 
 do_send_traffic() {
-	local remote="root@192.168.1.2"
+	local remote="root@10.0.0.102"
 
 	check_sync ubuntu
 
