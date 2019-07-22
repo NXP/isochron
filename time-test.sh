@@ -39,7 +39,9 @@ source "${TOPDIR}/common.sh"
 
 NSEC_PER_SEC="1000000000"
 receiver_open=false
-SSH="ssh -o IPQoS=0 -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no"
+SSH_OPTS="-o IPQoS=0 -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no"
+SSH="ssh ${SSH_OPTS}"
+SCP="scp ${SSH_OPTS}"
 
 error() {
 	local lineno="$1"
@@ -199,7 +201,7 @@ do_send_traffic() {
 	receiver_open=false
 
 	echo "Collecting logs..."
-	scp "${remote}:${TOPDIR}/rx.log" .
+	${SCP} "${remote}:${TOPDIR}/rx.log" .
 
 	[ -s rx.log ] || {
 		echo "No frame received by ${remote} (MAC ${dmac})."
