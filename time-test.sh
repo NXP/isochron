@@ -7,6 +7,11 @@ set -e -u -o pipefail
 export TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
 source "${TOPDIR}/common.sh"
 
+# The script does not attempt to configure IP addresses, that is left
+# up to the user. Modify these based on your setup.
+board1_ip="10.0.0.101"
+board2_ip="10.0.0.102"
+
 # This example will send a unidirectional traffic stream from Board 1 to
 # Board 2 and measure its latency by taking MAC TX and RX timestamp.
 # This is currently not supported for the Felix switch ports. The switch
@@ -174,7 +179,7 @@ do_8021qbv() {
 do_8021qci() {
 	local iface=$1
 	local mgmt_iface=$2
-	local board1="$(get_remote_mac 10.0.0.101 tsntool-reverse ${mgmt_iface})"
+	local board1="$(get_remote_mac ${board1_ip} tsntool-reverse ${mgmt_iface})"
 
 	tsntool cbstreamidset --device "${iface}" --index 1 --streamhandle 100 \
 		 --sourcemacvid --sourcemac "${board1}" --sourcetagged 3 --sourcevid 20
@@ -200,12 +205,12 @@ do_8021qci() {
 do_send_traffic() {
 	local iface=$1
 	local mgmt_iface=$2
-	local remote="root@10.0.0.102"
+	local remote="root@${board2_ip}"
 
 	check_sync ubuntu
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac 10.0.0.102 iproute2 ${mgmt_iface})" || {
+	dmac="$(get_remote_mac ${board2_ip} iproute2 ${mgmt_iface})" || {
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
@@ -475,10 +480,6 @@ case "${board}" in
 			ip link set ${eth} up
 		done
 
-		ip addr flush dev eno0
-		ip addr add 10.0.0.101/24 dev eno0
-		ip link set dev eno0 up
-
 		set_phc_time /dev/ptp0 ubuntu
 
 		do_cut_through
@@ -525,10 +526,6 @@ case "${board}" in
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
-
-		ip addr flush dev eno0
-		ip addr add 10.0.0.102/24 dev eno0
-		ip link set dev eno0 up
 
 		set_qbv_params
 		do_cut_through
