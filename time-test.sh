@@ -288,7 +288,7 @@ check_sync() {
 
 		case ${distro} in
 		ubuntu)
-			journalctl -b -u ptp4l | tail -50 > ptp.log
+			journalctl -b -u ptp4l -n 50 > ptp.log
 			awk_program='/ptp4l/ { print $9; exit; }'
 			;;
 		openil)
@@ -320,7 +320,7 @@ check_sync() {
 
 		case ${distro} in
 		ubuntu)
-			journalctl -b -u phc2sys | tail -50 > ptp.log
+			journalctl -b -u phc2sys -n 50 > ptp.log
 			awk_program='/phc2sys/ { print $9; exit; }'
 			;;
 		openil)
