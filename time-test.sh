@@ -173,7 +173,8 @@ do_8021qbv() {
 
 do_8021qci() {
 	local iface=$1
-	local board1="$(get_remote_mac 10.0.0.101 tsntool-reverse eno0)"
+	local mgmt_iface=$2
+	local board1="$(get_remote_mac 10.0.0.101 tsntool-reverse ${mgmt_iface})"
 
 	tsntool cbstreamidset --device "${iface}" --index 1 --streamhandle 100 \
 		 --sourcemacvid --sourcemac "${board1}" --sourcetagged 3 --sourcevid 20
@@ -197,12 +198,14 @@ do_8021qci() {
 }
 
 do_send_traffic() {
+	local iface=$1
+	local mgmt_iface=$2
 	local remote="root@10.0.0.102"
 
 	check_sync ubuntu
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac 10.0.0.102 iproute2 eno0)" || {
+	dmac="$(get_remote_mac 10.0.0.102 iproute2 ${mgmt_iface})" || {
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
@@ -216,7 +219,7 @@ do_send_traffic() {
 	receiver_open=true
 
 	echo "Opening transmitter process..."
-	"${TOPDIR}/raw-l2-send" eno0.100 "${dmac}" "${txq}" "${os_base_time}" \
+	"${TOPDIR}/raw-l2-send" "${iface}" "${dmac}" "${txq}" "${os_base_time}" \
 		"${advance_time}" "${period}" "${frames}" \
 		"${length}" > tx.log
 
@@ -246,12 +249,14 @@ do_send_traffic() {
 }
 
 do_start_rcv_traffic() {
+	local iface=$1
+
 	check_sync ubuntu
 
 	rm -f rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
-		-c "exec ${TOPDIR}/raw-l2-rcv eno0.100 > ${TOPDIR}/rx.log 2>&1" \
+		-c "exec ${TOPDIR}/raw-l2-rcv ${iface} > ${TOPDIR}/rx.log 2>&1" \
 		&& echo "OK" || echo "FAIL"
 }
 
@@ -484,7 +489,7 @@ case "${board}" in
 		set_qbv_params
 		do_8021qbv eno0
 
-		do_send_traffic
+		do_send_traffic eno0.100 eno0
 		;;
 	teardown)
 		tsntool qbvset --device eno0 --disable
@@ -502,7 +507,7 @@ case "${board}" in
 	cmd="$1"; shift
 	case "${cmd}" in
 	start)
-		do_start_rcv_traffic
+		do_start_rcv_traffic eno0.100
 		;;
 	stop)
 		do_stop_rcv_traffic
@@ -527,7 +532,7 @@ case "${board}" in
 
 		set_qbv_params
 		do_cut_through
-		do_8021qci eno0
+		do_8021qci eno0 eno0
 
 		set_phc_time /dev/ptp0 ubuntu
 
