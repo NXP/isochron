@@ -207,7 +207,7 @@ do_send_traffic() {
 	local mgmt_iface=$2
 	local remote="root@${board2_ip}"
 
-	check_sync ubuntu
+	check_sync
 
 	printf "Getting destination MAC address... "
 	dmac="$(get_remote_mac ${board2_ip} iproute2 ${mgmt_iface})" || {
@@ -256,7 +256,7 @@ do_send_traffic() {
 do_start_rcv_traffic() {
 	local iface=$1
 
-	check_sync ubuntu
+	check_sync
 
 	rm -f rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
@@ -271,7 +271,6 @@ do_stop_rcv_traffic() {
 }
 
 check_sync() {
-	local distro=$1
 	local threshold_ns=50
 	local system_clock_offset
 	local phc_offset
@@ -291,16 +290,9 @@ check_sync() {
 
 		sleep 1
 
-		case ${distro} in
-		ubuntu)
-			journalctl -b -u ptp4l -n 50 > ptp.log
-			awk_program='/ptp4l/ { print $9; exit; }'
-			;;
-		openil)
-			tail -50 /var/log/messages > ptp.log
-			awk_program='/ptp4l/ { print $10; exit; }'
-			;;
-		esac
+		# Check slave PHC offset to its master
+		journalctl -b -u ptp4l -n 50 > ptp.log
+		awk_program='/ptp4l/ { print $9; exit; }'
 		phc_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${phc_offset}" in
@@ -323,14 +315,9 @@ check_sync() {
 			continue
 		fi
 
-		case ${distro} in
-		ubuntu)
-			journalctl -b -u phc2sys -n 50 > ptp.log
-			awk_program='/phc2sys/ { print $9; exit; }'
-			;;
-		openil)
-			awk_program='/phc2sys/ { print $11; exit; }'
-		esac
+		# Check offset between the PHC and the system clock
+		journalctl -b -u phc2sys -n 50 > ptp.log
+		awk_program='/phc2sys/ { print $9; exit; }'
 		system_clock_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${system_clock_offset}" in
@@ -355,56 +342,6 @@ check_sync() {
 		# Success
 		break
 	done
-}
-
-# The PTP clocks tick Jan 1st 1970 at boot time.
-# This function temporarily disables any PTP service and resets the PTP clock
-# to a known state, be it master or slave. The time is based on the RTC clock
-# and should be "in the ballpark" for the slave. For the master, CLOCK_REALTIME
-# will also become the time source (phc2sys -r -r).
-# We only care that the clocks are synchronized to one another.
-# We make sure that the PTP clocks tick in 2019 and not in 1970 because there
-# are bugs in phc2sys (?) when you try to discipline it to a retro time.
-set_phc_time() {
-	local phc=$1
-	local distro=$2
-
-	case "${distro}" in
-	openil)
-		# Make sure the S65linuxptp included in this archive is
-		# installed at /etc/init.d/ on the board.
-		/etc/init.d/S65linuxptp stop
-		hwclock --hctosys
-		phc_ctl "${phc}" set
-		phc_ctl "${phc}" freq 0
-		/etc/init.d/S65linuxptp start
-		;;
-	ubuntu)
-		# Make sure /lib/systemd/system/phc2sys.service contains:
-		#
-		#   ExecStart=/usr/sbin/phc2sys -a -r -r
-		#
-		# and /lib/systemd/system/phc2sys.service contains:
-		#
-		#   ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ptp4l.conf -i eno0 -2
-		#
-		# then run:
-		# systemctl daemon-reload
-		# systemctl enable phc2sys
-		# systemctl restart phc2sys
-		# systemctl enable ptp4l
-		# systemctl restart ptp4l
-		# systemctl disable systemd-timesyncd
-		# systemctl stop systemd-timesyncd
-		systemctl stop ptp4l
-		systemctl stop phc2sys
-		hwclock --hctosys
-		phc_ctl "${phc}" set
-		phc_ctl "${phc}" freq 0
-		systemctl start ptp4l
-		systemctl start phc2sys
-		;;
-	esac
 }
 
 do_cut_through() {
@@ -432,20 +369,33 @@ set_qbv_params() {
 	txq=5
 }
 
+do_install_deps() {
+	packages="arping gawk"
+	for pkg in ${packages}; do
+		if ! command -v ${pkg} > /dev/null; then
+			apt install ${pkg}
+		fi
+	done
+	install -Dm0644 "${TOPDIR}/deps/phc2sys.service" \
+		"/lib/systemd/system/phc2sys.service"
+	install -Dm0644 "${TOPDIR}/deps/phc-to-phc-sync.service" \
+		"/lib/systemd/system/phc-to-phc-sync.service"
+	install -Dm0644 "${TOPDIR}/deps/ptp4l.service" \
+		"/lib/systemd/system/ptp4l.service"
+	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
+		"/etc/linuxptp/ptp4l.conf"
+	systemctl daemon-reload
+	systemctl restart ptp4l
+	systemctl restart phc-to-phc-sync
+	systemctl restart phc2sys
+}
+
 prerequisites() {
 	required_configs="CONFIG_NET_INGRESS"
 	for config in ${required_configs}; do
 		if ! zcat /proc/config.gz | grep "${config}=y" >/dev/null; then
 			echo "Please recompile kernel with ${config}=y"
 			exit 1
-		fi
-	done
-
-	packages="arping gawk"
-	for pkg in ${packages}; do
-		if ! command -v ${pkg} > /dev/null; then
-			echo "Please install the ${pkg} package"
-			return 1
 		fi
 	done
 }
@@ -467,6 +417,8 @@ case "${board}" in
 	cmd="$1"; shift
 	case "${cmd}" in
 	prepare)
+		do_install_deps
+
 		do_vlan_subinterface eno0 100
 
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
@@ -479,8 +431,6 @@ case "${board}" in
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
-
-		set_phc_time /dev/ptp0 ubuntu
 
 		do_cut_through
 
@@ -514,6 +464,8 @@ case "${board}" in
 		do_stop_rcv_traffic
 		;;
 	prepare)
+		do_install_deps
+
 		do_vlan_subinterface eno0 100
 
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
@@ -530,8 +482,6 @@ case "${board}" in
 		set_qbv_params
 		do_cut_through
 		do_8021qci eno0 eno0
-
-		set_phc_time /dev/ptp0 ubuntu
 
 		echo "Configuration successful."
 		;;

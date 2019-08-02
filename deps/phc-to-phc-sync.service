@@ -1,0 +1,11 @@
+[Unit]
+Description=Synchronize one PTP Hardware Clock to another
+Requires=ptp4l.service
+After=ptp4l.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/phc2sys -s /dev/ptp0 -c /dev/ptp1 -O 0
+
+[Install]
+WantedBy=multi-user.target
