@@ -370,7 +370,7 @@ set_qbv_params() {
 }
 
 do_install_deps() {
-	packages="arping gawk"
+	packages="arping gawk expect"
 	for pkg in ${packages}; do
 		if ! command -v ${pkg} > /dev/null; then
 			apt install ${pkg}
@@ -382,6 +382,10 @@ do_install_deps() {
 		"/lib/systemd/system/phc-to-phc-sync.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.service" \
 		"/lib/systemd/system/ptp4l.service"
+	install -Dm0644 "${TOPDIR}/deps/iperf3-server.service" \
+		"/lib/systemd/system/iperf3-server.service"
+	install -Dm0644 "${TOPDIR}/deps/iperf3-client.service" \
+		"/lib/systemd/system/iperf3-client.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
 		"/etc/linuxptp/ptp4l.conf"
 	systemctl daemon-reload

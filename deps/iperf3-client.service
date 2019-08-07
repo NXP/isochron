@@ -1,0 +1,10 @@
+[Unit]
+Description=Iperf3 Server
+
+[Service]
+Type=simple
+# Requires the "expect" package for "unbuffer"
+ExecStart=/usr/bin/unbuffer /usr/bin/iperf3 -c 10.0.0.101 -i 1 -t 86400 -u -b 0
+
+[Install]
+WantedBy=multi-user.target
