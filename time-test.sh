@@ -166,7 +166,7 @@ felix_8021qbv_config() {
 	do_vlan_subinterface eno2 100
 	for eth in ${iface} swp4; do
 		bridge vlan add vid 100 dev "${eth}"
-		tsntool pcpmap --device "${eth}"
+		tsntool pcpmap --device "${eth}" --enable 2&>1 /dev/null
 	done
 }
 
