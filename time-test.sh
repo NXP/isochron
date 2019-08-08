@@ -195,7 +195,7 @@ do_8021qbv() {
 	cat > qbv0.txt <<-EOF
 		t0 00100000 ${window}      # raw-l2-send
 		t1 10000000 ${window}      # PTP
-		t2 00000001 ${best_effort} # everything else
+		t2 01011111 ${best_effort} # everything else
 		t3 00000000 ${guard}
 	EOF
 	tsntool qbvset --device "${iface}" --disable
