@@ -3,6 +3,8 @@ Description=Synchronize one PTP Hardware Clock to another
 Requires=ptp4l.service
 After=ptp4l.service
 
+# Master clock is /dev/ptp1 (Felix), slave is /dev/ptp0 (ENETC)
+# Reverse if changing the port in ptp4l.service.
 [Service]
 Type=simple
 ExecStart=/usr/sbin/phc2sys -s /dev/ptp1 -c /dev/ptp0 -O 0 -S 0.00002

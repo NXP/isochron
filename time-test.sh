@@ -14,17 +14,24 @@ board2_ip="172.15.0.2"
 scenario="felix"
 
 # This example will send a unidirectional traffic stream from Board 1 to
-# Board 2 and measure its latency by taking MAC TX and RX timestamp.
-# This is currently not supported for the Felix switch ports. The switch
-# is currently only used to pass SSH traffic.
-# The 1588 hardware clocks of ENETC (/dev/ptp0) are kept in sync via the
-# ptp4l which runs as a service, and the system clocks are kept in sync
-# via phc2sys. One of the boards runs as PTP master and the other as PTP slave.
+# Board 2 and measure its latency by taking MAC TX and RX timestamp. It also
+# illustrates how a link's bandwidth can be budgeted in order to allow a
+# cyclic application to produce data that is forwarded with low jitter and
+# arrives at the destination at a deterministic time. The iperf3-server and
+# iperf3-client services can also be used to test the system under load.
+#
+# The interfaces on the sender and receiver board are kept in sync via ptp4l,
+# so that the delta between the RX and TX timestamps makes sense.
+#
+# The 1588 hardware clocks of ENETC (/dev/ptp0) and Felix (/dev/ptp1) are kept
+# in sync via the ptp4l which runs as a service, and the system clocks are kept
+# in sync via phc2sys. One of the boards runs as PTP master and the other as
+# PTP slave.
 #
 #   Board 1:
 #
 #   +---------------------------------------------------------------------------------+
-#   |   10.0.0.101                        raw-l2-send                                 |
+#   |     scenario="enetc"     raw-l2-send       scenario="felix"                     |
 #   | +------------+   +------------+  +------------+  +------------+  +------------+ |
 #   | |            |   |            |  |            |  |            |  |            | |
 #   | |            |-+ |            |  |            |-+|            |  |            | |
@@ -35,13 +42,49 @@ scenario="felix"
 #   Board 2:         |                                |
 #                    |                                |
 #   +----------------|--------------------------------|-------------------------------+
-#   |   10.0.0.102   |                     raw-l2-rcv |                               |
+#   |                |         raw-l2-rcv             |                               |
 #   | +------------+ | +------------+  +------------+ |+------------+  +------------+ |
 #   | |            | | |            |  |            | ||            |  |            | |
 #   | |            |-+ |            |  |            |-+|            |  |            | |
 #   | |            |   |            |  |            |  |            |  |            | |
 #   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
 #          MAC0             SW0             SW1             SW2              SW3
+#
+# In the case of Felix switch ports, a VLAN sub-interface of eno2 is used to
+# originate traffic (due to QoS classification not being supported through the
+# injection/extraction header yet). The traffic will physically traverse swp1.
+# Inherently, this means that the timestamps reported by this script will be
+# pre-Qbv in the case where scenario="felix".
+#
+# In the case of ENETC, the generated report looks like this:
+#
+#     Mean OS TX latency (OS TX - scheduled TX time): 8100011 ns
+#     Standard deviation: 4711 ns
+#     Mean MAC TX latency (MAC TX - gate event time): 446 ns
+#     Standard deviation: 51 ns
+#     Mean path delay (MAC RX - MAC TX): 1057 ns
+#     Standard deviation: 47 ns
+#     Mean OS RX latency (OS RX - MAC RX): 101138 ns
+#     Standard deviation: 21354 ns
+#
+# Whereas for Felix, it looks like this:
+#
+#     Mean OS TX latency (OS TX - scheduled TX time): 8058995 ns
+#     Standard deviation: 25373 ns
+#     Mean MAC TX latency (MAC TX - gate event time): -8030331 ns
+#     Standard deviation: 27460 ns
+#     Mean path delay (MAC RX - MAC TX): 8032457 ns
+#     Standard deviation: 27459 ns
+#     Mean OS RX latency (OS RX - MAC RX): 97965 ns
+#     Standard deviation: 23409 ns
+#
+# Because the timestamps are taken on the eno2 MAC (that's where the
+# application socket is open), the advance time is immediately obvious in the
+# (MAC TX - gate event time) delta. However, these are pre-Qbv timestamps, so
+# the advance time is also visible in the path delay (here, eno2-to-eno2 vs the
+# ideal swp1-to-swp1). However, by summing the two, one gets a "sort of path
+# delay", aka the "swp1-to-eno2" hardware time, which still proves that Qbv on
+# swp1 is active, and that its MAC transmission jitter is low.
 
 NSEC_PER_SEC="1000000000"
 receiver_open=false
@@ -185,6 +228,7 @@ do_8021qbv() {
 	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
 
+	# This calls felix_8021qbv_config or enetc_8021qbv_config
 	"${scenario}_8021qbv_config" "${iface}"
 
 	window="$(qbv_window 500 1 ${speed_mbps})"
