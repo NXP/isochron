@@ -285,7 +285,7 @@ do_send_traffic() {
 		mgmt_iface="eno0"
 		;;
 	felix)
-		iface="eno2"
+		iface="eno2.100"
 		mgmt_iface="eno2"
 		;;
 	esac
@@ -345,7 +345,7 @@ do_start_rcv_traffic() {
 		iface="eno0.100"
 		;;
 	felix)
-		iface="eno2"
+		iface="eno2.100"
 		;;
 	esac
 
@@ -622,8 +622,9 @@ case "${board}" in
 	prepare)
 		do_install_deps
 		do_prepare
-		do_print_config_done ${board}
 		set_qbv_params
+		do_8021qbv
+		do_print_config_done ${board}
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
