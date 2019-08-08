@@ -206,16 +206,18 @@ do_send_traffic() {
 	local iface=$1
 	local mgmt_iface=$2
 	local remote="root@${board2_ip}"
+	local iface=
 
 	check_sync
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac ${board2_ip} iproute2 ${mgmt_iface})" || {
+	dmac="$(get_remote_mac ${board2_ip} iproute2 ${mgmt_iface})" || err=true
+	if [ -z "${dmac}" ] || [ ${err} = true ]; then
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
 		return 1
-	}
+	fi
 	echo "${dmac}"
 
 	printf "Opening receiver process... "
