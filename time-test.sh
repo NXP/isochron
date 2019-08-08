@@ -367,7 +367,7 @@ check_sync() {
 
 		# Check offset between the ENETC and the Felix PHC
 		journalctl -b -u phc-to-phc-sync -n 50 > ptp.log
-		awk_program='/phc2sys/ { print $9; exit; }'
+		awk_program='/phc2sys/ { print $10; exit; }'
 		phc_to_phc_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${phc_to_phc_offset}" in
@@ -392,7 +392,7 @@ check_sync() {
 
 		# Check offset between the PHC and the system clock
 		journalctl -b -u phc2sys -n 50 > ptp.log
-		awk_program='/phc2sys/ { print $9; exit; }'
+		awk_program='/phc2sys/ { print $10; exit; }'
 		system_clock_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${system_clock_offset}" in
