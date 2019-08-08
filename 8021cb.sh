@@ -141,12 +141,8 @@ case "${board}" in
 	board1=$(get_remote_mac 192.168.1.1 tsntool eno2)
 	# Configure two Seamless Stream IDs (SSID) for outbound traffic to
 	# board 1.  This configuration needs to be applied over each switch
-	# port that will be performing egress.  Otherwise when one of the
-	# redundant links goes down, the SSID will no longer match that egress
-	# port's PGID and splitting will no longer be performed.
+	# port that will be performing egress.
 	tsntool cbstreamidset --device swp1 --streamhandle 1 \
-		--nullstreamid --nulldmac "${board1}" --nullvid 100
-	tsntool cbstreamidset --device swp2 --streamhandle 2 \
 		--nullstreamid --nulldmac "${board1}" --nullvid 100
 	# The switch port specified as parameter to --device here does not
 	# matter, it is simply an anchor for tsntool to talk to the switch
@@ -165,9 +161,7 @@ case "${board}" in
 	# stream generation rule will replicate the packets. This is in
 	# addition to the standard L2 forwarding rules.
 	tsntool cbgen --device swp5 --index 1 --seq_len 16 --seq_num 0 \
-		--iport_mask $((1<<4)) --split_mask $((1<<2))
-	tsntool cbgen --device swp5 --index 2 --seq_len 16 --seq_num 0 \
-		--iport_mask $((1<<4)) --split_mask $((1<<1))
+		--iport_mask $((1<<4)) --split_mask $((1<<1 | 1<<2))
 
 	board1=$(get_remote_mac 192.168.1.1 iproute2 eno2)
 	arp -s 192.168.100.1 "${board1}" dev eno2.100
