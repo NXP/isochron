@@ -247,14 +247,176 @@ do_8021qbv() {
 		--basetime "${mac_base_time_nsec}"
 }
 
-do_8021qci() {
+# Sets ANA:PORT:SFID_CFG[SFID_VALID] for SFID 0 (the default)
+# on all ports and all priorities
+felix_8021qci_default_sfid() {
 	local iface=$1
-	local mgmt_iface=$2
-	local board1="$(get_remote_mac ${board1_ip} tsntool-reverse ${mgmt_iface})"
 
-	tsntool cbstreamidset --device "${iface}" --index 1 --streamhandle 100 \
-		 --sourcemacvid --sourcemac "${board1}" --sourcetagged 3 --sourcevid 20
-	tsntool qcisfiset --device "${iface}" --streamhandle 100 --index 1 --gateid 1
+	case "${iface}" in
+	swp0)
+		busybox devmem 0x1fc287884 32 0x80
+		busybox devmem 0x1fc287888 32 0x80
+		busybox devmem 0x1fc28788c 32 0x80
+		busybox devmem 0x1fc287890 32 0x80
+		busybox devmem 0x1fc287894 32 0x80
+		busybox devmem 0x1fc287898 32 0x80
+		busybox devmem 0x1fc28789c 32 0x80
+		busybox devmem 0x1fc2878a0 32 0x80
+		;;
+	swp1)
+		busybox devmem 0x1fc287984 32 0x80
+		busybox devmem 0x1fc287988 32 0x80
+		busybox devmem 0x1fc28798c 32 0x80
+		busybox devmem 0x1fc287990 32 0x80
+		busybox devmem 0x1fc287994 32 0x80
+		busybox devmem 0x1fc287998 32 0x80
+		busybox devmem 0x1fc28799c 32 0x80
+		busybox devmem 0x1fc2879a0 32 0x80
+		;;
+	swp2)
+		busybox devmem 0x1fc287a84 32 0x80
+		busybox devmem 0x1fc287a88 32 0x80
+		busybox devmem 0x1fc287a8c 32 0x80
+		busybox devmem 0x1fc287a90 32 0x80
+		busybox devmem 0x1fc287a94 32 0x80
+		busybox devmem 0x1fc287a98 32 0x80
+		busybox devmem 0x1fc287a9c 32 0x80
+		busybox devmem 0x1fc287aa0 32 0x80
+		;;
+	swp3)
+		busybox devmem 0x1fc287b84 32 0x80
+		busybox devmem 0x1fc287b88 32 0x80
+		busybox devmem 0x1fc287b8c 32 0x80
+		busybox devmem 0x1fc287b90 32 0x80
+		busybox devmem 0x1fc287b94 32 0x80
+		busybox devmem 0x1fc287b98 32 0x80
+		busybox devmem 0x1fc287b9c 32 0x80
+		busybox devmem 0x1fc287ba0 32 0x80
+		;;
+	swp4)
+		busybox devmem 0x1fc287c84 32 0x80
+		busybox devmem 0x1fc287c88 32 0x80
+		busybox devmem 0x1fc287c8c 32 0x80
+		busybox devmem 0x1fc287c90 32 0x80
+		busybox devmem 0x1fc287c94 32 0x80
+		busybox devmem 0x1fc287c98 32 0x80
+		busybox devmem 0x1fc287c9c 32 0x80
+		busybox devmem 0x1fc287ca0 32 0x80
+		;;
+	swp5)
+		busybox devmem 0x1fc287d84 32 0x80
+		busybox devmem 0x1fc287d88 32 0x80
+		busybox devmem 0x1fc287d8c 32 0x80
+		busybox devmem 0x1fc287d90 32 0x80
+		busybox devmem 0x1fc287d94 32 0x80
+		busybox devmem 0x1fc287d98 32 0x80
+		busybox devmem 0x1fc287d9c 32 0x80
+		busybox devmem 0x1fc287da0 32 0x80
+		;;
+	esac
+}
+
+# Recommended read: Figure 16-23. Overview of Per-Stream Filtering and Policing
+# (Qci) from LS1028ARM.pdf
+#
+#          Stream Identity Table                                 Stream Filter Instance Table
+#           (aka cbstreamidset)                                         (aka qcisfiset)
+# +-----------+-----------+---------------+         +---------------+-----------+--------+-------+------+
+# | Port list | Stream ID | Stream Handle |         | Stream Handle | Port list | Filter | Meter | Gate |
+# +-----------+-----------+---------------+         +---------------+-----------+--------+-------+------+
+# |     1     |    NULL   |      1234     |--+----->|      1234     |     1     | xxxxxx |   5   |  11  |
+# |    ...    |    ...    |      ...      |  |      |      ...      |    ...    |   ...  |  ...  |  ... |
+# |     3     |    NULL   |      1357     |-------->|      1357     |     3     | yyyyyy |   29  |  11  |
+# |     2     | SMAC/VLAN |      5678     |-------->|      5678     |     2     | zzzzzz |   29  |  43  |
+# |    ...    |    ...    |      ...      |  |      |      ...      |    ...    |   ...  |  ...  |  ... |
+# |     1     |    NULL   |      1234     |--+      +---------------+-----------+--------+-------+------+
+# +-----------+-----------+---------------+                                                  |       |
+#                                                                                            |       |
+#                            +---------------------------------------------------------------+       |
+#                            |                                    +----------------------------------+
+#                            |      Flow Meter Instance Table     |       Stream Gate Instance Table
+#                            |           (aka qcifmiset)          |             (aka qcisgiset)
+#                            |  +----------+-------------------+  |  +---------+------------+-----------+
+#                            |  | Meter ID |  Meter Parameters |  |  | Gate ID | Gate State | Gate List |
+#                            |  +----------+-------------------+  |  +---------+------------+-----------+
+#                            +->|    29    | CIR, CBS, EIR etc |  +->|    11   |    Open    |   0..n    |
+#                               |     5    | CIR, CBS, EIR etc |     |    43   |   Closed   |   0..m    |
+#                               +----------+-------------------+     +---------+------------+-----------+
+do_8021qci() {
+	local board1=
+	local iface=
+
+	case "${scenario}" in
+	enetc)
+		iface="eno0"
+
+		# ENETC supports NULL stream identification as well as SMAC/VID
+		# stream identification. Use SMAC/VID here on Board 2 to match
+		# traffic from Board 1.
+		board1="$(get_remote_mac ${board1_ip} tsntool-reverse ${iface})"
+
+		# From include/linux/tsn.h, "sourcetagged" and "nulltagged" mean:
+		#
+		# /* tsnCpeNullDownTagged. It can take the following values:
+		# * 1 tagged: A frame must have a VLAN tag to be recognized as belonging
+		# * to the Stream.
+		# * 2 priority: A frame must be untagged, or have a VLAN tag with a VLAN
+		# * ID = 0 to be recognized as belonging to the Stream.
+		# * 3 all: A frame is recognized as belonging to the Stream whether
+		# * tagged or not.
+		# */
+		#
+		# --sourcetagged is used if we're talking about a source stream
+		# identification function, while --nulltagged applies to a null
+		# stream id function.
+		streamhandle=35
+		tsntool cbstreamidset --device "${iface}" --index 1 \
+			--streamhandle ${streamhandle} --sourcemacvid --sourcevid 100 \
+			--sourcemac "${board1}" --sourcetagged 1 --enable
+		tsntool qcisfiset --device "${iface}" --streamhandle ${streamhandle} \
+			--index 1 --gateid 1 --enable
+		;;
+	felix)
+		iface="swp1"
+		egress_iface="swp4"
+
+		#for eth in $(ls /sys/bus/pci/devices/0000:00:00.5/net/); do
+		#	felix_8021qci_default_sfid "${eth}"
+		#done
+
+		# Felix only supports NULL stream identification, aka DMAC/VID.
+		board2="$(get_local_mac eno2 tsntool)"
+
+		streamhandle=0
+		# Can't say --disable here
+		# Also, Felix only supports --nulltagged 1, aka tagged. The
+		# --nulltagged argument is completely ignored.
+		tsntool cbstreamidset --device "${egress_iface}" --index 0 \
+			--streamhandle ${streamhandle} --nullstreamid --nullvid 100 \
+			--nulldmac "${board2}" --enable
+		# Some things to keep in mind:
+		#
+		# * --streamhandle is not used for the SFI table on Felix.
+		#   SIT->SFI match is done by
+		#   $(cbstreamidset --streamhandle) == $(qcisfiset --index).
+		#
+		# * Only SFI table --index 0 can be written at the moment on
+		#   Felix, all others do not error out, but error out on read,
+		#   and do not work.
+		#
+		# * --device does not matter beyond identifying the Felix
+		#   driver (not the port index).
+		#
+		# * Specifying --flowmeterid is MANDATORY, otherwise all
+		#   traffic is dropped.
+		tsntool qcisfiset --device "${iface}" --flowmeterid 63 \
+			--index "${streamhandle}" --gateid 1 --enable
+		# Run "tsntool qcisfiget --device swp0 --index 0" to see
+		# the SFID match and gate drop counter
+		tsntool qcifmiset --device "${iface}" --index 63 \
+			--cir 100000 --cbs 4000 --ebs 4000 --eir 100000
+		;;
+	esac
 
 	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
@@ -262,6 +424,8 @@ do_8021qci() {
 	guard="$(qbv_window 64 1 ${speed_mbps})"
 	best_effort="$((10000000 - 2 * ${window} - ${guard}))"
 
+	# It appears that setting even one single gate as closed eventually
+	# makes the switch drop all traffic matching this SFID.
 	cat > sgi1.txt <<-EOF
 	# entry  gate status IPV delta (ns)     SDU limit
 	t0       1b          1   ${window}      0   # raw-l2-send
@@ -269,8 +433,10 @@ do_8021qci() {
 	t2       1b          0   ${best_effort} 0   # everything else
 	t3       1b          0   ${guard}       0
 	EOF
-	tsntool qcisgiset --device "${iface}" --index 1 --initgate 0 \
-		 --gatelistfile sgi1.txt --basetime "${mac_base_time_nsec}"
+	# If ${mac_base_time_nsec} is set as --basetime, all traffic is
+	# dropped.
+	tsntool qcisgiset --device "${iface}" --index 1 --initgate 1 \
+		--enable --gatelistfile sgi1.txt --basetime 0
 }
 
 do_send_traffic() {
@@ -590,12 +756,12 @@ case "${board}" in
 	prepare)
 		do_install_deps
 		do_prepare
+		set_qbv_params
+		do_8021qbv
 		do_print_config_done ${board}
 		;;
 	run)
 		set_qbv_params
-		do_8021qbv
-
 		do_send_traffic
 		;;
 	teardown)
@@ -624,6 +790,7 @@ case "${board}" in
 		do_prepare
 		set_qbv_params
 		do_8021qbv
+		do_8021qci
 		do_print_config_done ${board}
 		;;
 	teardown)
