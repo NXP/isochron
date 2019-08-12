@@ -629,13 +629,6 @@ check_sync() {
 	done
 }
 
-do_cut_through() {
-	for eth in swp0 swp1 swp2 swp3 swp5; do
-		tsntool ctset --device ${eth} --queue_stat 0xff;
-	done
-	tsntool ctset --device swp4 --queue_stat 0x00
-}
-
 set_qbv_params() {
 	local now=$(phc_ctl CLOCK_REALTIME get | gawk '/clock time is/ { print $5; }')
 	# Round the base time to the start of the next second.
@@ -705,8 +698,6 @@ do_prepare() {
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
-
-		do_cut_through
 	esac
 }
 
