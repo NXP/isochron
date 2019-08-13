@@ -12,9 +12,9 @@ function timespec_from_string(ts, string) {
 
 function timespec_to_string(ts) {
 	if (ts["tv_sec"] < 0 || ts["tv_nsec"] < 0)
-		return "(missed)";
+		return "(" ts["tv_sec"] * NSEC_PER_SEC + ts["tv_nsec"] " ns)";
 
-	return sprintf("%d.%09d", ts["tv_sec"], ts["tv_nsec"]);
+	return sprintf("(%d.%09d)", ts["tv_sec"], ts["tv_nsec"]);
 }
 
 function timespec_add(ts, a, b) {
