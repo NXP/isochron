@@ -268,6 +268,8 @@ do_send_traffic() {
 
 	printf "Getting destination MAC address... "
 	dmac="$(get_remote_mac ${board2_ip} iproute2 ${mgmt_iface})" || err=true
+	# Make sure 0001-mscc-ocelot-don-t-duplicate-broadcast-traffic.patch
+	# is applied to the kernel.
 	if [ -z "${dmac}" ] || [ ${err} = true ]; then
 		echo "failed: $?"
 		echo "Have you run \"${TOPDIR}/time-test.sh 2 prepare\"?"
