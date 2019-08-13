@@ -483,7 +483,7 @@ do_install_deps() {
 }
 
 prerequisites() {
-	required_configs="CONFIG_NET_INGRESS"
+	required_configs="CONFIG_NET_INGRESS CONFIG_MSCC_FELIX_SWITCH_PTP_CLOCK"
 	for config in ${required_configs}; do
 		if ! zcat /proc/config.gz | grep "${config}=y" >/dev/null; then
 			echo "Please recompile kernel with ${config}=y"
