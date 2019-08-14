@@ -410,29 +410,31 @@ check_sync() {
 			continue
 		fi
 
-		# Check offset between the ENETC and the Felix PHC
-		journalctl -b -u phc-to-phc-sync -n 50 > ptp.log
-		awk_program='/phc2sys/ { print $10; exit; }'
-		phc_to_phc_offset=$(tac ptp.log | gawk "${awk_program}")
-		# Got something, is it a number?
-		case "${phc_to_phc_offset}" in
-		''|[!\-][!0-9]*)
-			if [ -z $(pidof phc2sys) ]; then
-				echo "Please start the phc-to-phc-sync service."
-				return 1
-			else
-				echo "Trying again..."
+		if [ "${scenario}" = "felix" ]; then
+			# Check offset between the ENETC and the Felix PHC
+			journalctl -b -u phc-to-phc-sync -n 50 > ptp.log
+			awk_program='/phc2sys/ { print $10; exit; }'
+			phc_to_phc_offset=$(tac ptp.log | gawk "${awk_program}")
+			# Got something, is it a number?
+			case "${phc_to_phc_offset}" in
+			''|[!\-][!0-9]*)
+				if [ -z $(pidof phc2sys) ]; then
+					echo "Please start the phc-to-phc-sync service."
+					return 1
+				else
+					echo "Trying again..."
+					continue
+				fi
+				;;
+			esac
+			if [ "${phc_to_phc_offset}" -lt 0 ]; then
+				phc_to_phc_offset=$((-${phc_to_phc_offset}))
+			fi
+			echo "PHC-to-PHC offset ${phc_to_phc_offset} ns"
+			if [ "${phc_to_phc_offset}" -gt "${threshold_ns}" ]; then
+				echo "System clock is not yet synchronized..."
 				continue
 			fi
-			;;
-		esac
-		if [ "${phc_to_phc_offset}" -lt 0 ]; then
-			phc_to_phc_offset=$((-${phc_to_phc_offset}))
-		fi
-		echo "PHC-to-PHC offset ${phc_to_phc_offset} ns"
-		if [ "${phc_to_phc_offset}" -gt "${threshold_ns}" ]; then
-			echo "System clock is not yet synchronized..."
-			continue
 		fi
 
 		# Check offset between the PHC and the system clock
