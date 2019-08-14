@@ -232,19 +232,44 @@ do_8021qbv() {
 	"${scenario}_8021qbv_config" "${iface}"
 
 	window="$(qbv_window 500 1 ${speed_mbps})"
-	guard="$(qbv_window 64 1 ${speed_mbps})"
-	best_effort="$((10000000 - 2 * ${window} - ${guard}))"
+	best_effort="$((10000000 - 2 * ${window}))"
 	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
 	# (10,000,000 ns).
 	cat > qbv0.txt <<-EOF
 		t0 00100000 ${window}      # raw-l2-send
 		t1 10000000 ${window}      # PTP
 		t2 01011111 ${best_effort} # everything else
-		t3 00000000 ${guard}
 	EOF
 	tsntool qbvset --device "${iface}" --disable
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
+}
+
+# CAUTION: if Frame Preemption is enabled, there should not be any
+# preemption-unaware device (e.g. a switch) between the sender and the
+# receiver. This will report invalid SFD for all frames and refuse to forward
+# them.
+# Normally this is caught by running an LLDP daemon and checking the link
+# partner's Additional Ethernet Capabilities TLV.
+# However, we enable Frame Preemption unconditionally here.
+do_8021qbu() {
+	local ifaces=
+
+	case "${scenario}" in
+	enetc)
+		ifaces="eno0"
+		;;
+	felix)
+		ifaces="eno2 swp4 swp1"
+		;;
+	esac
+
+	for iface in ${ifaces}; do
+		# Set everything to preemptable except TC7 (PTP)
+		# and TC5 (raw-l2-send)
+		tsntool qbuset --device "${iface}" --preemptable \
+			$(((1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 6)))
+	done
 }
 
 do_send_traffic() {
@@ -562,6 +587,7 @@ case "${board}" in
 		do_prepare
 		set_qbv_params
 		do_8021qbv
+		do_8021qbu
 		do_print_config_done ${board}
 		;;
 	run)
@@ -594,6 +620,7 @@ case "${board}" in
 		do_prepare
 		set_qbv_params
 		do_8021qbv
+		do_8021qbu
 		do_print_config_done ${board}
 		;;
 	teardown)
