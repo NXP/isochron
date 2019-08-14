@@ -483,6 +483,10 @@ set_qbv_params() {
 }
 
 do_install_deps() {
+	local phc_master=
+	local phc_slave=
+	local iface=
+
 	packages="arping gawk expect"
 	for pkg in ${packages}; do
 		if ! command -v ${pkg} > /dev/null; then
@@ -501,9 +505,28 @@ do_install_deps() {
 		"/lib/systemd/system/iperf3-client.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
 		"/etc/linuxptp/ptp4l.conf"
-	if [ ${board} = 2 ]; then
+	if [ "${board}" = 2 ]; then
 		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.conf
+		sed -i -e "s|#IP#|${board1_ip}|g" /lib/systemd/system/iperf3-client.service
+	else
+		sed -i -e "s|#IP#|${board2_ip}|g" /lib/systemd/system/iperf3-client.service
 	fi
+	case "${scenario}" in
+	felix)
+		phc_master="/dev/ptp1"
+		phc_slave="/dev/ptp0"
+		iface="swp1"
+		;;
+	enetc)
+		phc_master="/dev/ptp0"
+		phc_slave="/dev/ptp1"
+		iface="eno0"
+		;;
+	esac
+	sed -i -e "s|#PHC#|${phc_master}|g" /lib/systemd/system/ptp4l.service
+	sed -i -e "s|#IFACE#|${iface}|g" /lib/systemd/system/ptp4l.service
+	sed -i -e "s|#PHC_MASTER#|${phc_master}|g" /lib/systemd/system/phc-to-phc-sync.service
+	sed -i -e "s|#PHC_SLAVE#|${phc_slave}|g" /lib/systemd/system/phc-to-phc-sync.service
 	systemctl daemon-reload
 	systemctl restart ptp4l
 	systemctl restart phc-to-phc-sync
