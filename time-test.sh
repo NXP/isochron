@@ -476,6 +476,9 @@ do_install_deps() {
 		"/lib/systemd/system/iperf3-client.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
 		"/etc/linuxptp/ptp4l.conf"
+	if [ ${board} = 2 ]; then
+		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.conf
+	fi
 	systemctl daemon-reload
 	systemctl restart ptp4l
 	systemctl restart phc-to-phc-sync
