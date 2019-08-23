@@ -199,7 +199,7 @@ enetc_8021qbv_config() {
 	# Match L2 PTP frames by EtherType
 	# Since we use u32 filter which starts from IP protocol,
 	# we need to go back and specify -2 negative offset.
-	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88f7 0xffff \
+	tc filter add dev "${iface}" egress prio 1 u32 match u16 0x88f7 0xffff at -2 \
 		action skbedit priority 7
 }
 
