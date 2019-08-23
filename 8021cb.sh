@@ -118,10 +118,9 @@ case "${board}" in
 	board1=$(get_local_mac eno2 tsntool)
 	tsntool cbstreamidset --device swp4 --streamhandle 1 \
 		--nullstreamid --nulldmac "${board1}" --nullvid 100
-	for eth in swp0 swp1; do
-		tsntool cbrec --device "${eth}" --index 1 \
-			--seq_len 16 --his_len 31 --rtag_pop_en
-	done
+	# The port does not matter
+	tsntool cbrec --device swp5 --index 1 \
+		--seq_len 16 --his_len 31 --rtag_pop_en
 
 	echo "Configuration successful."
 	echo "To test with traffic, run:"
