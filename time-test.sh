@@ -392,7 +392,7 @@ check_sync() {
 		# Got something, is it a number?
 		case "${phc_offset}" in
 		''|[!\-][!0-9]*)
-			if [ -z $(pidof ptp4l) ]; then
+			if ! systemctl is-active --quiet ptp4l; then
 				echo "Please start the ptp4l service."
 				return 1
 			else
@@ -418,11 +418,11 @@ check_sync() {
 			# Got something, is it a number?
 			case "${phc_to_phc_offset}" in
 			''|[!\-][!0-9]*)
-				if [ -z $(pidof phc2sys) ]; then
+				if ! systemctl is-active --quiet phc-to-phc-sync; then
 					echo "Please start the phc-to-phc-sync service."
 					return 1
 				else
-					echo "Trying again..."
+					echo "Trying again... ${phc_to_phc_offset}"
 					continue
 				fi
 				;;
@@ -444,7 +444,7 @@ check_sync() {
 		# Got something, is it a number?
 		case "${system_clock_offset}" in
 		''|[!\-][!0-9]*)
-			if [ -z $(pidof phc2sys) ]; then
+			if ! systemctl is-active --quiet phc-to-phc-sync-slave; then
 				echo "Please start the phc2sys service."
 				return 1
 			else
