@@ -214,6 +214,7 @@ felix_8021qbv_config() {
 }
 
 do_8021qbv() {
+	local enabled=$1
 	local iface=
 
 	case "${scenario}" in
@@ -241,6 +242,9 @@ do_8021qbv() {
 		t2 01011111 ${best_effort} # everything else
 	EOF
 	tsntool qbvset --device "${iface}" --disable
+	if [ "${enabled}" = false ]; then
+		return
+	fi
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
 }
@@ -253,6 +257,7 @@ do_8021qbv() {
 # partner's Additional Ethernet Capabilities TLV.
 # However, we enable Frame Preemption unconditionally here.
 do_8021qbu() {
+	local enabled=$1
 	local ifaces=
 
 	case "${scenario}" in
@@ -265,6 +270,10 @@ do_8021qbu() {
 	esac
 
 	for iface in ${ifaces}; do
+		tsntool qbuset --device "${iface}" --preemptable 0
+		if [ "${enabled}" = false ]; then
+			continue
+		fi
 		# Set everything to preemptable except TC7 (PTP)
 		# and TC5 (raw-l2-send)
 		tsntool qbuset --device "${iface}" --preemptable \
@@ -611,8 +620,8 @@ case "${board}" in
 		do_install_deps
 		do_prepare
 		set_qbv_params
-		do_8021qbv
-		do_8021qbu
+		do_8021qbv true
+		do_8021qbu true
 		do_print_config_done ${board}
 		;;
 	run)
@@ -620,7 +629,8 @@ case "${board}" in
 		do_send_traffic
 		;;
 	teardown)
-		tsntool qbvset --device eno0 --disable
+		do_8021qbv false
+		do_8021qbu false
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		;;
 	*)
@@ -644,12 +654,14 @@ case "${board}" in
 		do_install_deps
 		do_prepare
 		set_qbv_params
-		do_8021qbv
-		do_8021qbu
+		do_8021qbv true
+		do_8021qbu true
 		do_print_config_done ${board}
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
+		do_8021qbv false
+		do_8021qbu false
 		;;
 	*)
 		usage
