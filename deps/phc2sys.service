@@ -6,7 +6,7 @@ After=ptp4l.service
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/phc2sys -a -r -r
+ExecStart=/usr/sbin/phc2sys -a -r -r -S 0.00002
 
 [Install]
 WantedBy=multi-user.target
