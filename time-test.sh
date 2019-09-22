@@ -630,7 +630,7 @@ case "${board}" in
 		do_prepare
 		set_qbv_params
 		do_8021qbv true
-		do_8021qbu true
+		#do_8021qbu true
 		do_print_config_done ${board}
 		;;
 	run)
@@ -664,7 +664,7 @@ case "${board}" in
 		do_prepare
 		set_qbv_params
 		do_8021qbv true
-		do_8021qbu true
+		#do_8021qbu true
 		do_print_config_done ${board}
 		;;
 	teardown)
