@@ -55,7 +55,7 @@ function get_mean(array, n) {
 	count = 0;
 	sum = 0;
 
-	for (i = 1; i <= n; i++) {
+	for (i = 0; i < n; i++) {
 		if (array[i] == "n/a")
 			continue;
 		sum += array[i];
@@ -68,7 +68,7 @@ function get_std_dev(array, n, mean) {
 	sumsq = 0;
 	count = 0;
 
-	for (i = 1; i <= n; i++) {
+	for (i = 0; i < n; i++) {
 		if (array[i] == "n/a")
 			continue;
 		sumsq += (array[i] - mean) ^ 2;
