@@ -9,9 +9,9 @@ source "${TOPDIR}/common.sh"
 
 # The script does not attempt to configure IP addresses, that is left
 # up to the user. Modify these based on your setup.
-board1_ip="172.15.0.1"
-board2_ip="172.15.0.2"
-scenario="felix"
+board1_ip="10.0.0.101"
+board2_ip="10.0.0.102"
+scenario="enetc"
 
 # This example will send a unidirectional traffic stream from Board 1 to
 # Board 2 and measure its latency by taking MAC TX and RX timestamp. It also
