@@ -421,14 +421,14 @@ check_sync() {
 
 		if [ "${scenario}" = "felix" ]; then
 			# Check offset between the ENETC and the Felix PHC
-			journalctl -b -u phc-to-phc-sync-slave -n 50 > ptp.log
-			awk_program='/ptp4l/ { print $9; exit; }'
+			journalctl -b -u phc-to-phc-sync -n 50 > ptp.log
+			awk_program='/phc2sys/ { print $10; exit; }'
 			phc_to_phc_offset=$(tac ptp.log | gawk "${awk_program}")
 			# Got something, is it a number?
 			case "${phc_to_phc_offset}" in
 			''|[!\-][!0-9]*)
-				if ! systemctl is-active --quiet phc-to-phc-sync-slave; then
-					echo "Please start the phc-to-phc-sync services."
+				if ! systemctl is-active --quiet phc-to-phc-sync; then
+					echo "Please start the phc-to-phc-sync service."
 					return 1
 				else
 					echo "Trying again... ${phc_to_phc_offset}"
@@ -507,19 +507,13 @@ do_install_deps() {
 	install -Dm0644 "${TOPDIR}/deps/phc2sys.service" \
 		"/lib/systemd/system/phc2sys.service"
 	install -Dm0644 "${TOPDIR}/deps/phc-to-phc-sync.service" \
-		"/lib/systemd/system/phc-to-phc-sync-master.service"
-	install -Dm0644 "${TOPDIR}/deps/phc-to-phc-sync.service" \
-		"/lib/systemd/system/phc-to-phc-sync-slave.service"
+		"/lib/systemd/system/phc-to-phc-sync.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.service" \
 		"/lib/systemd/system/ptp4l.service"
 	install -Dm0644 "${TOPDIR}/deps/iperf3-server.service" \
 		"/lib/systemd/system/iperf3-server.service"
 	install -Dm0644 "${TOPDIR}/deps/iperf3-client.service" \
 		"/lib/systemd/system/iperf3-client.service"
-	install -Dm0644 "${TOPDIR}/deps/phc-to-phc-sync-master.cfg" \
-		"/etc/linuxptp/phc-to-phc-sync-master.cfg"
-	install -Dm0644 "${TOPDIR}/deps/phc-to-phc-sync-slave.cfg" \
-		"/etc/linuxptp/phc-to-phc-sync-slave.cfg"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
 		"/etc/linuxptp/ptp4l.conf"
 	if [ "${board}" = 2 ]; then
@@ -530,26 +524,23 @@ do_install_deps() {
 	fi
 	case "${scenario}" in
 	felix)
-		phc_sync_master="swp4"
-		phc_sync_slave="eno2"
+		phc_master="/dev/ptp1"
+		phc_slave="/dev/ptp0"
 		iface="swp1"
 		;;
 	enetc)
-		phc_sync_master="eno2"
-		phc_sync_slave="swp4"
+		phc_master="/dev/ptp0"
+		phc_slave="/dev/ptp1"
 		iface="eno0"
 		;;
 	esac
-	sed -i -e "s|#PHC#|${iface}|g" /lib/systemd/system/ptp4l.service
+	sed -i -e "s|#PHC#|${phc_master}|g" /lib/systemd/system/ptp4l.service
 	sed -i -e "s|#IFACE#|${iface}|g" /lib/systemd/system/ptp4l.service
-	sed -i -e "s|#IFACE#|${phc_sync_master}|g" /lib/systemd/system/phc-to-phc-sync-master.service
-	sed -i -e "s|#IFACE#|${phc_sync_slave}|g" /lib/systemd/system/phc-to-phc-sync-slave.service
-	sed -i -e "s|#CFG#|/etc/linuxptp/phc-to-phc-sync-master.cfg|g" /lib/systemd/system/phc-to-phc-sync-master.service
-	sed -i -e "s|#CFG#|/etc/linuxptp/phc-to-phc-sync-slave.cfg|g" /lib/systemd/system/phc-to-phc-sync-slave.service
+	sed -i -e "s|#PHC_MASTER#|${phc_master}|g" /lib/systemd/system/phc-to-phc-sync.service
+	sed -i -e "s|#PHC_SLAVE#|${phc_slave}|g" /lib/systemd/system/phc-to-phc-sync.service
 	systemctl daemon-reload
 	systemctl restart ptp4l
-	systemctl restart phc-to-phc-sync-master
-	systemctl restart phc-to-phc-sync-slave
+	systemctl restart phc-to-phc-sync
 	systemctl restart phc2sys
 }
 

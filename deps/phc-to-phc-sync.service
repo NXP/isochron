@@ -1,9 +1,11 @@
 [Unit]
 Description=Synchronize one PTP Hardware Clock to another
+Requires=ptp4l.service
+After=ptp4l.service
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/ptp4l -i #IFACE# -f #CFG# --BMCA noop --logSyncInterval -3 --network_transport L2 --delay_mechanism P2P --tx_timestamp_timeout 10 --uds_address /var/run/ptp4l-loopback
+ExecStart=/usr/sbin/phc2sys -s #PHC_MASTER# -c #PHC_SLAVE# -O 0 -S 0.00002
 
 [Install]
 WantedBy=multi-user.target
