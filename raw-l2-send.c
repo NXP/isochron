@@ -19,6 +19,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include "raw-l2-common.h"
 
@@ -154,6 +155,37 @@ static void app_init(void *data)
 	}
 }
 
+static int prog_configure_rt(struct prog_data *prog)
+{
+	struct sched_attr attr = {
+		.size = sizeof(struct sched_attr),
+		.sched_policy = SCHED_DEADLINE,
+		.sched_runtime = prog->period - prog->advance_time,
+		.sched_deadline = prog->period - prog->advance_time,
+		.sched_period = prog->period,
+	};
+	int rc;
+
+	/* Prevent the process's virtual memory from being swapped out, by
+	 * locking all current and future pages
+	 */
+	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
+	if (rc < 0) {
+		fprintf(stderr, "mlockall returned %d: %s\n",
+			errno, strerror(errno));
+		return rc;
+	}
+
+	rc = sched_setattr(getpid(), &attr, 0);
+	if (rc < 0) {
+		fprintf(stderr, "sched_setattr returned %d: %s\n",
+			errno, strerror(errno));
+		return rc;
+	}
+
+	return 0;
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	char now_buf[TIMESPEC_BUFSIZ];
@@ -242,6 +274,10 @@ static int prog_init(struct prog_data *prog)
 
 	ns_sprintf(now_buf, now);
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
+
+	rc = prog_configure_rt(prog);
+	if (rc < 0)
+		return rc;
 
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }

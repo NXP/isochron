@@ -3,9 +3,11 @@
 #include <linux/net_tstamp.h>
 #include <netinet/ether.h>
 #include <linux/sockios.h>
+#include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <linux/if.h>
 #include <sys/poll.h>
+#include <unistd.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +16,11 @@
 #include "raw-l2-common.h"
 
 #define TXTSTAMP_TIMEOUT_MS	100
+
+int sched_setattr(pid_t pid, const struct sched_attr *attr, unsigned int flags)
+{
+	return syscall(__NR_sched_setattr, pid, attr, flags);
+}
 
 int mac_addr_from_string(u8 *to, char *from)
 {
