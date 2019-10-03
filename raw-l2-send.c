@@ -384,6 +384,11 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -1;
 	}
 
+	if (prog->advance_time > prog->cycle_time) {
+		fprintf(stderr, "Advance time cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
