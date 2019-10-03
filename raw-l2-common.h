@@ -6,10 +6,15 @@
 #include <linux/sched.h>
 #include <sys/types.h>
 #include <stdint.h>
-#define NSEC_PER_SEC	1000000000ULL
+#define NSEC_PER_SEC	1000000000LL
 #define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
 #define TIMESPEC_BUFSIZ	32
 #define MACADDR_BUFSIZ	32
+
+/* From include/uapi/linux/net_tstamp.h */
+#ifndef SOF_TIMESTAMPING_OPT_TX_SWHW
+#define SOF_TIMESTAMPING_OPT_TX_SWHW	(1<<14)
+#endif
 
 typedef _Bool		bool;
 enum {
@@ -88,9 +93,15 @@ int prog_parse_np_args(int argc, char **argv,
 void prog_usage(char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
+struct timestamp {
+	struct timespec hw;
+	struct timespec sw;
+};
+
 int mac_addr_from_string(u8 *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, int on);
-int sk_receive(int fd, void *buf, int buflen, struct timespec *hwts, int flags);
+int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
+	       int flags);
 u64 timespec_to_ns(const struct timespec *ts);
 struct timespec ns_to_timespec(u64 ns);
 void mac_addr_sprintf(char *buf, u8 *addr);

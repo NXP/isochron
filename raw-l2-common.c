@@ -297,7 +297,8 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 
 	flags = SOF_TIMESTAMPING_TX_HARDWARE |
 		SOF_TIMESTAMPING_RX_HARDWARE |
-		SOF_TIMESTAMPING_RAW_HARDWARE;
+		SOF_TIMESTAMPING_RAW_HARDWARE |
+		SOF_TIMESTAMPING_OPT_TX_SWHW;
 
 	filter = HWTSTAMP_FILTER_PTP_V2_L2_EVENT;
 
@@ -318,6 +319,13 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 		return -1;
 	}
 
+	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPNS, &on, sizeof(on));
+	if (rc < 0) {
+		fprintf(stderr, "ioctl SO_TIMESTAMPNS failed: %s\n",
+			strerror(errno));
+		return rc;
+	}
+
 	flags = 1;
 	rc = setsockopt(fd, SOL_SOCKET, SO_SELECT_ERR_QUEUE,
 		        &flags, sizeof(flags));
@@ -330,7 +338,8 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 	return 0;
 }
 
-int sk_receive(int fd, void *buf, int buflen, struct timespec *hwts, int flags)
+int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
+	       int flags)
 {
 	struct iovec iov = { buf, buflen };
 	struct timespec *ts;
@@ -371,13 +380,24 @@ int sk_receive(int fd, void *buf, int buflen, struct timespec *hwts, int flags)
 			strerror(errno));
 
 	for (cm = CMSG_FIRSTHDR(&msg); cm != NULL; cm = CMSG_NXTHDR(&msg, cm)) {
-		if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SO_TIMESTAMPING) {
+		int level = cm->cmsg_level;
+		int type  = cm->cmsg_type;
+
+		if (level == SOL_SOCKET && type == SO_TIMESTAMPING) {
 			if (cm->cmsg_len < sizeof(*ts) * 3) {
 				fprintf(stderr, "short SO_TIMESTAMPING message\n");
 				return -1;
 			}
 			ts = (struct timespec *) CMSG_DATA(cm);
-			*hwts = ts[2];
+			tstamp->hw = ts[2];
+		}
+		if (level == SOL_SOCKET && type == SO_TIMESTAMPNS) {
+			if (cm->cmsg_len < sizeof(*ts)) {
+				fprintf(stderr, "short SO_TIMESTAMPNS message\n");
+				return -1;
+			}
+			ts = (struct timespec *) CMSG_DATA(cm);
+			tstamp->sw = ts[0];
 		}
 	}
 

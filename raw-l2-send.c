@@ -56,11 +56,13 @@ static int do_work(void *data, int iteration, u64 scheduled, clockid_t clkid)
 	struct app_private *priv = data;
 	unsigned char err_pkt[BUF_SIZ];
 	char scheduled_buf[TIMESPEC_BUFSIZ];
-	char tstamp_buf[TIMESPEC_BUFSIZ];
+	char hwts_buf[TIMESPEC_BUFSIZ];
+	char swts_buf[TIMESPEC_BUFSIZ];
 	char now_buf[TIMESPEC_BUFSIZ];
-	struct timespec now_ts, hwts;
 	struct app_header *app_hdr;
-	u64 now, tstamp;
+	struct timestamp tstamp;
+	struct timespec now_ts;
+	u64 now, hwts, swts;
 	int rc;
 
 	clock_gettime(clkid, &now_ts);
@@ -75,18 +77,20 @@ static int do_work(void *data, int iteration, u64 scheduled, clockid_t clkid)
 		perror("send\n");
 		return rc;
 	}
-	rc = sk_receive(priv->fd, err_pkt, BUF_SIZ, &hwts, MSG_ERRQUEUE);
+	rc = sk_receive(priv->fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE);
 	if (rc < 0)
 		return rc;
 
-	tstamp = timespec_to_ns(&hwts);
+	hwts = timespec_to_ns(&tstamp.hw);
+	swts = timespec_to_ns(&tstamp.sw);
 	now = timespec_to_ns(&now_ts);
 
 	ns_sprintf(scheduled_buf, scheduled);
-	ns_sprintf(tstamp_buf, tstamp);
+	ns_sprintf(hwts_buf, hwts);
+	ns_sprintf(swts_buf, swts);
 	ns_sprintf(now_buf, now);
-	printf("[%s] Sent frame scheduled for %s with seqid %d txtstamp %s\n",
-	       now_buf, scheduled_buf, iteration, tstamp_buf);
+	printf("[%s] Sent frame scheduled for %s with seqid %d txtstamp %s swts %s\n",
+	       now_buf, scheduled_buf, iteration, hwts_buf, swts_buf);
 	return 0;
 }
 
