@@ -33,8 +33,8 @@ struct prog_data {
 	long iterations;
 	clockid_t clkid;
 	u64 advance_time;
+	u64 cycle_time;
 	u64 base_time;
-	u64 period;
 	int priority;
 	int tx_len;
 	int fd;
@@ -93,17 +93,17 @@ static int do_work(void *data, int iteration, u64 scheduled, clockid_t clkid)
 static int run_nanosleep(struct prog_data *prog, void *app_data)
 {
 	u64 scheduled = prog->base_time + prog->advance_time;
+	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
-	char period_buf[TIMESPEC_BUFSIZ];
 	u64 wakeup = prog->base_time;
 	struct timespec wakeup_ts;
 	long i;
 	int rc;
 
 	ns_sprintf(base_time_buf, prog->base_time);
-	ns_sprintf(period_buf, prog->period);
+	ns_sprintf(cycle_time_buf, prog->cycle_time);
 	fprintf(stderr, "%10s: %s\n", "Base time", base_time_buf);
-	fprintf(stderr, "%10s: %s\n", "Period", period_buf);
+	fprintf(stderr, "%10s: %s\n", "Cycle time", cycle_time_buf);
 
 	/* Play nice with awk's array indexing */
 	for (i = 1; i <= prog->iterations; i++) {
@@ -117,7 +117,7 @@ static int run_nanosleep(struct prog_data *prog, void *app_data)
 			if (rc < 0)
 				break;
 
-			wakeup += prog->period;
+			wakeup += prog->cycle_time;
 			scheduled = wakeup + prog->advance_time;
 			break;
 		case EINTR:
@@ -136,7 +136,7 @@ static void usage(char *progname)
 {
 	fprintf(stderr,
 		"usage: \n"
-		"%s <netdev> <dest-mac> <prio> <base-time> <advance-time> <period> <iterations> <length>\n"
+		"%s <netdev> <dest-mac> <prio> <base-time> <advance-time> <cycle-time> <iterations> <length>\n"
 		"\n",
 		progname);
 }
@@ -160,9 +160,9 @@ static int prog_configure_rt(struct prog_data *prog)
 	struct sched_attr attr = {
 		.size = sizeof(struct sched_attr),
 		.sched_policy = SCHED_DEADLINE,
-		.sched_runtime = prog->period - prog->advance_time,
-		.sched_deadline = prog->period - prog->advance_time,
-		.sched_period = prog->period,
+		.sched_runtime = prog->cycle_time - prog->advance_time,
+		.sched_deadline = prog->cycle_time - prog->advance_time,
+		.sched_period = prog->cycle_time,
 	};
 	int rc;
 
@@ -294,7 +294,7 @@ static int prog_init(struct prog_data *prog)
 			base_time_buf);
 
 		prog->base_time = future_base_time(prog->base_time, now,
-						   prog->period);
+						   prog->cycle_time);
 	}
 
 	ns_sprintf(now_buf, now);
@@ -424,11 +424,11 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		argc--; argv++;
 	}
 
-	/* Get period */
+	/* Get cycle time */
 	if (argc > 1) {
-		rc = get_time_from_string(prog->clkid, &prog->period, argv[1]);
+		rc = get_time_from_string(prog->clkid, &prog->cycle_time, argv[1]);
 		if (rc < 0) {
-			fprintf(stderr, "Could not read period: %s\n",
+			fprintf(stderr, "Could not read cycle time: %s\n",
 				strerror(-rc));
 			return -1;
 		}
