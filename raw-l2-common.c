@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include "raw-l2-common.h"
 
 #define TXTSTAMP_TIMEOUT_MS	100
 
@@ -31,6 +32,26 @@ int mac_addr_from_string(u8 *to, char *from)
 	}
 
 	return 0;
+}
+
+u64 timespec_to_ns(const struct timespec *ts)
+{
+	return ts->tv_sec * NSEC_PER_SEC + ts->tv_nsec;
+}
+
+struct timespec ns_to_timespec(u64 ns)
+{
+	return (struct timespec) {
+		.tv_sec = ns / NSEC_PER_SEC,
+		.tv_nsec = ns % NSEC_PER_SEC,
+	};
+}
+
+void ns_sprintf(char *buf, u64 ns)
+{
+	struct timespec ts = ns_to_timespec(ns);
+
+	snprintf(buf, TIMESPEC_BUFSIZ, "%ld.%09ld", ts.tv_sec, ts.tv_nsec);
 }
 
 static void init_ifreq(struct ifreq *ifreq, struct hwtstamp_config *cfg,

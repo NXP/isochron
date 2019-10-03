@@ -22,7 +22,6 @@
 #include <unistd.h>
 #include "raw-l2-common.h"
 
-#define NSEC_PER_SEC	1000000000
 #define BUF_SIZ		1522
 
 struct prog_data {
@@ -30,11 +29,11 @@ struct prog_data {
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;
-	struct timespec advance_time;
-	struct timespec base_time;
-	struct timespec period;
-	clockid_t clkid;
 	long iterations;
+	clockid_t clkid;
+	u64 advance_time;
+	u64 base_time;
+	u64 period;
 	int priority;
 	int tx_len;
 	int fd;
@@ -51,47 +50,19 @@ struct app_header {
 	short seqid;
 };
 
-struct timespec timespec_sub(struct timespec a, struct timespec b)
-{
-	struct timespec ts = {
-		.tv_sec = a.tv_sec - b.tv_sec,
-		.tv_nsec = a.tv_nsec - b.tv_nsec,
-	};
-
-	while (ts.tv_nsec < 0) {
-		ts.tv_sec -= 1;
-		ts.tv_nsec += NSEC_PER_SEC;
-	}
-
-	return ts;
-}
-
-struct timespec timespec_add(struct timespec a, struct timespec b)
-{
-	struct timespec ts = {
-		.tv_sec = a.tv_sec + b.tv_sec,
-		.tv_nsec = a.tv_nsec + b.tv_nsec,
-	};
-
-	while (ts.tv_nsec >= NSEC_PER_SEC) {
-		ts.tv_sec += 1;
-		ts.tv_nsec -= NSEC_PER_SEC;
-	}
-
-	return ts;
-}
-
-static int do_work(void *data, int iteration,
-		   const struct timespec *scheduled_ts,
-		   clockid_t clkid)
+static int do_work(void *data, int iteration, u64 scheduled, clockid_t clkid)
 {
 	struct app_private *priv = data;
 	unsigned char err_pkt[BUF_SIZ];
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	char tstamp_buf[TIMESPEC_BUFSIZ];
+	char now_buf[TIMESPEC_BUFSIZ];
+	struct timespec now_ts, hwts;
 	struct app_header *app_hdr;
-	struct timespec now, hwts;
+	u64 now, tstamp;
 	int rc;
 
-	clock_gettime(clkid, &now);
+	clock_gettime(clkid, &now_ts);
 	app_hdr = (struct app_header *)(priv->sendbuf +
 					sizeof(struct ether_header));
 	app_hdr->seqid = htons(iteration);
@@ -106,37 +77,47 @@ static int do_work(void *data, int iteration,
 	rc = sk_receive(priv->fd, err_pkt, BUF_SIZ, &hwts, MSG_ERRQUEUE);
 	if (rc < 0)
 		return rc;
-	printf("[%ld.%09ld] Sent frame scheduled for %ld.%09ld with seqid %d txtstamp %ld.%09ld\n",
-	       now.tv_sec, now.tv_nsec,
-	       scheduled_ts->tv_sec, scheduled_ts->tv_nsec,
-	       iteration, hwts.tv_sec, hwts.tv_nsec);
+
+	tstamp = timespec_to_ns(&hwts);
+	now = timespec_to_ns(&now_ts);
+
+	ns_sprintf(scheduled_buf, scheduled);
+	ns_sprintf(tstamp_buf, tstamp);
+	ns_sprintf(now_buf, now);
+	printf("[%s] Sent frame scheduled for %s with seqid %d txtstamp %s\n",
+	       now_buf, scheduled_buf, iteration, tstamp_buf);
 	return 0;
 }
 
 static int run_nanosleep(struct prog_data *prog, void *app_data)
 {
-	struct timespec scheduled_ts = timespec_add(prog->base_time,
-						    prog->advance_time);
-	struct timespec ts = prog->base_time;
+	u64 scheduled = prog->base_time + prog->advance_time;
+	char base_time_buf[TIMESPEC_BUFSIZ];
+	char period_buf[TIMESPEC_BUFSIZ];
+	u64 wakeup = prog->base_time;
+	struct timespec wakeup_ts;
 	long i;
 	int rc;
 
-	fprintf(stderr, "%10s: %d.%09ld\n", "Base time",
-		prog->base_time.tv_sec, prog->base_time.tv_nsec);
-	fprintf(stderr, "%10s: %d.%09ld\n", "Period",
-		prog->period.tv_sec, prog->period.tv_nsec);
+	ns_sprintf(base_time_buf, prog->base_time);
+	ns_sprintf(period_buf, prog->period);
+	fprintf(stderr, "%10s: %s\n", "Base time", base_time_buf);
+	fprintf(stderr, "%10s: %s\n", "Period", period_buf);
 
 	/* Play nice with awk's array indexing */
 	for (i = 1; i <= prog->iterations; i++) {
-		rc = clock_nanosleep(prog->clkid, TIMER_ABSTIME, &ts, NULL);
+		struct timespec wakeup_ts = ns_to_timespec(wakeup);
+
+		rc = clock_nanosleep(prog->clkid, TIMER_ABSTIME,
+				     &wakeup_ts, NULL);
 		switch (rc) {
 		case 0:
-			rc = do_work(app_data, i, &scheduled_ts, prog->clkid);
+			rc = do_work(app_data, i, scheduled, prog->clkid);
 			if (rc < 0)
 				break;
 
-			ts = timespec_add(ts, prog->period);
-			scheduled_ts = timespec_add(ts, prog->advance_time);
+			wakeup += prog->period;
+			scheduled = wakeup + prog->advance_time;
 			break;
 		case EINTR:
 			continue;
@@ -173,21 +154,15 @@ static void app_init(void *data)
 	}
 }
 
-static inline int timespec_smaller(struct timespec a, struct timespec b)
-{
-	if (a.tv_sec == b.tv_sec)
-		return a.tv_nsec < b.tv_nsec;
-	else
-		return a.tv_sec < b.tv_sec;
-}
-
 static int prog_init(struct prog_data *prog)
 {
+	char now_buf[TIMESPEC_BUFSIZ];
 	struct ether_header *eh;
+	struct timespec now_ts;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
-	struct timespec now;
 	int warn_once = 1;
+	u64 now;
 	int rc;
 
 	prog->clkid = CLOCK_REALTIME;
@@ -241,44 +216,47 @@ static int prog_init(struct prog_data *prog)
 	/* Destination MAC */
 	memcpy(prog->socket_address.sll_addr, prog->dest_mac, ETH_ALEN);
 
-	rc = clock_gettime(prog->clkid, &now);
+	rc = clock_gettime(prog->clkid, &now_ts);
 	if (rc < 0) {
 		perror("clock_gettime");
 		close(prog->fd);
 		return rc;
 	}
 
-	prog->base_time = timespec_sub(prog->base_time, prog->advance_time);
+	now = timespec_to_ns(&now_ts);
+	prog->base_time -= prog->advance_time;
 
-	while (timespec_smaller(prog->base_time, now)) {
+	while (prog->base_time < now) {
 		if (warn_once) {
+			char base_time_buf[TIMESPEC_BUFSIZ];
+
+			ns_sprintf(base_time_buf, prog->base_time);
 			fprintf(stderr,
-				"Base time %ld.%09ld is in the past, "
+				"Base time %s is in the past, "
 				"winding it into the future\n",
-				prog->base_time.tv_sec,
-				prog->base_time.tv_nsec);
+				base_time_buf);
 			warn_once = 0;
 		}
-		prog->base_time = timespec_add(prog->base_time, prog->period);
+		prog->base_time += prog->period;
 	}
 
-	fprintf(stderr, "%10s: %d.%09ld\n", "Now", now.tv_sec, now.tv_nsec);
+	ns_sprintf(now_buf, now);
+	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
 
-static int get_time_from_string(clockid_t clkid, struct timespec *to,
-				char *from)
+static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
 {
 	char nsec_buf[] = "000000000";
-	struct timespec now = {0};
+	struct timespec now_ts = {0};
 	__kernel_time_t sec;
 	int read_nsec = 0;
 	int relative = 0;
 	char *nsec_str;
 	long nsec = 0;
-	int size;
-	int rc;
+	int size, rc;
+	u64 now = 0;
 
 	if (from[0] == '+') {
 		relative = 1;
@@ -313,15 +291,13 @@ static int get_time_from_string(clockid_t clkid, struct timespec *to,
 		}
 	}
 
-	if (relative)
-		clock_gettime(clkid, &now);
+	if (relative) {
+		clock_gettime(clkid, &now_ts);
+		now = timespec_to_ns(&now_ts);
+	}
 
-	*to = (struct timespec) {
-		.tv_sec = sec,
-		.tv_nsec = nsec,
-	};
-
-	*to = timespec_add(now, *to);
+	*to = sec * NSEC_PER_SEC + nsec;
+	*to += now;
 
 	return 0;
 }

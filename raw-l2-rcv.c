@@ -40,7 +40,7 @@ struct app_header {
 int signal_received = 0;
 
 #define app_fmt \
-	"[%ld.%09ld] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d rxtstamp %ld.%09ld\n"
+	"[%s] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d rxtstamp %s\n"
 
 /**
  * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
@@ -66,19 +66,26 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	struct ether_header *eth_hdr = (struct ether_header *)rcvbuf;
 	struct app_header *app_hdr = (struct app_header *)(eth_hdr + 1);
 	struct app_private *priv = app_data;
-	struct timespec now;
+	char tstamp_buf[TIMESPEC_BUFSIZ];
+	char now_buf[TIMESPEC_BUFSIZ];
+	struct timespec now_ts;
+	u64 tstamp, now;
 	int i, rc;
 
-	rc = clock_gettime(priv->clkid, &now);
+	rc = clock_gettime(priv->clkid, &now_ts);
 	if (rc < 0) {
 		fprintf(stderr, "clock_gettime returned %d: %s", errno,
 			strerror(errno));
 		return -errno;
 	}
+	tstamp = timespec_to_ns(hwts);
+	now = timespec_to_ns(&now_ts);
 
 	/* Print packet */
+	ns_sprintf(now_buf, now);
+	ns_sprintf(tstamp_buf, tstamp);
 	printf(app_fmt,
-	       now.tv_sec, now.tv_nsec,
+	       now_buf,
 	       eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
 	       eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
 	       eth_hdr->ether_shost[4], eth_hdr->ether_shost[5],
@@ -86,7 +93,7 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	       eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
 	       eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5],
 	       ntohs(eth_hdr->ether_type), ntohs(app_hdr->seqid),
-	       hwts->tv_sec, hwts->tv_nsec);
+	       tstamp_buf);
 
 	return 0;
 }
