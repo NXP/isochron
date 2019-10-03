@@ -26,7 +26,7 @@
 #define BUF_SIZ		1522
 
 struct prog_data {
-	uint8_t dest_mac[ETH_ALEN];
+	u8 dest_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;

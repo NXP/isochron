@@ -14,7 +14,7 @@
 
 #define TXTSTAMP_TIMEOUT_MS	100
 
-int mac_addr_from_string(uint8_t *to, char *from)
+int mac_addr_from_string(u8 *to, char *from)
 {
 	unsigned long byte;
 	char *p = from;
@@ -22,7 +22,7 @@ int mac_addr_from_string(uint8_t *to, char *from)
 
 	for (i = 0; i < ETH_ALEN; i++) {
 		byte = strtoul(p, &p, 16);
-		to[i] = (uint8_t )byte;
+		to[i] = (u8 )byte;
 		if (i == (ETH_ALEN - 1) && *p != 0)
 			/* 6 bytes processed but more are present */
 			return -EFBIG;

@@ -22,10 +22,10 @@
 #define BUF_SIZ		1522
 
 struct prog_data {
-	uint8_t dest_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
-	uint8_t rcvbuf[BUF_SIZ];
+	u8 dest_mac[ETH_ALEN];
 	unsigned int if_index;
+	u8 rcvbuf[BUF_SIZ];
 	int fd;
 };
 
