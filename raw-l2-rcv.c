@@ -48,9 +48,9 @@ int signal_received = 0;
  *
  * Return a u64 value of the address
  */
-static inline uint64_t ether_addr_to_u64(const unsigned char *addr)
+static inline u64 ether_addr_to_u64(const unsigned char *addr)
 {
-	uint64_t u = 0;
+	u64 u = 0;
 	int i;
 
 	for (i = 0; i < ETH_ALEN; i++)
