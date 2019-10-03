@@ -124,7 +124,7 @@ case "${board}" in
 
 	echo "Configuration successful."
 	echo "To test with traffic, run:"
-	echo "${TOPDIR}/raw-l2-rcv eno2.100"
+	echo "${TOPDIR}/raw-l2-rcv -i eno2.100"
 	echo "ip link set dev swp0 down"
 	echo "ip link set dev swp0 up"
 	echo "ip link set dev swp1 down"
@@ -164,9 +164,20 @@ case "${board}" in
 
 	board1=$(get_remote_mac 192.168.1.1 iproute2 eno2)
 	arp -s 192.168.100.1 "${board1}" dev eno2.100
-	echo "Configuration successful."
-	echo "To test with traffic, run:"
-	echo "${TOPDIR}/raw-l2-send eno2.100 ${board1} 7 +0.1 0.0 0.2 30 64"
+	cat <<-EOF
+	Configuration successful.
+	To test with traffic, run:
+
+	${TOPDIR}/raw-l2-send \\
+		--interface eno2.100 \\
+		--dmac ${board1} \\
+		--priority 7 \\
+		--base-time +0.1 \\
+		--advance-time 0.0 \\
+		--cycle-time 0.2 \\
+		--num-frames 30 \\
+		--frame-size 64
+	EOF
 	;;
 3)
 	# The untagged port-based VLAN (pvid) has the loop intentionally broken

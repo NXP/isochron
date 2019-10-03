@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <time.h>
 #include "raw-l2-common.h"
 
 #define TXTSTAMP_TIMEOUT_MS	100
@@ -39,6 +40,192 @@ int mac_addr_from_string(u8 *to, char *from)
 	}
 
 	return 0;
+}
+
+static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
+{
+	char nsec_buf[] = "000000000";
+	struct timespec now_ts = {0};
+	__kernel_time_t sec;
+	int read_nsec = 0;
+	int relative = 0;
+	char *nsec_str;
+	long nsec = 0;
+	int size, rc;
+	u64 now = 0;
+
+	if (from[0] == '+') {
+		relative = 1;
+		from++;
+	}
+
+	errno = 0;
+	sec = strtol(from, &from, 0);
+	if (errno) {
+		fprintf(stderr, "Failed to read seconds: %s\n",
+			strerror(errno));
+		return -EINVAL;
+	}
+	if (from[0] == '.') {
+		read_nsec = 1;
+		from++;
+	}
+	if (read_nsec) {
+		size = snprintf(nsec_buf, 9, "%s", from);
+		if (size < 9)
+			nsec_buf[size] = '0';
+
+		errno = 0;
+		/* Force base 10 here, since leading zeroes will make
+		 * strtol think this is an octal number.
+		 */
+		nsec = strtol(nsec_buf, NULL, 10);
+		if (errno) {
+			fprintf(stderr, "Failed to extract ns info: %s\n",
+				strerror(errno));
+			return -EINVAL;
+		}
+	}
+
+	if (relative) {
+		clock_gettime(clkid, &now_ts);
+		now = timespec_to_ns(&now_ts);
+	}
+
+	*to = sec * NSEC_PER_SEC + nsec;
+	*to += now;
+
+	return 0;
+}
+
+/* Parse non-positional arguments and return the number of
+ * arguments consumed. Return on first positional argument
+ * found.
+ */
+int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
+		       int prog_args_size)
+{
+	struct prog_arg_string string;
+	struct prog_arg_time time;
+	int rc, i, parsed = 0;
+	long int *long_ptr;
+	bool *parsed_arr;
+	char *arg;
+
+	parsed_arr = calloc(sizeof(bool), prog_args_size);
+	if (!parsed_arr)
+		return -ENOMEM;
+
+	while (argc) {
+		for (i = 0; i < prog_args_size; i++) {
+			arg = argv[0];
+
+			if (strcmp(arg, prog_args[i].short_opt) &&
+			    strcmp(arg, prog_args[i].long_opt))
+				continue;
+
+			/* Consume argument specifier */
+			parsed++;
+			argc--;
+			argv++;
+
+			if (!argc) {
+				fprintf(stderr, "Value expected after %s\n",
+					arg);
+				free(parsed_arr);
+				return -EINVAL;
+			}
+
+			switch (prog_args[i].type) {
+			case PROG_ARG_MAC_ADDR:
+				rc = mac_addr_from_string(prog_args[i].mac.buf,
+							  argv[0]);
+				if (rc < 0) {
+					fprintf(stderr, "Could not read %s: %s\n",
+						prog_args[i].long_opt,
+						strerror(-rc));
+					free(parsed_arr);
+					return rc;
+				}
+				break;
+			case PROG_ARG_LONG:
+				long_ptr = prog_args[i].long_ptr.ptr;
+
+				errno = 0;
+				*long_ptr = strtol(argv[0], NULL, 0);
+				if (errno) {
+					fprintf(stderr, "Could not read %s: %s\n",
+						prog_args[i].long_opt,
+						strerror(errno));
+					free(parsed_arr);
+					return -1;
+				}
+				break;
+			case PROG_ARG_TIME:
+				time = prog_args[i].time;
+
+				rc = get_time_from_string(time.clkid, time.ns,
+							  argv[0]);
+				if (rc < 0) {
+					fprintf(stderr, "Could not read base time: %s\n",
+						strerror(-rc));
+					free(parsed_arr);
+					return -1;
+				}
+				break;
+			case PROG_ARG_STRING:
+				string = prog_args[i].string;
+				strncpy(string.buf, argv[0], string.size);
+				break;
+			default:
+				fprintf(stderr, "Unknown argument type %d\n",
+					prog_args[i].type);
+				free(parsed_arr);
+				return -EINVAL;
+			}
+
+			/* Consume actual argument */
+			parsed++;
+			argc--;
+			argv++;
+			parsed_arr[i] = true;
+
+			/* Success, stop searching */
+			break;
+		}
+		if (i == prog_args_size)
+			break;
+	}
+
+	for (i = 0; i < prog_args_size; i++) {
+		if (!prog_args[i].optional && !parsed_arr[i]) {
+			fprintf(stderr, "Please specify %s\n",
+				prog_args[i].long_opt);
+			free(parsed_arr);
+			return -EINVAL;
+		}
+	}
+
+	return parsed;
+}
+
+static const char *prog_arg_type_str[] = {
+	[PROG_ARG_MAC_ADDR] = "MAC address",
+	[PROG_ARG_LONG] = "Long integer",
+	[PROG_ARG_TIME] = "Time in sec.nsec format",
+	[PROG_ARG_STRING] = "String",
+};
+
+void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
+{
+	int i;
+
+	fprintf(stderr, "%s usage:\n", prog_name);
+
+	for (i = 0; i < prog_args_size; i++)
+		fprintf(stderr, "%s|%s: %s\n",
+			prog_args[i].short_opt, prog_args[i].long_opt,
+			prog_arg_type_str[prog_args[i].type]);
 }
 
 void mac_addr_sprintf(char *buf, u8 *addr)

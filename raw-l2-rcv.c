@@ -262,39 +262,46 @@ static int prog_init(struct prog_data *prog)
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
 
-static void usage(char *progname)
-{
-	fprintf(stderr,
-		"usage: \n"
-		"%s <netdev> [<mac-addr>]\n"
-		"\n",
-		progname);
-}
-
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 {
+	struct prog_arg args[] = {
+		{
+			.short_opt = "-i",
+			.long_opt = "--interface",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->if_name,
+				.size = IFNAMSIZ - 1,
+			},
+		}, {
+			.short_opt = "-d",
+			.long_opt = "--dmac",
+			.type = PROG_ARG_MAC_ADDR,
+			.mac = {
+				.buf = prog->dest_mac,
+			},
+			.optional = true,
+		},
+	};
+	char *prog_name = argv[0];
 	int rc;
 
-	if (argc < 2) {
-		usage(argv[0]);
+	/* Consume prog_name */
+	argc--;
+	argv++;
+
+	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
+
+	/* Non-positional arguments left unconsumed */
+	if (rc < 0) {
+		fprintf(stderr, "Parsing returned %d: %s\n",
+			-rc, strerror(-rc));
+		return rc;
+	} else if (rc < argc) {
+		fprintf(stderr, "%d unconsumed arguments. First: %s\n",
+			argc - rc, argv[rc]);
+		prog_usage(prog_name, args, ARRAY_SIZE(args));
 		return -1;
-	}
-
-	/* Get interface name */
-	if (argc > 1) {
-		strncpy(prog->if_name, argv[1], IFNAMSIZ - 1);
-		argc--; argv++;
-	}
-
-	/* Get destination MAC */
-	if (argc > 1) {
-		rc = mac_addr_from_string(prog->dest_mac, argv[1]);
-		if (rc < 0) {
-			fprintf(stderr, "Could not read MAC address: %s\n",
-				strerror(-rc));
-			return -1;
-		}
-		argc--; argv++;
 	}
 
 	return 0;

@@ -318,9 +318,16 @@ do_send_traffic() {
 	receiver_open=true
 
 	echo "Opening transmitter process..."
-	"${TOPDIR}/raw-l2-send" "${iface}" "${dmac}" "${txq}" "${os_base_time}" \
-		"${advance_time}" "${period}" "${frames}" \
-		"${length}" > tx.log
+	"${TOPDIR}/raw-l2-send" \
+		--interface "${iface}" \
+		--dmac "${dmac}" \
+		--priority "${txq}" \
+		--base-time "${os_base_time}" \
+		--advance-time "${advance_time}" \
+		--cycle-time "${period}" \
+		--num-frames "${frames}" \
+		--frame-size "${length}" \
+		> tx.log
 
 	printf "Stopping receiver process... "
 	${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
@@ -364,7 +371,7 @@ do_start_rcv_traffic() {
 	rm -f rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
-		-c "exec ${TOPDIR}/raw-l2-rcv ${iface} > ${TOPDIR}/rx.log 2>&1" \
+		-c "exec ${TOPDIR}/raw-l2-rcv -i ${iface} > ${TOPDIR}/rx.log 2>&1" \
 		&& echo "OK" || echo "FAIL"
 }
 

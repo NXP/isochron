@@ -35,8 +35,8 @@ struct prog_data {
 	u64 advance_time;
 	u64 cycle_time;
 	u64 base_time;
-	int priority;
-	int tx_len;
+	long priority;
+	long tx_len;
 	int fd;
 };
 
@@ -130,15 +130,6 @@ static int run_nanosleep(struct prog_data *prog, void *app_data)
 	}
 
 	return 0;
-}
-
-static void usage(char *progname)
-{
-	fprintf(stderr,
-		"usage: \n"
-		"%s <netdev> <dest-mac> <prio> <base-time> <advance-time> <cycle-time> <iterations> <length>\n"
-		"\n",
-		progname);
 }
 
 static void app_init(void *data)
@@ -307,156 +298,90 @@ static int prog_init(struct prog_data *prog)
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
 
-static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
-{
-	char nsec_buf[] = "000000000";
-	struct timespec now_ts = {0};
-	__kernel_time_t sec;
-	int read_nsec = 0;
-	int relative = 0;
-	char *nsec_str;
-	long nsec = 0;
-	int size, rc;
-	u64 now = 0;
-
-	if (from[0] == '+') {
-		relative = 1;
-		from++;
-	}
-
-	errno = 0;
-	sec = strtol(from, &from, 0);
-	if (errno) {
-		fprintf(stderr, "Failed to read seconds: %s\n",
-			strerror(errno));
-		return -EINVAL;
-	}
-	if (from[0] == '.') {
-		read_nsec = 1;
-		from++;
-	}
-	if (read_nsec) {
-		size = snprintf(nsec_buf, 9, "%s", from);
-		if (size < 9)
-			nsec_buf[size] = '0';
-
-		errno = 0;
-		/* Force base 10 here, since leading zeroes will make
-		 * strtol think this is an octal number.
-		 */
-		nsec = strtol(nsec_buf, NULL, 10);
-		if (errno) {
-			fprintf(stderr, "Failed to extract ns info: %s\n",
-				strerror(errno));
-			return -EINVAL;
-		}
-	}
-
-	if (relative) {
-		clock_gettime(clkid, &now_ts);
-		now = timespec_to_ns(&now_ts);
-	}
-
-	*to = sec * NSEC_PER_SEC + nsec;
-	*to += now;
-
-	return 0;
-}
-
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 {
+	struct prog_arg args[] = {
+		{
+			.short_opt = "-i",
+			.long_opt = "--interface",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->if_name,
+				.size = IFNAMSIZ - 1,
+			},
+		}, {
+			.short_opt = "-d",
+			.long_opt = "--dmac",
+			.type = PROG_ARG_MAC_ADDR,
+			.mac = {
+				.buf = prog->dest_mac,
+			},
+		}, {
+			.short_opt = "-p",
+			.long_opt = "--priority",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->priority,
+			},
+		}, {
+			.short_opt = "-b",
+			.long_opt = "--base-time",
+			.type = PROG_ARG_TIME,
+			.time = {
+				.clkid = CLOCK_REALTIME,
+				.ns = &prog->base_time,
+			},
+		}, {
+			.short_opt = "-a",
+			.long_opt = "--advance-time",
+			.type = PROG_ARG_TIME,
+			.time = {
+				.clkid = CLOCK_REALTIME,
+				.ns = &prog->advance_time,
+			},
+		}, {
+			.short_opt = "-c",
+			.long_opt = "--cycle-time",
+			.type = PROG_ARG_TIME,
+			.time = {
+				.clkid = CLOCK_REALTIME,
+				.ns = &prog->cycle_time,
+			},
+		}, {
+			.short_opt = "-n",
+			.long_opt = "--num-frames",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->iterations,
+			},
+		}, {
+			.short_opt = "-s",
+			.long_opt = "--frame-size",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->tx_len,
+			},
+		},
+	};
+	char *prog_name = argv[0];
 	int rc;
 
-	if (argc != 9) {
-		usage(argv[0]);
+	/* Consume prog_name */
+	argc--;
+	argv++;
+
+	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
+
+	/* Non-positional arguments left unconsumed */
+	if (rc < 0) {
+		fprintf(stderr, "Parsing returned %d: %s\n",
+			-rc, strerror(-rc));
+		return rc;
+	} else if (rc < argc) {
+		fprintf(stderr, "%d unconsumed arguments. First: %s\n",
+			argc - rc, argv[rc]);
+		prog_usage(prog_name, args, ARRAY_SIZE(args));
 		return -1;
-	}
-
-	/* Get interface name */
-	if (argc > 1) {
-		strncpy(prog->if_name, argv[1], IFNAMSIZ - 1);
-		argc--; argv++;
-	}
-
-	/* Get destination MAC */
-	if (argc > 1) {
-		rc = mac_addr_from_string(prog->dest_mac, argv[1]);
-		if (rc < 0) {
-			fprintf(stderr, "Could not read MAC address: %s\n",
-				strerror(-rc));
-			return -1;
-		}
-		argc--; argv++;
-	}
-
-	/* Get socket priority */
-	if (argc > 1) {
-		errno = 0;
-		prog->priority = strtol(argv[1], NULL, 0);
-		if (errno) {
-			fprintf(stderr, "Could not read priority: %s\n",
-				strerror(errno));
-			return -1;
-		}
-		argc--; argv++;
-	}
-
-	/* Get base time */
-	if (argc > 1) {
-		rc = get_time_from_string(prog->clkid, &prog->base_time,
-					  argv[1]);
-		if (rc < 0) {
-			fprintf(stderr, "Could not read base time: %s\n",
-				strerror(-rc));
-			return -1;
-		}
-		argc--; argv++;
-	}
-
-	/* Get advance time */
-	if (argc > 1) {
-		rc = get_time_from_string(prog->clkid, &prog->advance_time, argv[1]);
-		if (rc < 0) {
-			fprintf(stderr, "Could not read advance_time: %s\n",
-				strerror(-rc));
-			return -1;
-		}
-		argc--; argv++;
-	}
-
-	/* Get cycle time */
-	if (argc > 1) {
-		rc = get_time_from_string(prog->clkid, &prog->cycle_time, argv[1]);
-		if (rc < 0) {
-			fprintf(stderr, "Could not read cycle time: %s\n",
-				strerror(-rc));
-			return -1;
-		}
-		argc--; argv++;
-	}
-
-	/* Get number of iterations */
-	if (argc > 1) {
-		errno = 0;
-		prog->iterations = strtol(argv[1], NULL, 0);
-		if (errno) {
-			printf("Integer overflow occured while reading iterations: %s\n",
-				strerror(errno));
-			return -1;
-		}
-		argc--; argv++;
-	}
-
-	/* Get frame length */
-	if (argc > 1) {
-		errno = 0;
-		prog->tx_len = strtol(argv[1], NULL, 0);
-		if (errno) {
-			printf("Integer overflow occured while reading length: %s\n",
-				strerror(errno));
-			return -1;
-		}
-		argc--; argv++;
 	}
 
 	return 0;
