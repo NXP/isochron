@@ -68,7 +68,7 @@ void ns_sprintf(char *buf, u64 ns)
 }
 
 static void init_ifreq(struct ifreq *ifreq, struct hwtstamp_config *cfg,
-	const char *if_name)
+		       const char *if_name)
 {
 	memset(ifreq, 0, sizeof(*ifreq));
 	memset(cfg, 0, sizeof(*cfg));
