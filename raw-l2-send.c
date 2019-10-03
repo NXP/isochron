@@ -186,6 +186,33 @@ static int prog_configure_rt(struct prog_data *prog)
 	return 0;
 }
 
+/* Calculate the first base_time in the future that satisfies this
+ * relationship:
+ *
+ * future_base_time = base_time + N x cycle_time >= now, or
+ *
+ *      now - base_time
+ * N >= ---------------
+ *         cycle_time
+ *
+ * Because N is an integer, the ceiling value of the above "a / b" ratio
+ * is in fact precisely the floor value of "(a + b - 1) / b", which is
+ * easier to calculate only having integer division tools.
+ */
+static s64 future_base_time(s64 base_time, s64 cycle_time, s64 now)
+{
+	s64 a, b, n;
+
+	if (base_time >= now)
+		return base_time;
+
+	a = now - base_time;
+	b = cycle_time;
+	n = (a + b - 1) / b;
+
+	return base_time + n * cycle_time;
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	char now_buf[TIMESPEC_BUFSIZ];
@@ -193,7 +220,6 @@ static int prog_init(struct prog_data *prog)
 	struct timespec now_ts;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
-	int warn_once = 1;
 	u64 now;
 	int rc;
 
@@ -258,18 +284,17 @@ static int prog_init(struct prog_data *prog)
 	now = timespec_to_ns(&now_ts);
 	prog->base_time -= prog->advance_time;
 
-	while (prog->base_time < now) {
-		if (warn_once) {
-			char base_time_buf[TIMESPEC_BUFSIZ];
+	if (prog->base_time < now) {
+		char base_time_buf[TIMESPEC_BUFSIZ];
 
-			ns_sprintf(base_time_buf, prog->base_time);
-			fprintf(stderr,
-				"Base time %s is in the past, "
-				"winding it into the future\n",
-				base_time_buf);
-			warn_once = 0;
-		}
-		prog->base_time += prog->period;
+		ns_sprintf(base_time_buf, prog->base_time);
+		fprintf(stderr,
+			"Base time %s is in the past, "
+			"winding it into the future\n",
+			base_time_buf);
+
+		prog->base_time = future_base_time(prog->base_time, now,
+						   prog->period);
 	}
 
 	ns_sprintf(now_buf, now);
