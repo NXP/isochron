@@ -40,7 +40,7 @@ struct app_header {
 int signal_received = 0;
 
 #define app_fmt \
-	"[%s] src %02x:%02x:%02x:%02x:%02x:%02x dst %02x:%02x:%02x:%02x:%02x:%02x ethertype 0x%04x seqid %d rxtstamp %s\n"
+	"[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s\n"
 
 /**
  * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
@@ -68,6 +68,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	struct app_private *priv = app_data;
 	char tstamp_buf[TIMESPEC_BUFSIZ];
 	char now_buf[TIMESPEC_BUFSIZ];
+	char smac_buf[MACADDR_BUFSIZ];
+	char dmac_buf[MACADDR_BUFSIZ];
 	struct timespec now_ts;
 	u64 tstamp, now;
 	int i, rc;
@@ -84,14 +86,9 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	/* Print packet */
 	ns_sprintf(now_buf, now);
 	ns_sprintf(tstamp_buf, tstamp);
-	printf(app_fmt,
-	       now_buf,
-	       eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
-	       eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
-	       eth_hdr->ether_shost[4], eth_hdr->ether_shost[5],
-	       eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
-	       eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
-	       eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5],
+	mac_addr_sprintf(smac_buf, eth_hdr->ether_shost);
+	mac_addr_sprintf(dmac_buf, eth_hdr->ether_dhost);
+	printf(app_fmt, now_buf, smac_buf, dmac_buf,
 	       ntohs(eth_hdr->ether_type), ntohs(app_hdr->seqid),
 	       tstamp_buf);
 

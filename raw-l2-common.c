@@ -34,6 +34,12 @@ int mac_addr_from_string(u8 *to, char *from)
 	return 0;
 }
 
+void mac_addr_sprintf(char *buf, u8 *addr)
+{
+	snprintf(buf, MACADDR_BUFSIZ, "%02x:%02x:%02x:%02x:%02x:%02x",
+		 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
+
 u64 timespec_to_ns(const struct timespec *ts)
 {
 	return ts->tv_sec * NSEC_PER_SEC + ts->tv_nsec;
