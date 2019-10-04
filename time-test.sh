@@ -102,7 +102,6 @@ error() {
 trap 'error ${LINENO}' ERR
 
 do_cleanup() {
-	rm -f tx.log combined.log ptp.log
 	if [ ${receiver_open} = true ]; then
 		printf "Stopping receiver process... "
 		${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
@@ -342,16 +341,11 @@ do_send_traffic() {
 		exit 1
 	}
 
-	rm -f combined.log
-
-	while IFS= read -r line; do
-		seqid=$(echo "${line}" | gawk '/seqid/ { print $9; }')
-		otherline=$(cat rx.log | grep "seqid ${seqid} " || :)
-		echo "${line} ${otherline}" >> combined.log
-	done < tx.log
-
-	cat combined.log | gawk -f "${TOPDIR}/time-test.awk" \
-		-v utc_offset="${utc_offset}.0"
+	"${TOPDIR}/time-test.py" \
+		tx.log \
+		rx.log \
+		"${utc_offset}.0" \
+		"${advance_time}"
 }
 
 do_start_rcv_traffic() {
