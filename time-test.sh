@@ -17,8 +17,8 @@ scenario="enetc"
 # Board 2 and measure its latency by taking MAC TX and RX timestamp. It also
 # illustrates how a link's bandwidth can be budgeted in order to allow a
 # cyclic application to produce data that is forwarded with low jitter and
-# arrives at the destination at a deterministic time. The iperf3-server and
-# iperf3-client services can also be used to test the system under load.
+# arrives at the destination at a deterministic time. Then iperf3 can also
+# be used to test the system under load.
 #
 # The interfaces on the sender and receiver board are kept in sync via ptp4l,
 # so that the delta between the RX and TX timestamps makes sense.
@@ -499,7 +499,7 @@ do_install_deps() {
 	local phc_slave=
 	local iface=
 
-	packages="arping gawk expect"
+	packages="arping gawk"
 	for pkg in ${packages}; do
 		if ! command -v ${pkg} > /dev/null; then
 			apt install ${pkg}
@@ -511,17 +511,10 @@ do_install_deps() {
 		"/lib/systemd/system/phc-to-phc-sync.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.service" \
 		"/lib/systemd/system/ptp4l.service"
-	install -Dm0644 "${TOPDIR}/deps/iperf3-server.service" \
-		"/lib/systemd/system/iperf3-server.service"
-	install -Dm0644 "${TOPDIR}/deps/iperf3-client.service" \
-		"/lib/systemd/system/iperf3-client.service"
 	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
 		"/etc/linuxptp/ptp4l.conf"
 	if [ "${board}" = 2 ]; then
 		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.conf
-		sed -i -e "s|#IP#|${board1_ip}|g" /lib/systemd/system/iperf3-client.service
-	else
-		sed -i -e "s|#IP#|${board2_ip}|g" /lib/systemd/system/iperf3-client.service
 	fi
 	case "${scenario}" in
 	felix)
