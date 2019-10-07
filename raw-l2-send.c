@@ -345,6 +345,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.clkid = CLOCK_REALTIME,
 				.ns = &prog->advance_time,
 			},
+			.optional = true,
 		}, {
 			.short_opt = "-S",
 			.long_opt = "--shift-time",
@@ -398,6 +399,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		prog_usage(prog_name, args, ARRAY_SIZE(args));
 		return -1;
 	}
+
+	/* No point in leaving this one's default to zero, if we know that
+	 * means it will always be late for its gate event.
+	 */
+	if (!prog->advance_time)
+		prog->advance_time = prog->cycle_time;
 
 	if (prog->advance_time > prog->cycle_time) {
 		fprintf(stderr, "Advance time cannot be higher than cycle time\n");
