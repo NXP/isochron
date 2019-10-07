@@ -8,10 +8,9 @@ Description=Precision Time Protocol (PTP) service
 
 [Service]
 Type=simple
-ExecStartPre=/sbin/hwclock --hctosys
-ExecStartPre=/usr/sbin/phc_ctl #PHC# set
-ExecStartPre=/usr/sbin/phc_ctl #PHC# freq 0
-ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ptp4l.conf -i #IFACE#
+ExecStartPre=/usr/sbin/phc_ctl %PHC% set
+ExecStartPre=/usr/sbin/phc_ctl %PHC% freq 0
+ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ptp4l.cfg
 
 [Install]
 WantedBy=multi-user.target

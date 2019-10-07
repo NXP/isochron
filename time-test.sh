@@ -403,14 +403,14 @@ check_sync() {
 		sleep 1
 
 		# Check slave PHC offset to its master
-		journalctl -b -u ptp4l -n 50 > ptp.log
+		journalctl -b -u linuxptp -n 50 > ptp.log
 		awk_program='/ptp4l/ { print $9; exit; }'
 		phc_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${phc_offset}" in
 		''|[!\-][!0-9]*)
-			if ! systemctl is-active --quiet ptp4l; then
-				echo "Please start the ptp4l service."
+			if ! systemctl is-active --quiet linuxptp; then
+				echo "Please start the linuxptp service."
 				return 1
 			else
 				echo "Trying again..."
@@ -429,14 +429,14 @@ check_sync() {
 
 		if [ "${scenario}" = "felix" ]; then
 			# Check offset between the ENETC and the Felix PHC
-			journalctl -b -u phc-to-phc-sync -n 50 > ptp.log
+			journalctl -b -u linuxptp-phc2phc -n 50 > ptp.log
 			awk_program='/phc2sys/ { print $10; exit; }'
 			phc_to_phc_offset=$(tac ptp.log | gawk "${awk_program}")
 			# Got something, is it a number?
 			case "${phc_to_phc_offset}" in
 			''|[!\-][!0-9]*)
-				if ! systemctl is-active --quiet phc-to-phc-sync; then
-					echo "Please start the phc-to-phc-sync service."
+				if ! systemctl is-active --quiet linuxptp-phc2phc; then
+					echo "Please start the linuxptp-phc2phc service."
 					return 1
 				else
 					echo "Trying again... ${phc_to_phc_offset}"
@@ -455,14 +455,14 @@ check_sync() {
 		fi
 
 		# Check offset between the PHC and the system clock
-		journalctl -b -u phc2sys -n 50 > ptp.log
+		journalctl -b -u linuxptp-system-clock -n 50 > ptp.log
 		awk_program='/phc2sys/ { print $10; exit; }'
 		system_clock_offset=$(tac ptp.log | gawk "${awk_program}")
 		# Got something, is it a number?
 		case "${system_clock_offset}" in
 		''|[!\-][!0-9]*)
-			if ! systemctl is-active --quiet phc-to-phc-sync-slave; then
-				echo "Please start the phc2sys service."
+			if ! systemctl is-active --quiet linuxptp-system-clock; then
+				echo "Please start the linuxptp-system-clock service."
 				return 1
 			else
 				echo "Trying again..."
@@ -511,16 +511,16 @@ do_install_deps() {
 			apt install ${pkg}
 		fi
 	done
-	install -Dm0644 "${TOPDIR}/deps/phc2sys.service" \
-		"/lib/systemd/system/phc2sys.service"
-	install -Dm0644 "${TOPDIR}/deps/phc-to-phc-sync.service" \
-		"/lib/systemd/system/phc-to-phc-sync.service"
-	install -Dm0644 "${TOPDIR}/deps/ptp4l.service" \
-		"/lib/systemd/system/ptp4l.service"
-	install -Dm0644 "${TOPDIR}/deps/ptp4l.conf" \
-		"/etc/linuxptp/ptp4l.conf"
+	install -Dm0644 "${TOPDIR}/deps/linuxptp-system-clock.service" \
+		"/lib/systemd/system/linuxptp-system-clock.service"
+	install -Dm0644 "${TOPDIR}/deps/linuxptp-phc2phc.service" \
+		"/lib/systemd/system/linuxptp-phc2phc.service"
+	install -Dm0644 "${TOPDIR}/deps/linuxptp.service" \
+		"/lib/systemd/system/linuxptp.service"
+	install -Dm0644 "${TOPDIR}/deps/ptp4l.cfg" \
+		"/etc/linuxptp/ptp4l.cfg"
 	if [ "${board}" = 2 ]; then
-		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.conf
+		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.cfg
 	fi
 	case "${scenario}" in
 	felix)
@@ -534,14 +534,14 @@ do_install_deps() {
 		iface="eno0"
 		;;
 	esac
-	sed -i -e "s|#PHC#|${phc_master}|g" /lib/systemd/system/ptp4l.service
-	sed -i -e "s|#IFACE#|${iface}|g" /lib/systemd/system/ptp4l.service
-	sed -i -e "s|#PHC_MASTER#|${phc_master}|g" /lib/systemd/system/phc-to-phc-sync.service
-	sed -i -e "s|#PHC_SLAVE#|${phc_slave}|g" /lib/systemd/system/phc-to-phc-sync.service
+	sed -i -e "s|%PHC%|${phc_master}|g" /lib/systemd/system/linuxptp.service
+	sed -i -e "s|%PHC_MASTER%|${phc_master}|g" /lib/systemd/system/linuxptp-phc2phc.service
+	sed -i -e "s|%PHC_SLAVE%|${phc_slave}|g" /lib/systemd/system/linuxptp-phc2phc.service
+	sed -i -e "s|%IFACE%|[${iface}]|g" /etc/linuxptp/ptp4l.cfg
 	systemctl daemon-reload
-	systemctl restart ptp4l
-	systemctl restart phc-to-phc-sync
-	systemctl restart phc2sys
+	systemctl restart linuxptp
+	systemctl restart linuxptp-phc2phc
+	systemctl restart linuxptp-system-clock
 }
 
 prerequisites() {

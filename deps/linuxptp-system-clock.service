@@ -1,8 +1,8 @@
 [Unit]
 Description=Synchronize system clock or PTP hardware clock (PHC)
 After=ntpdate.service
-Requires=ptp4l.service
-After=ptp4l.service
+Requires=linuxptp.service
+After=linuxptp.service
 
 [Service]
 Type=simple
