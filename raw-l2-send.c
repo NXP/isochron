@@ -33,6 +33,7 @@ struct prog_data {
 	long iterations;
 	clockid_t clkid;
 	u64 advance_time;
+	u64 shift_time;
 	u64 cycle_time;
 	u64 base_time;
 	long priority;
@@ -277,6 +278,7 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	now = timespec_to_ns(&now_ts);
+	prog->base_time += prog->shift_time;
 	prog->base_time -= prog->advance_time;
 
 	if (prog->base_time < now) {
@@ -344,6 +346,15 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ns = &prog->advance_time,
 			},
 		}, {
+			.short_opt = "-S",
+			.long_opt = "--shift-time",
+			.type = PROG_ARG_TIME,
+			.time = {
+				.clkid = CLOCK_REALTIME,
+				.ns = &prog->shift_time,
+			},
+			.optional = true,
+		}, {
 			.short_opt = "-c",
 			.long_opt = "--cycle-time",
 			.type = PROG_ARG_TIME,
@@ -390,6 +401,10 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (prog->advance_time > prog->cycle_time) {
 		fprintf(stderr, "Advance time cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+	if (prog->shift_time > prog->cycle_time) {
+		fprintf(stderr, "Shift time cannot be higher than cycle time\n");
 		return -EINVAL;
 	}
 
