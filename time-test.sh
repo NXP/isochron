@@ -226,32 +226,21 @@ do_8021qbv() {
 		;;
 	esac
 
-	speed_mbps=$(ethtool "${iface}" | gawk \
-		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
+	tsntool qbvset --device "${iface}" --disable
+	if [ "${enabled}" = false ]; then
+		return
+	fi
 
 	# This calls felix_8021qbv_config or enetc_8021qbv_config
 	"${scenario}_8021qbv_config" "${iface}"
 
-	# PTP
-	t1=$(qbv_window 200 1 $speed_mbps)
-	# raw-l2-send
-	t2=$(qbv_window $length 1 $speed_mbps)
-	# Best effort
-	t0=$(($cycle_time - $t1 - $t2))
 	cat > qbv0.txt <<-EOF
 		t0 01011111 $t0
 		t1 10000000 $t1
 		t2 00100000 $t2
 	EOF
-	tsntool qbvset --device "${iface}" --disable
-	if [ "${enabled}" = false ]; then
-		return
-	fi
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
-
-	# Relative base time of t2 within the schedule
-	shift_time=$(($t0 + $t1))
 }
 
 # CAUTION: if Frame Preemption is enabled, there should not be any
@@ -487,6 +476,7 @@ set_qbv_params() {
 	local now=$(phc_ctl CLOCK_REALTIME get | gawk '/clock time is/ { print $5; }')
 	# Round the base time to the start of the next second.
 	local sec=$(echo "${now}" | gawk -F. '{ print $1; }')
+	local iface=
 
 	utc_offset=$(pmc -u -b 0 'GET TIME_PROPERTIES_DATA_SET' | \
 			gawk '/\<currentUtcOffset\>/ { print $2; }')
@@ -498,6 +488,28 @@ set_qbv_params() {
 	length="100"
 	frames="200"
 	txq=5
+
+	case "${scenario}" in
+	enetc)
+		iface="eno0"
+		;;
+	felix)
+		iface="swp1"
+		;;
+	esac
+
+	speed_mbps=$(ethtool "${iface}" | gawk \
+		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
+
+	# PTP
+	t1=$(qbv_window 200 1 $speed_mbps)
+	# raw-l2-send
+	t2=$(qbv_window $length 1 $speed_mbps)
+	# Best effort
+	t0=$(($cycle_time - $t1 - $t2))
+
+	# Relative base time of t2 within the schedule
+	shift_time=$(($t0 + $t1))
 }
 
 do_install_deps() {
@@ -629,6 +641,7 @@ case "${board}" in
 		do_send_traffic
 		;;
 	teardown)
+		set_qbv_params
 		do_8021qbv false
 		do_8021qbu false
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
