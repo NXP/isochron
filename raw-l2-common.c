@@ -47,7 +47,6 @@ static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
 	char nsec_buf[] = "000000000";
 	struct timespec now_ts = {0};
 	__kernel_time_t sec;
-	int read_nsec = 0;
 	int relative = 0;
 	char *nsec_str;
 	long nsec = 0;
@@ -67,10 +66,8 @@ static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
 		return -EINVAL;
 	}
 	if (from[0] == '.') {
-		read_nsec = 1;
+		/* The format is "sec.nsec" */
 		from++;
-	}
-	if (read_nsec) {
 		size = snprintf(nsec_buf, 9, "%s", from);
 		if (size < 9)
 			nsec_buf[size] = '0';
@@ -85,6 +82,10 @@ static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
 				strerror(errno));
 			return -EINVAL;
 		}
+	} else {
+		/* The format is "nsec" */
+		nsec = sec;
+		sec = 0;
 	}
 
 	if (relative) {
