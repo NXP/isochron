@@ -155,8 +155,8 @@ static int prog_configure_rt(struct prog_data *prog)
 	struct sched_attr attr = {
 		.size = sizeof(struct sched_attr),
 		.sched_policy = SCHED_DEADLINE,
-		.sched_runtime = prog->cycle_time - prog->advance_time,
-		.sched_deadline = prog->cycle_time - prog->advance_time,
+		.sched_runtime = prog->advance_time,
+		.sched_deadline = prog->advance_time,
 		.sched_period = prog->cycle_time,
 	};
 	int rc;
