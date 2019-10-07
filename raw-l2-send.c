@@ -101,9 +101,8 @@ static int run_nanosleep(struct prog_data *prog, void *app_data)
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
 	u64 wakeup = prog->base_time;
-	struct timespec wakeup_ts;
-	long i;
 	int rc;
+	long i;
 
 	ns_sprintf(base_time_buf, prog->base_time);
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
