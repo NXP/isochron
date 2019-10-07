@@ -69,7 +69,7 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	char smac_buf[MACADDR_BUFSIZ];
 	char dmac_buf[MACADDR_BUFSIZ];
 	struct timespec now_ts;
-	u64 hwts, swts, now;
+	s64 hwts, swts, now;
 	int i, rc;
 
 	rc = clock_gettime(priv->clkid, &now_ts);

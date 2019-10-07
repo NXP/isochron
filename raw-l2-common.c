@@ -42,7 +42,7 @@ int mac_addr_from_string(u8 *to, char *from)
 	return 0;
 }
 
-static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
+static int get_time_from_string(clockid_t clkid, s64 *to, char *from)
 {
 	char nsec_buf[] = "000000000";
 	struct timespec now_ts = {0};
@@ -51,7 +51,7 @@ static int get_time_from_string(clockid_t clkid, u64 *to, char *from)
 	char *nsec_str;
 	long nsec = 0;
 	int size, rc;
-	u64 now = 0;
+	s64 now = 0;
 
 	if (from[0] == '+') {
 		relative = 1;
@@ -235,12 +235,12 @@ void mac_addr_sprintf(char *buf, u8 *addr)
 		 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 }
 
-u64 timespec_to_ns(const struct timespec *ts)
+s64 timespec_to_ns(const struct timespec *ts)
 {
 	return ts->tv_sec * NSEC_PER_SEC + ts->tv_nsec;
 }
 
-struct timespec ns_to_timespec(u64 ns)
+struct timespec ns_to_timespec(s64 ns)
 {
 	return (struct timespec) {
 		.tv_sec = ns / NSEC_PER_SEC,
@@ -248,7 +248,7 @@ struct timespec ns_to_timespec(u64 ns)
 	};
 }
 
-void ns_sprintf(char *buf, u64 ns)
+void ns_sprintf(char *buf, s64 ns)
 {
 	struct timespec ts = ns_to_timespec(ns);
 

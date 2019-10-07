@@ -63,7 +63,7 @@ struct prog_arg_string {
 
 struct prog_arg_time {
 	clockid_t clkid;
-	u64 *ns;
+	s64 *ns;
 };
 
 struct prog_arg_long {
@@ -102,9 +102,9 @@ int mac_addr_from_string(u8 *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, int on);
 int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 	       int flags);
-u64 timespec_to_ns(const struct timespec *ts);
-struct timespec ns_to_timespec(u64 ns);
+s64 timespec_to_ns(const struct timespec *ts);
+struct timespec ns_to_timespec(s64 ns);
 void mac_addr_sprintf(char *buf, u8 *addr);
-void ns_sprintf(char *buf, u64 ns);
+void ns_sprintf(char *buf, s64 ns);
 
 #endif
