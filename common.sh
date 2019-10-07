@@ -48,31 +48,35 @@ get_remote_mac() {
 	case "${format}" in
 	tsntool)
 		awk_program='							\
+			/Unicast reply from/					\
 			{							\
-				mac=$0;						\
+				mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);	\
 				split(mac, m, ":");				\
 				print "0x" m[1] m[2] m[3] m[4] m[5] m[6];	\
 			}'
 		;;
 	tsntool-reverse)
 		awk_program='							\
+			/Unicast reply from/					\
 			{							\
-				mac=$0;						\
+				mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);	\
 				split(mac, m, ":");				\
 				print "0x" m[6] m[5] m[4] m[3] m[2] m[1];	\
 			}'
 		;;
 	iproute2)
 		awk_program='							\
+			/Unicast reply from/					\
 			{							\
-				print;						\
+			       mac=gensub(/^\[(.*)\]/, "\\1", "g", $5);		\
+			       print mac;					\
 			}'
 		;;
 	*)
 		return
 	esac
 
-	arping -r -I "${iface}" -c 1 "${ip}" | gawk "${awk_program}"
+	arping -I "${iface}" -c 1 "${ip}" | gawk "${awk_program}"
 }
 
 get_local_mac() {
