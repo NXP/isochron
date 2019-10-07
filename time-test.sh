@@ -87,6 +87,7 @@ scenario="enetc"
 # swp1 is active, and that its MAC transmission jitter is low.
 
 NSEC_PER_SEC="1000000000"
+NSEC_PER_USEC="1000"
 receiver_open=false
 SSH_OPTS="-o IPQoS=0 -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no"
 SSH="ssh ${SSH_OPTS}"
@@ -231,14 +232,16 @@ do_8021qbv() {
 	# This calls felix_8021qbv_config or enetc_8021qbv_config
 	"${scenario}_8021qbv_config" "${iface}"
 
-	window="$(qbv_window 500 1 ${speed_mbps})"
-	best_effort="$((10000000 - 2 * ${window}))"
-	# raw-l2-send is configured to send at a cycle time of 0.01 seconds
-	# (10,000,000 ns).
+	# PTP
+	t1=$(qbv_window 200 1 $speed_mbps)
+	# raw-l2-send
+	t2=$(qbv_window $length 1 $speed_mbps)
+	# Best effort
+	t0=$(($cycle_time - $t1 - $t2))
 	cat > qbv0.txt <<-EOF
-		t0 00100000 ${window}      # raw-l2-send
-		t1 10000000 ${window}      # PTP
-		t2 01011111 ${best_effort} # everything else
+		t0 01011111 $t0
+		t1 10000000 $t1
+		t2 00100000 $t2
 	EOF
 	tsntool qbvset --device "${iface}" --disable
 	if [ "${enabled}" = false ]; then
@@ -246,6 +249,9 @@ do_8021qbv() {
 	fi
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
+
+	# Relative base time of t2 within the schedule
+	shift_time=$(($t0 + $t1))
 }
 
 # CAUTION: if Frame Preemption is enabled, there should not be any
@@ -323,7 +329,8 @@ do_send_traffic() {
 		--priority "${txq}" \
 		--base-time "${os_base_time}" \
 		--advance-time "${advance_time}" \
-		--cycle-time "${period}" \
+		--cycle-time "${cycle_time}" \
+		--shift-time "${shift_time}" \
 		--num-frames "${frames}" \
 		--frame-size "${length}" \
 		> tx.log
@@ -486,9 +493,8 @@ set_qbv_params() {
 	os_base_time="$((${sec} + 1)).0"
 	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
 	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"
-	advance_time="0.00818000"
-	#advance_time="0.00018000" <- experimentally smallest possible at length 400
-	period="0.01"
+	cycle_time=$((100 * $NSEC_PER_USEC))
+	advance_time=$cycle_time
 	length="100"
 	frames="200"
 	txq=5
