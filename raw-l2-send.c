@@ -130,10 +130,10 @@ static int do_work(struct prog_data *prog, int iteration, s64 scheduled,
 
 static int run_nanosleep(struct prog_data *prog)
 {
-	s64 scheduled = prog->base_time + prog->advance_time;
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
 	s64 wakeup = prog->base_time;
+	s64 scheduled;
 	int rc;
 	long i;
 
@@ -150,12 +150,13 @@ static int run_nanosleep(struct prog_data *prog)
 				     &wakeup_ts, NULL);
 		switch (rc) {
 		case 0:
-			rc = do_work(app_data, i, scheduled, prog->clkid);
+			scheduled = wakeup + prog->advance_time;
+
+			rc = do_work(prog, i, scheduled, prog->clkid);
 			if (rc < 0)
 				break;
 
 			wakeup += prog->cycle_time;
-			scheduled = wakeup + prog->advance_time;
 			break;
 		case EINTR:
 			continue;
