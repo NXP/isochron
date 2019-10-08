@@ -21,9 +21,19 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <unistd.h>
+/* For va_start and va_end */
+#include <stdarg.h>
 #include "raw-l2-common.h"
 
 #define BUF_SIZ		1522
+#define LOGBUF_SIZ	(10 * 1024 * 1024) /* 10 MiB */
+
+struct app_private {
+	struct sockaddr *sockaddr;
+	char *sendbuf;
+	int tx_len;
+	int fd;
+};
 
 struct prog_data {
 	u8 dest_mac[ETH_ALEN];
@@ -37,24 +47,47 @@ struct prog_data {
 	s64 cycle_time;
 	s64 base_time;
 	long priority;
+	int log_buf_len;
+	char *log_buf;
 	long tx_len;
 	int fd;
-};
-
-struct app_private {
-	struct sockaddr *sockaddr;
-	char *sendbuf;
-	int tx_len;
-	int fd;
+	struct app_private priv;
 };
 
 struct app_header {
 	short seqid;
 };
 
-static int do_work(void *data, int iteration, s64 scheduled, clockid_t clkid)
+static int rtprintf(struct prog_data *prog, char *fmt, ...)
 {
-	struct app_private *priv = data;
+	char *buf = prog->log_buf + prog->log_buf_len + 1;
+	va_list args;
+	int rc;
+
+	va_start(args, fmt);
+
+	rc = vsnprintf(buf, LOGBUF_SIZ - prog->log_buf_len, fmt, args);
+	prog->log_buf_len += (rc + 1);
+
+	va_end(args);
+
+	return rc;
+}
+
+static void rtflush(struct prog_data *prog)
+{
+	int rc, i = 0;
+
+	while (i < prog->log_buf_len && prog->log_buf[i]) {
+		rc = printf(prog->log_buf + i);
+		i += (rc + 1);
+	}
+}
+
+static int do_work(struct prog_data *prog, int iteration, s64 scheduled,
+		   clockid_t clkid)
+{
+	struct app_private *priv = &prog->priv;
 	unsigned char err_pkt[BUF_SIZ];
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char hwts_buf[TIMESPEC_BUFSIZ];
@@ -90,12 +123,12 @@ static int do_work(void *data, int iteration, s64 scheduled, clockid_t clkid)
 	ns_sprintf(hwts_buf, hwts);
 	ns_sprintf(swts_buf, swts);
 	ns_sprintf(now_buf, now);
-	printf("[%s] Sent frame scheduled for %s with seqid %d txtstamp %s swts %s\n",
-	       now_buf, scheduled_buf, iteration, hwts_buf, swts_buf);
+	rtprintf(prog, "[%s] Sent frame scheduled for %s with seqid %d txtstamp %s swts %s\n",
+		 now_buf, scheduled_buf, iteration, hwts_buf, swts_buf);
 	return 0;
 }
 
-static int run_nanosleep(struct prog_data *prog, void *app_data)
+static int run_nanosleep(struct prog_data *prog)
 {
 	s64 scheduled = prog->base_time + prog->advance_time;
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
@@ -296,11 +329,24 @@ static int prog_init(struct prog_data *prog)
 	ns_sprintf(now_buf, now);
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
+	prog->log_buf = calloc(sizeof(char), LOGBUF_SIZ);
+	if (!prog->log_buf)
+		return -ENOMEM;
+	prog->log_buf_len = -1;
+
 	rc = prog_configure_rt(prog);
 	if (rc < 0)
 		return rc;
 
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
+}
+
+static int prog_teardown(struct prog_data *prog)
+{
+	rtflush(prog);
+	free(prog->log_buf);
+
+	return 0;
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
@@ -419,8 +465,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 int main(int argc, char *argv[])
 {
-	struct app_private priv = {0};
 	struct prog_data prog = {0};
+	struct app_private *priv = &prog.priv;
 	int rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
@@ -431,12 +477,16 @@ int main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	priv.sockaddr = (struct sockaddr *)&prog.socket_address;
-	priv.sendbuf = prog.sendbuf;
-	priv.fd = prog.fd;
-	priv.tx_len = prog.tx_len;
+	priv->sockaddr = (struct sockaddr *)&prog.socket_address;
+	priv->sendbuf = prog.sendbuf;
+	priv->fd = prog.fd;
+	priv->tx_len = prog.tx_len;
 
-	app_init(&priv);
+	app_init(priv);
 
-	return run_nanosleep(&prog, &priv);
+	rc = run_nanosleep(&prog);
+	if (rc < 0)
+		return rc;
+
+	return prog_teardown(&prog);
 }
