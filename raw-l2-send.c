@@ -209,6 +209,8 @@ static int prog_configure_rt(struct prog_data *prog)
 	if (rc < 0) {
 		fprintf(stderr, "sched_setattr returned %d: %s\n",
 			errno, strerror(errno));
+		fprintf(stderr,
+			"Make sure the cycle-time and advance-time values are reasonable\n");
 		return rc;
 	}
 
