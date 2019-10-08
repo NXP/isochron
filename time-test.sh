@@ -235,10 +235,11 @@ do_8021qbv() {
 	"${scenario}_8021qbv_config" "${iface}"
 
 	cat > qbv0.txt <<-EOF
-		t0 01011111 $t0
-		t1 10000000 $t1
-		t2 00100000 $t2
+		t0 01011111 $t0 # best effort
+		t1 10000000 $t1 # ptp4l
+		t2 00100000 $t2 # raw-l2-send
 	EOF
+	cat qbv0.txt
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
 		--basetime "${mac_base_time_nsec}"
 }
