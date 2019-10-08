@@ -107,6 +107,25 @@ static int get_time_from_string(clockid_t clkid, s64 *to, char *from)
 	return 0;
 }
 
+static const char *prog_arg_type_str[] = {
+	[PROG_ARG_MAC_ADDR] = "MAC address",
+	[PROG_ARG_LONG] = "Long integer",
+	[PROG_ARG_TIME] = "Time in sec.nsec format",
+	[PROG_ARG_STRING] = "String",
+};
+
+void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
+{
+	int i;
+
+	fprintf(stderr, "%s usage:\n", prog_name);
+
+	for (i = 0; i < prog_args_size; i++)
+		fprintf(stderr, "%s|%s: %s\n",
+			prog_args[i].short_opt, prog_args[i].long_opt,
+			prog_arg_type_str[prog_args[i].type]);
+}
+
 /* Parse non-positional arguments and return the number of
  * arguments consumed. Return on first positional argument
  * found.
@@ -128,6 +147,14 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	while (argc) {
 		for (i = 0; i < prog_args_size; i++) {
 			arg = argv[0];
+
+			if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
+				prog_usage("Helper", prog_args,
+					   prog_args_size);
+				free(parsed_arr);
+				/* Fault the caller to make it stop */
+				return -EINVAL;
+			}
 
 			if (strcmp(arg, prog_args[i].short_opt) &&
 			    strcmp(arg, prog_args[i].long_opt))
@@ -216,25 +243,6 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	}
 
 	return parsed;
-}
-
-static const char *prog_arg_type_str[] = {
-	[PROG_ARG_MAC_ADDR] = "MAC address",
-	[PROG_ARG_LONG] = "Long integer",
-	[PROG_ARG_TIME] = "Time in sec.nsec format",
-	[PROG_ARG_STRING] = "String",
-};
-
-void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
-{
-	int i;
-
-	fprintf(stderr, "%s usage:\n", prog_name);
-
-	for (i = 0; i < prog_args_size; i++)
-		fprintf(stderr, "%s|%s: %s\n",
-			prog_args[i].short_opt, prog_args[i].long_opt,
-			prog_arg_type_str[prog_args[i].type]);
 }
 
 void mac_addr_sprintf(char *buf, u8 *addr)
