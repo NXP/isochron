@@ -44,7 +44,6 @@ int mac_addr_from_string(u8 *to, char *from)
 
 static int get_time_from_string(clockid_t clkid, s64 *to, char *from)
 {
-	char nsec_buf[] = "000000000";
 	struct timespec now_ts = {0};
 	__kernel_time_t sec;
 	int relative = 0;
@@ -66,11 +65,20 @@ static int get_time_from_string(clockid_t clkid, s64 *to, char *from)
 		return -EINVAL;
 	}
 	if (from[0] == '.') {
+		char nsec_buf[] = "000000000";
+		int i;
+
 		/* The format is "sec.nsec" */
 		from++;
-		size = snprintf(nsec_buf, 9, "%s", from);
-		if (size < 9)
-			nsec_buf[size] = '0';
+		if (strlen(from) > 9) {
+			fprintf(stderr,
+				"Nanosecond format too long, would truncate: %s\n",
+				from);
+			return -ERANGE;
+		}
+		size = sprintf(nsec_buf, "%s", from);
+		for (i = size; i < 9; i++)
+			nsec_buf[i] = '0';
 
 		errno = 0;
 		/* Force base 10 here, since leading zeroes will make
