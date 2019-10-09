@@ -346,6 +346,9 @@ static int prog_init(struct prog_data *prog)
 	prog->base_time += prog->shift_time;
 	prog->base_time -= prog->advance_time;
 
+	/* Make sure we get enough sleep at the beginning */
+	now += NSEC_PER_SEC;
+
 	if (prog->base_time < now) {
 		char base_time_buf[TIMESPEC_BUFSIZ];
 
