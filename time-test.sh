@@ -276,6 +276,23 @@ do_8021qbu() {
 	done
 }
 
+get_queue_counters() {
+	local iface=$1
+	local queue=$2
+	local string=
+
+	case "${scenario}" in
+	enetc)
+		string="Tx ring  ${queue} frames"
+		;;
+	felix)
+		string="tx_green_prio_${queue}"
+		;;
+	esac
+
+	ethtool -S ${iface} | grep "${string}" | awk -F: '{ print $2 }'
+}
+
 do_send_traffic() {
 	local remote="root@${board2_ip}"
 	local iface=
@@ -312,6 +329,8 @@ do_send_traffic() {
 
 	receiver_open=true
 
+	before=$(get_queue_counters ${mgmt_iface} ${txq})
+
 	echo "Opening transmitter process..."
 	"${TOPDIR}/raw-l2-send" \
 		--interface "${iface}" \
@@ -327,6 +346,12 @@ do_send_traffic() {
 
 	printf "Stopping receiver process... "
 	${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
+
+	after=$(get_queue_counters ${mgmt_iface} ${txq})
+
+	if [ $(($after - $before)) != $frames ]; then
+		echo "$(($after - $before)) frames transmitted instead of $frames!"
+	fi
 
 	receiver_open=false
 
