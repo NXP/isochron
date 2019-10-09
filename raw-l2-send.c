@@ -261,23 +261,17 @@ static int prog_configure_rt(struct prog_data *prog)
  *      now - base_time
  * N >= ---------------
  *         cycle_time
- *
- * Because N is an integer, the ceiling value of the above "a / b" ratio
- * is in fact precisely the floor value of "(a + b - 1) / b", which is
- * easier to calculate only having integer division tools.
  */
 static s64 future_base_time(s64 base_time, s64 cycle_time, s64 now)
 {
-	s64 a, b, n;
+	s64 n;
 
 	if (base_time >= now)
 		return base_time;
 
-	a = now - base_time;
-	b = cycle_time;
-	n = (a + b - 1) / b;
+	n = (now - base_time) / cycle_time;
 
-	return base_time + n * cycle_time;
+	return base_time + (n + 1) * cycle_time;
 }
 
 static int prog_init(struct prog_data *prog)
@@ -361,8 +355,9 @@ static int prog_init(struct prog_data *prog)
 			"winding it into the future\n",
 			base_time_buf);
 
-		prog->base_time = future_base_time(prog->base_time, now,
-						   prog->cycle_time);
+		prog->base_time = future_base_time(prog->base_time,
+						   prog->cycle_time,
+						   now);
 	}
 
 	ns_sprintf(now_buf, now);
