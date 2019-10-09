@@ -483,10 +483,10 @@ set_qbv_params() {
 	os_base_time="$((${sec} + 1)).0"
 	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
 	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"
-	cycle_time=$((100 * $NSEC_PER_USEC))
+	cycle_time=$((1000 * $NSEC_PER_USEC))
 	advance_time=$cycle_time
+	frames="1000"
 	length="100"
-	frames="200"
 	txq=5
 
 	case "${scenario}" in
