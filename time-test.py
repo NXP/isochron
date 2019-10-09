@@ -87,6 +87,8 @@ def parse(raw_l2_send_txt, raw_l2_rcv_txt):
             print("seqid {} lost".format(tx_seqid))
             continue
 
+        rx_log.remove(rx_line)
+
         m = re.search('\[(.*)\]', tx_words[0])
         if not m:
             print("Malformed gate time {}".format(tx_words[0]))
