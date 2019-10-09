@@ -332,7 +332,8 @@ do_send_traffic() {
 	before=$(get_queue_counters ${mgmt_iface} ${txq})
 
 	echo "Opening transmitter process..."
-	"${TOPDIR}/raw-l2-send" \
+	trace-cmd record -e irq -e net -e syscalls -e sched \
+		"${TOPDIR}/raw-l2-send" \
 		--interface "${iface}" \
 		--dmac "${dmac}" \
 		--priority "${txq}" \
@@ -367,6 +368,8 @@ do_send_traffic() {
 		tx.log \
 		rx.log \
 		"${utc_offset}.0"
+
+	echo "For further latency debugging, please inspect trace.dat in kernelshark."
 }
 
 do_start_rcv_traffic() {
