@@ -338,7 +338,6 @@ do_send_traffic() {
 		--dmac "${dmac}" \
 		--priority "${txq}" \
 		--base-time "${os_base_time}" \
-		--advance-time "${advance_time}" \
 		--cycle-time "${cycle_time}" \
 		--shift-time "${shift_time}" \
 		--num-frames "${frames}" \
@@ -512,7 +511,6 @@ set_qbv_params() {
 	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
 	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"
 	cycle_time=$((1000 * $NSEC_PER_USEC))
-	advance_time=$cycle_time
 	frames="1000"
 	length="100"
 	txq=5
