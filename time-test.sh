@@ -370,9 +370,9 @@ do_send_traffic() {
 	}
 
 	"${TOPDIR}/time-test.py" \
-		tx.log \
-		rx.log \
-		"${utc_offset}.0"
+		--tx-log tx.log \
+		--rx-log rx.log \
+		--utc-offset "${utc_offset}.0"
 
 	echo "For further latency debugging, please inspect trace.dat in kernelshark."
 }

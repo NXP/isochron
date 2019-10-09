@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from statistics import mean, stdev
+import argparse
 import sys
 import re
 
@@ -42,16 +43,6 @@ def ns_to_timespec(ns, relative=False):
 
 def utc_to_tai(ns):
     return ns + utc_offset
-
-def usage():
-    print("Usage: " + sys.argv[0] +
-          "raw-l2-send-output.txt " +
-          "raw-l2-rcv-output.txt " +
-          "utc-offset")
-    exit(1)
-
-if (len(sys.argv) != 4):
-    usage()
 
 class tstamp_set():
     def __init__(self, seqid, gate, sw, hw):
@@ -173,6 +164,16 @@ class results():
         self.gate_delay = gate_delay
         self.frame_count = frame_count
 
-utc_offset = timespec_to_ns(sys.argv[3])
-r = parse(sys.argv[1], sys.argv[2])
+parser = argparse.ArgumentParser(description='Process RT traffic timestamps.')
+parser.add_argument('-t', '--tx-log', required=True,
+                    help='Output from raw-l2-send')
+parser.add_argument('-r', '--rx-log', required=True,
+                    help='Output from raw-l2-rcv')
+parser.add_argument('-u', '--utc-offset', required=True,
+                    help='UTC-to-TAI offset (37 leap seconds as of 2019) in nanoseconds or sec.nsec format')
+
+args = parser.parse_args()
+
+utc_offset = timespec_to_ns(args.utc_offset)
+r = parse(args.tx_log, args.rx_log)
 display(r)
