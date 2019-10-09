@@ -226,6 +226,8 @@ do_8021qbv() {
 		;;
 	esac
 
+	set_qbv_params $iface
+
 	tsntool qbvset --device "${iface}" --disable
 	if [ "${enabled}" = false ]; then
 		return
@@ -241,7 +243,7 @@ do_8021qbv() {
 	EOF
 	cat qbv0.txt
 	tsntool qbvset --device "${iface}" --entryfile qbv0.txt --enable \
-		--basetime "${mac_base_time_nsec}"
+		--basetime "${mac_base_time}"
 }
 
 # CAUTION: if Frame Preemption is enabled, there should not be any
@@ -329,6 +331,8 @@ do_send_traffic() {
 
 	receiver_open=true
 
+	do_8021qbv true
+
 	before=$(get_queue_counters ${mgmt_iface} ${txq})
 
 	echo "Opening transmitter process..."
@@ -347,13 +351,15 @@ do_send_traffic() {
 	printf "Stopping receiver process... "
 	${SSH} "${remote}" "${TOPDIR}/time-test.sh 2 stop"
 
+	receiver_open=false
+
 	after=$(get_queue_counters ${mgmt_iface} ${txq})
+
+	do_8021qbv false
 
 	if [ $(($after - $before)) != $frames ]; then
 		echo "$(($after - $before)) frames transmitted instead of $frames!"
 	fi
-
-	receiver_open=false
 
 	echo "Collecting logs..."
 	${SCP} "${remote}:${TOPDIR}/rx.log" .
@@ -385,6 +391,8 @@ do_start_rcv_traffic() {
 
 	check_sync
 
+	do_8021qbv true
+
 	rm -f rx.log
 	start-stop-daemon -S -b -q -m -p "/var/run/raw-l2-rcv.pid" \
 		--startas /bin/bash -- \
@@ -395,6 +403,8 @@ do_start_rcv_traffic() {
 do_stop_rcv_traffic() {
 	start-stop-daemon -K -p "/var/run/raw-l2-rcv.pid" \
 		&& echo "OK" || echo "FAIL"
+
+	do_8021qbv false
 }
 
 check_sync() {
@@ -500,29 +510,22 @@ check_sync() {
 }
 
 set_qbv_params() {
-	local now=$(phc_ctl CLOCK_REALTIME get | gawk '/clock time is/ { print $5; }')
 	# Round the base time to the start of the next second.
-	local sec=$(echo "${now}" | gawk -F. '{ print $1; }')
-	local iface=
+	local iface=$1
+	local sec=
+	local now=
+
+	now=$(phc_ctl $iface get | gawk '/clock time is/ { print $5; }')
+	sec=$(echo $now | gawk -F. '{ print $1; }')
 
 	utc_offset=$(pmc -u -b 0 'GET TIME_PROPERTIES_DATA_SET' | \
 			gawk '/\<currentUtcOffset\>/ { print $2; }')
-	os_base_time="$((${sec} + 1)).0"
-	mac_base_time="$((${sec} + 1 + ${utc_offset})).0"
-	mac_base_time_nsec="$(((${sec} + 1 + ${utc_offset}) * ${NSEC_PER_SEC}))"
-	cycle_time=$((1000 * $NSEC_PER_USEC))
-	frames="1000"
+	mac_base_time="$(($sec + 1)).0"
+	os_base_time="$(($sec + 1 - $utc_offset)).0"
+	cycle_time=$((200 * $NSEC_PER_USEC))
+	frames="10000"
 	length="100"
 	txq=5
-
-	case "${scenario}" in
-	enetc)
-		iface="eno0"
-		;;
-	felix)
-		iface="swp1"
-		;;
-	esac
 
 	speed_mbps=$(ethtool "${iface}" | gawk \
 		'/Speed:/ { speed=gensub(/^(.*)Mb\/s/, "\\1", "g", $2); print speed; }')
@@ -657,18 +660,13 @@ case "${board}" in
 	prepare)
 		do_install_deps
 		do_prepare
-		set_qbv_params
-		do_8021qbv true
 		#do_8021qbu true
 		do_print_config_done ${board}
 		;;
 	run)
-		set_qbv_params
 		do_send_traffic
 		;;
 	teardown)
-		set_qbv_params
-		do_8021qbv false
 		do_8021qbu false
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		;;
@@ -692,15 +690,10 @@ case "${board}" in
 	prepare)
 		do_install_deps
 		do_prepare
-		set_qbv_params
-		do_8021qbv true
-		#do_8021qbu true
 		do_print_config_done ${board}
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
-		do_8021qbv false
-		do_8021qbu false
 		;;
 	*)
 		usage
