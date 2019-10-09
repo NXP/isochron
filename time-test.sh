@@ -375,6 +375,7 @@ do_send_traffic() {
 		--tx-log tx.log \
 		--rx-log rx.log \
 		--utc-offset "${utc_offset}.0" \
+		--cycle-time $cycle_time \
 		--summary
 
 	echo "For further latency debugging, please inspect trace.dat in kernelshark."

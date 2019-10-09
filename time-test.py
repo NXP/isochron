@@ -8,7 +8,6 @@ import re
 NSEC_PER_SEC = 1000000000
 # Maximum delay in nanoseconds for a PHY-to-PHY path
 PATH_DELAY_THRESHOLD = 5000
-GATE_DELAY_THRESHOLD = 500
 
 def timespec_to_ns(ts):
     words = ts.split('.')
@@ -127,9 +126,12 @@ def process(tx, rx, r):
         r.path_deadline_misses += 1
     r.path_delay.append(path_delay)
 
-    gate_delay = tx.hw - tx.gate
-    if (abs(gate_delay) > GATE_DELAY_THRESHOLD):
+    adjusted_gate = tx.gate + (r.cycles_missed * cycle_time)
+
+    gate_delay = tx.hw - adjusted_gate
+    if (abs(gate_delay) >= cycle_time):
         r.gate_deadline_misses += 1
+        r.cycles_missed += int(gate_delay / cycle_time)
     r.gate_delay.append(gate_delay)
 
     if (args.summary):
@@ -154,22 +156,24 @@ def print_summary(r):
     print('Summary:')
     print_array('Gate delay', r.gate_delay)
     print_array('Path delay', r.path_delay)
-    print('All times are relative to the gate event (first column)')
     print('Gate deadline misses: {} ({}%)'.format(
           r.gate_deadline_misses,
           (r.gate_deadline_misses * 100) / r.frame_count))
     print('Path deadline misses: {} ({}%)'.format(
           r.path_deadline_misses,
           (r.path_deadline_misses * 100) / r.frame_count))
+    print('Cycles missed: {}'.format(r.cycles_missed))
 
 class results():
     def __init__(self, path_deadline_misses=0, gate_deadline_misses=0,
-                 path_delay=[], gate_delay=[], frame_count=0):
+                 path_delay=[], gate_delay=[], frame_count=0,
+                 cycles_missed=0):
         self.path_deadline_misses = path_deadline_misses
         self.gate_deadline_misses = gate_deadline_misses
         self.path_delay = path_delay
         self.gate_delay = gate_delay
         self.frame_count = frame_count
+        self.cycles_missed = cycles_missed
 
 parser = argparse.ArgumentParser(description='Process RT traffic timestamps.')
 parser.add_argument('-t', '--tx-log', required=True,
@@ -178,11 +182,14 @@ parser.add_argument('-r', '--rx-log', required=True,
                     help='Output from raw-l2-rcv')
 parser.add_argument('-u', '--utc-offset', required=True,
                     help='UTC-to-TAI offset (37 leap seconds as of 2019) in nanoseconds or sec.nsec format')
+parser.add_argument('-c', '--cycle-time', required=True,
+                    help='Cycle time, in nanoseconds or sec.nsec format')
 parser.add_argument('-s', '--summary', action='store_true',
                     help='Don\'t print the frames, just the statistics')
 
 args = parser.parse_args()
 
 utc_offset = timespec_to_ns(args.utc_offset)
+cycle_time = timespec_to_ns(args.cycle_time)
 r = parse(args.tx_log, args.rx_log)
 print_summary(r)
