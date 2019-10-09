@@ -64,9 +64,13 @@ def parse(raw_l2_send_txt, raw_l2_rcv_txt):
 
     r = results()
 
+    # Sample line:
+    # [1567611606.749999008] seqid 147 txtstamp 1567611643.749999195 swts 1567611606.750111880
     with open(raw_l2_send_txt, 'r') as raw_l2_send:
         tx_log = raw_l2_send.readlines()
 
+    # Sample line:
+    # [1567611606.725799008] src 00:04:9f:05:de:06 dst 00:04:9f:05:f4:ab ethertype 0x22f0 seqid 26 rxtstamp 1567611643.725804046 swts 1567611606.725822874
     with open(raw_l2_rcv_txt) as raw_l2_rcv:
         rx_log = raw_l2_rcv.readlines()
 
