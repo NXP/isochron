@@ -36,17 +36,17 @@ struct app_private {
 };
 
 struct prog_data {
-	u8 dest_mac[ETH_ALEN];
+	__u8 dest_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;
 	long timestamped;
 	long iterations;
 	clockid_t clkid;
-	s64 advance_time;
-	s64 shift_time;
-	s64 cycle_time;
-	s64 base_time;
+	__s64 advance_time;
+	__s64 shift_time;
+	__s64 cycle_time;
+	__s64 base_time;
 	long priority;
 	int log_buf_len;
 	char *log_buf;
@@ -86,7 +86,7 @@ static void process_txtstamp(struct prog_data *prog, struct timestamp *tstamp)
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char hwts_buf[TIMESPEC_BUFSIZ];
 	char swts_buf[TIMESPEC_BUFSIZ];
-	s64 hwts, swts;
+	__s64 hwts, swts;
 
 	hwts = timespec_to_ns(&tstamp->hw);
 	swts = timespec_to_ns(&tstamp->sw);
@@ -100,7 +100,7 @@ static void process_txtstamp(struct prog_data *prog, struct timestamp *tstamp)
 	prog->timestamped++;
 }
 
-static int do_work(struct prog_data *prog, int iteration, s64 scheduled,
+static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		   clockid_t clkid)
 {
 	struct app_private *priv = &prog->priv;
@@ -168,8 +168,8 @@ static int run_nanosleep(struct prog_data *prog)
 {
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
-	s64 wakeup = prog->base_time;
-	s64 scheduled;
+	__s64 wakeup = prog->base_time;
+	__s64 scheduled;
 	int rc;
 	long i;
 
@@ -262,9 +262,9 @@ static int prog_configure_rt(struct prog_data *prog)
  * N >= ---------------
  *         cycle_time
  */
-static s64 future_base_time(s64 base_time, s64 cycle_time, s64 now)
+static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 {
-	s64 n;
+	__s64 n;
 
 	if (base_time >= now)
 		return base_time;
@@ -281,7 +281,7 @@ static int prog_init(struct prog_data *prog)
 	struct timespec now_ts;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
-	s64 now;
+	__s64 now;
 	int rc;
 
 	prog->clkid = CLOCK_REALTIME;

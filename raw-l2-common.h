@@ -45,12 +45,6 @@ struct sched_attr {
 	uint64_t sched_period;
 };
 
-typedef uint64_t	u64;
-typedef int64_t		s64;
-typedef uint32_t	u32;
-typedef int32_t		s32;
-typedef uint8_t		u8;
-
 int sched_setattr(pid_t pid, const struct sched_attr *attr, unsigned int flags);
 
 /* Copied from libnfnetlink.h */
@@ -102,7 +96,7 @@ struct prog_arg_string {
 
 struct prog_arg_time {
 	clockid_t clkid;
-	s64 *ns;
+	__s64 *ns;
 };
 
 struct prog_arg_long {
@@ -133,24 +127,24 @@ void prog_usage(char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
 struct app_header {
-	s64			tx_time;
+	__s64			tx_time;
 	short			seqid;
 };
 
 struct timestamp {
 	struct timespec		hw;
 	struct timespec		sw;
-	s64			tx_time;
+	__s64			tx_time;
 	short			seqid;
 };
 
-int mac_addr_from_string(u8 *to, char *from);
+int mac_addr_from_string(__u8 *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, int on);
 int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 	       int flags, int timeout);
-s64 timespec_to_ns(const struct timespec *ts);
-struct timespec ns_to_timespec(s64 ns);
-void mac_addr_sprintf(char *buf, u8 *addr);
-void ns_sprintf(char *buf, s64 ns);
+__s64 timespec_to_ns(const struct timespec *ts);
+struct timespec ns_to_timespec(__s64 ns);
+void mac_addr_sprintf(char *buf, __u8 *addr);
+void ns_sprintf(char *buf, __s64 ns);
 
 #endif

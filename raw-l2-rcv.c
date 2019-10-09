@@ -23,9 +23,9 @@
 
 struct prog_data {
 	char if_name[IFNAMSIZ];
-	u8 dest_mac[ETH_ALEN];
+	__u8 dest_mac[ETH_ALEN];
 	unsigned int if_index;
-	u8 rcvbuf[BUF_SIZ];
+	__u8 rcvbuf[BUF_SIZ];
 	int fd;
 };
 
@@ -41,9 +41,9 @@ int signal_received = 0;
  *
  * Return a u64 value of the address
  */
-static inline u64 ether_addr_to_u64(const unsigned char *addr)
+static inline __u64 ether_addr_to_u64(const unsigned char *addr)
 {
-	u64 u = 0;
+	__u64 u = 0;
 	int i;
 
 	for (i = 0; i < ETH_ALEN; i++)
@@ -64,7 +64,7 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	char swts_buf[TIMESPEC_BUFSIZ];
 	char smac_buf[MACADDR_BUFSIZ];
 	char dmac_buf[MACADDR_BUFSIZ];
-	s64 hwts, swts;
+	__s64 hwts, swts;
 	int i, rc;
 
 	hwts = timespec_to_ns(&tstamp->hw);

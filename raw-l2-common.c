@@ -22,7 +22,7 @@ int sched_setattr(pid_t pid, const struct sched_attr *attr, unsigned int flags)
 	return syscall(__NR_sched_setattr, pid, attr, flags);
 }
 
-int mac_addr_from_string(u8 *to, char *from)
+int mac_addr_from_string(__u8 *to, char *from)
 {
 	unsigned long byte;
 	char *p = from;
@@ -30,7 +30,7 @@ int mac_addr_from_string(u8 *to, char *from)
 
 	for (i = 0; i < ETH_ALEN; i++) {
 		byte = strtoul(p, &p, 16);
-		to[i] = (u8 )byte;
+		to[i] = (__u8 )byte;
 		if (i == (ETH_ALEN - 1) && *p != 0)
 			/* 6 bytes processed but more are present */
 			return -EFBIG;
@@ -41,7 +41,7 @@ int mac_addr_from_string(u8 *to, char *from)
 	return 0;
 }
 
-static int get_time_from_string(clockid_t clkid, s64 *to, char *from)
+static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 {
 	struct timespec now_ts = {0};
 	__kernel_time_t sec;
@@ -49,7 +49,7 @@ static int get_time_from_string(clockid_t clkid, s64 *to, char *from)
 	char *nsec_str;
 	long nsec = 0;
 	int size, rc;
-	s64 now = 0;
+	__s64 now = 0;
 
 	if (from[0] == '+') {
 		relative = 1;
@@ -244,26 +244,26 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	return parsed;
 }
 
-void mac_addr_sprintf(char *buf, u8 *addr)
+void mac_addr_sprintf(char *buf, __u8 *addr)
 {
 	snprintf(buf, MACADDR_BUFSIZ, "%02x:%02x:%02x:%02x:%02x:%02x",
 		 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 }
 
-s64 timespec_to_ns(const struct timespec *ts)
+__s64 timespec_to_ns(const struct timespec *ts)
 {
 	return ts->tv_sec * NSEC_PER_SEC + ts->tv_nsec;
 }
 
-struct timespec ns_to_timespec(s64 ns)
+struct timespec ns_to_timespec(__s64 ns)
 {
 	return (struct timespec) {
 		.tv_sec = ns / NSEC_PER_SEC,
-		.tv_nsec = ns % NSEC_PER_SEC,
+		.tv_nsec = abs(ns) % NSEC_PER_SEC,
 	};
 }
 
-void ns_sprintf(char *buf, s64 ns)
+void ns_sprintf(char *buf, __s64 ns)
 {
 	struct timespec ts = ns_to_timespec(ns);
 
