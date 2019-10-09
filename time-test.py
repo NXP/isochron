@@ -6,8 +6,8 @@ import re
 
 NSEC_PER_SEC = 1000000000
 # Maximum delay in nanoseconds for a PHY-to-PHY path
-PATH_DELAY_THRESHOLD = 2000
-GATE_DELAY_THRESHOLD = 2000
+PATH_DELAY_THRESHOLD = 5000
+GATE_DELAY_THRESHOLD = 500
 
 def timespec_to_ns(ts):
     words = ts.split('.')
