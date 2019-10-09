@@ -5,6 +5,9 @@ import sys
 import re
 
 NSEC_PER_SEC = 1000000000
+# Maximum delay in nanoseconds for a PHY-to-PHY path
+PATH_DELAY_THRESHOLD = 2000
+GATE_DELAY_THRESHOLD = 2000
 
 def timespec_to_ns(ts):
     words = ts.split('.')
@@ -44,22 +47,23 @@ def usage():
     print("Usage: " + sys.argv[0] +
           "raw-l2-send-output.txt " +
           "raw-l2-rcv-output.txt " +
-          "utc-offset " +
-          "advance-time")
+          "utc-offset")
     exit(1)
 
-if (len(sys.argv) != 5):
+if (len(sys.argv) != 4):
     usage()
 
 class tstamp_set():
-    def __init__(self, seqid, app, driver, scheduled, mac):
+    def __init__(self, seqid, gate, sw, hw):
         self.seqid = seqid
-        self.app = app
-        self.driver = driver
-        self.scheduled = scheduled
-        self.mac = mac
+        self.gate = gate
+        self.sw = sw
+        self.hw = hw
 
 def parse(raw_l2_send_txt, raw_l2_rcv_txt):
+
+    r = results()
+
     with open(raw_l2_send_txt, 'r') as raw_l2_send:
         tx_log = raw_l2_send.readlines()
 
@@ -68,10 +72,10 @@ def parse(raw_l2_send_txt, raw_l2_rcv_txt):
 
     for tx_line in tx_log:
         tx_words = tx_line.split()
-        if (len(tx_words) < 11):
+        if (len(tx_words) < 7):
             # Skip malformed lines
             continue
-        tx_seqid = int(tx_words[8])
+        tx_seqid = int(tx_words[2])
 
         found = False
 
@@ -91,82 +95,80 @@ def parse(raw_l2_send_txt, raw_l2_rcv_txt):
 
         m = re.search('\[(.*)\]', tx_words[0])
         if not m:
-            print("Malformed TX time {}".format(tx_words[0]))
+            print("Malformed gate time {}".format(tx_words[0]))
             continue
-        tx_app_swtstamp = timespec_to_ns(m.group(1))
-        tx_scheduled_time = timespec_to_ns(tx_words[5])
-        tx_mac_hwtstamp = timespec_to_ns(tx_words[10])
-        tx_driver_swtstamp = timespec_to_ns(tx_words[12])
+        tx_gate_time = timespec_to_ns(m.group(1))
+        tx_hwts = timespec_to_ns(tx_words[4])
+        tx_swts = timespec_to_ns(tx_words[6])
 
         m = re.search('\[(.*)\]', rx_words[0])
         if not m:
             print("Malformed RX time {}".format(rx_words[0]))
             continue
-        rx_app_swtstamp = timespec_to_ns(m.group(1))
-        rx_mac_hwtstamp = timespec_to_ns(rx_words[10])
-        rx_driver_swtstamp = timespec_to_ns(rx_words[12])
+        rx_gate_time = timespec_to_ns(m.group(1))
+        rx_hwts = timespec_to_ns(rx_words[10])
+        rx_swts = timespec_to_ns(rx_words[12])
 
         tx = tstamp_set(seqid=tx_seqid,
-                        app=utc_to_tai(tx_app_swtstamp),
-                        driver=utc_to_tai(tx_driver_swtstamp),
-                        scheduled=utc_to_tai(tx_scheduled_time),
-                        mac=tx_mac_hwtstamp)
+                        gate=utc_to_tai(tx_gate_time),
+                        sw=utc_to_tai(tx_swts),
+                        hw=tx_hwts)
         rx = tstamp_set(seqid=rx_seqid,
-                        app=utc_to_tai(rx_app_swtstamp),
-                        driver=utc_to_tai(rx_driver_swtstamp),
-                        scheduled=utc_to_tai(tx_scheduled_time), # Unused
-                        mac=rx_mac_hwtstamp)
-        process(tx, rx)
+                        gate=utc_to_tai(rx_gate_time),
+                        sw=utc_to_tai(rx_swts),
+                        hw=rx_hwts)
+        process(tx, rx, r)
 
-def process(tx, rx):
-    tx_app_wakeup = tx.scheduled - advance_time
+    return r
 
-    gate_time.append(tx.scheduled)
-    tx_app_latency.append(tx.app - tx_app_wakeup)
-    tx_driver_latency.append(tx.driver - tx.app)
-    tx_mac_latency.append(tx.mac - tx.driver)
-    tx_mac_gate_accuracy.append(tx.mac - tx.scheduled)
-    path_delay.append(rx.mac - tx.mac)
-    rx_driver_latency.append(rx.driver - rx.mac)
-    rx_app_latency.append(rx.app - rx.driver)
+def process(tx, rx, r):
+    r.frame_count += 1
 
-    print(('seqid {} Gate {} TX app {} TX driver {} ' +
-           'TX MAC {} Path {} RX driver {} ' +
-           'RX app {}').format(tx.seqid,
-            ns_to_timespec(gate_time[-1]),
-            ns_to_timespec(tx_app_latency[-1]),
-            ns_to_timespec(tx_driver_latency[-1]),
-            ns_to_timespec(tx_mac_latency[-1]),
-            ns_to_timespec(path_delay[-1]),
-            ns_to_timespec(rx_driver_latency[-1]),
-            ns_to_timespec(rx_app_latency[-1])))
+    path_delay = rx.hw - tx.hw
+    if (abs(path_delay) > PATH_DELAY_THRESHOLD):
+        r.path_deadline_misses += 1
+    r.path_delay.append(path_delay)
+
+    gate_delay = tx.hw - tx.gate
+    if (abs(gate_delay) > GATE_DELAY_THRESHOLD):
+        r.gate_deadline_misses += 1
+    r.gate_delay.append(gate_delay)
+
+    print('[{}] seqid {} HW TX {} SW TX {} HW RX {} SW RX {}'.format(
+            ns_to_timespec(tx.gate),
+            tx.seqid,
+            ns_to_timespec(tx.hw - tx.gate, relative=True),
+            ns_to_timespec(tx.sw - tx.gate, relative=True),
+            ns_to_timespec(rx.hw - rx.gate, relative=True),
+            ns_to_timespec(rx.sw - rx.gate, relative=True)))
 
 def print_array(label, array):
-    print('{} (ns): max {} min {} mean {} stddev {}'.format(label,
-          ns_to_timespec(min(tx_app_latency)),
-          ns_to_timespec(max(tx_app_latency)),
-          ns_to_timespec(mean(tx_app_latency)),
-          ns_to_timespec(stdev(tx_app_latency))))
+    print('{} (ns): min {} max {} mean {} stddev {}'.format(label,
+          ns_to_timespec(min(array)),
+          ns_to_timespec(max(array)),
+          ns_to_timespec(mean(array)),
+          ns_to_timespec(stdev(array))))
 
-def results():
-    print_array('TX app latency', tx_app_latency)
-    print_array('TX driver latency', tx_driver_latency)
-    print_array('TX MAC latency', tx_mac_latency)
-    print_array('TX MAC gate accuracy', tx_mac_gate_accuracy)
-    print_array('Path delay', path_delay)
-    print_array('RX driver latency', rx_driver_latency)
-    print_array('RX app latency', rx_app_latency)
+def display(r):
+    print_array('Gate delay', r.gate_delay)
+    print_array('Path delay', r.path_delay)
+    print('All times are relative to the gate event (first column)')
+    print('Gate deadline misses: {} ({}%)'.format(
+          r.gate_deadline_misses,
+          (r.gate_deadline_misses * 100) / r.frame_count))
+    print('Path deadline misses: {} ({}%)'.format(
+          r.path_deadline_misses,
+          (r.path_deadline_misses * 100) / r.frame_count))
+
+class results():
+    def __init__(self, path_deadline_misses=0, gate_deadline_misses=0,
+                 path_delay=[], gate_delay=[], frame_count=0):
+        self.path_deadline_misses = path_deadline_misses
+        self.gate_deadline_misses = gate_deadline_misses
+        self.path_delay = path_delay
+        self.gate_delay = gate_delay
+        self.frame_count = frame_count
 
 utc_offset = timespec_to_ns(sys.argv[3])
-advance_time = timespec_to_ns(sys.argv[4])
-gate_time = []
-tx_app_latency = []
-tx_driver_latency = []
-tx_mac_latency = []
-tx_mac_gate_accuracy = []
-path_delay = []
-rx_driver_latency = []
-rx_app_latency = []
-
-parse(sys.argv[1], sys.argv[2])
-results()
+r = parse(sys.argv[1], sys.argv[2])
+display(r)

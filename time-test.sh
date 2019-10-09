@@ -341,8 +341,7 @@ do_send_traffic() {
 	"${TOPDIR}/time-test.py" \
 		tx.log \
 		rx.log \
-		"${utc_offset}.0" \
-		"${advance_time}"
+		"${utc_offset}.0"
 }
 
 do_start_rcv_traffic() {
