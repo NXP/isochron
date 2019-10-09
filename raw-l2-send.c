@@ -40,6 +40,7 @@ struct prog_data {
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;
+	long timestamped;
 	long iterations;
 	clockid_t clkid;
 	s64 advance_time;
@@ -52,10 +53,6 @@ struct prog_data {
 	long tx_len;
 	int fd;
 	struct app_private priv;
-};
-
-struct app_header {
-	short seqid;
 };
 
 static int rtprintf(struct prog_data *prog, char *fmt, ...)
@@ -84,24 +81,39 @@ static void rtflush(struct prog_data *prog)
 	}
 }
 
+static void process_txtstamp(struct prog_data *prog, struct timestamp *tstamp)
+{
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	char hwts_buf[TIMESPEC_BUFSIZ];
+	char swts_buf[TIMESPEC_BUFSIZ];
+	s64 hwts, swts;
+
+	hwts = timespec_to_ns(&tstamp->hw);
+	swts = timespec_to_ns(&tstamp->sw);
+
+	ns_sprintf(scheduled_buf, tstamp->tx_time);
+	ns_sprintf(hwts_buf, hwts);
+	ns_sprintf(swts_buf, swts);
+
+	rtprintf(prog, "[%s] seqid %d txtstamp %s swts %s\n",
+		 scheduled_buf, tstamp->seqid, hwts_buf, swts_buf);
+	prog->timestamped++;
+}
+
 static int do_work(struct prog_data *prog, int iteration, s64 scheduled,
 		   clockid_t clkid)
 {
 	struct app_private *priv = &prog->priv;
 	unsigned char err_pkt[BUF_SIZ];
-	char scheduled_buf[TIMESPEC_BUFSIZ];
-	char hwts_buf[TIMESPEC_BUFSIZ];
-	char swts_buf[TIMESPEC_BUFSIZ];
-	char now_buf[TIMESPEC_BUFSIZ];
 	struct app_header *app_hdr;
 	struct timestamp tstamp;
 	struct timespec now_ts;
-	s64 now, hwts, swts;
 	int rc;
 
 	clock_gettime(clkid, &now_ts);
 	app_hdr = (struct app_header *)(priv->sendbuf +
 					sizeof(struct ether_header));
+	app_hdr->tx_time = __cpu_to_be64(scheduled);
 	app_hdr->seqid = htons(iteration);
 
 	/* Send packet */
@@ -111,20 +123,44 @@ static int do_work(struct prog_data *prog, int iteration, s64 scheduled,
 		perror("send\n");
 		return rc;
 	}
-	rc = sk_receive(priv->fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE);
+	rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
+			MSG_ERRQUEUE, 0);
+	if (rc == -EAGAIN)
+		return 0;
 	if (rc < 0)
 		return rc;
 
-	hwts = timespec_to_ns(&tstamp.hw);
-	swts = timespec_to_ns(&tstamp.sw);
-	now = timespec_to_ns(&now_ts);
+	/* If a timestamp becomes available, process it now
+	 * (don't wait for later)
+	 */
+	process_txtstamp(prog, &tstamp);
 
-	ns_sprintf(scheduled_buf, scheduled);
-	ns_sprintf(hwts_buf, hwts);
-	ns_sprintf(swts_buf, swts);
-	ns_sprintf(now_buf, now);
-	rtprintf(prog, "[%s] Sent frame scheduled for %s with seqid %d txtstamp %s swts %s\n",
-		 now_buf, scheduled_buf, iteration, hwts_buf, swts_buf);
+	return 0;
+}
+
+static int wait_for_txtimestamps(struct prog_data *prog)
+{
+	unsigned char err_pkt[BUF_SIZ];
+	struct timestamp tstamp;
+	int rc;
+
+	while (prog->timestamped < prog->iterations) {
+		rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
+				MSG_ERRQUEUE, TXTSTAMP_TIMEOUT_MS);
+		if (rc < 0) {
+			fprintf(stderr, "Timed out waiting for TX timestamp: %d (%s)\n",
+				rc, strerror(-rc));
+			fprintf(stderr, "%ld timestamps unacknowledged\n",
+				prog->iterations - prog->timestamped);
+			return rc;
+		}
+
+		/* If a timestamp becomes available, process it now
+		 * (don't wait for later)
+		 */
+		process_txtstamp(prog, &tstamp);
+	}
+
 	return 0;
 }
 
@@ -167,7 +203,7 @@ static int run_nanosleep(struct prog_data *prog)
 		}
 	}
 
-	return 0;
+	return wait_for_txtimestamps(prog);
 }
 
 static void app_init(void *data)

@@ -5,6 +5,7 @@
 #include <linux/sockios.h>
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
+#include <arpa/inet.h>
 #include <linux/if.h>
 #include <sys/poll.h>
 #include <unistd.h>
@@ -15,8 +16,6 @@
 #include <errno.h>
 #include <time.h>
 #include "raw-l2-common.h"
-
-#define TXTSTAMP_TIMEOUT_MS	100
 
 int sched_setattr(pid_t pid, const struct sched_attr *attr, unsigned int flags)
 {
@@ -356,15 +355,17 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 }
 
 int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
-	       int flags)
+	       int flags, int timeout)
 {
 	struct iovec iov = { buf, buflen };
+	struct app_header *app_hdr;
 	struct timespec *ts;
 	struct cmsghdr *cm;
 	struct msghdr msg;
 	char control[256];
 	ssize_t len;
 	int rc = 0;
+	int i;
 
 	memset(control, 0, sizeof(control));
 	memset(&msg, 0, sizeof(msg));
@@ -375,9 +376,10 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 
 	if (flags == MSG_ERRQUEUE) {
 		struct pollfd pfd = { fd, POLLPRI, 0 };
-		rc = poll(&pfd, 1, TXTSTAMP_TIMEOUT_MS);
+		rc = poll(&pfd, 1, timeout);
 		if (rc == 0) {
-			fprintf(stderr, "timed out while polling for tx timestamp\n");
+			/* Timed out waiting for TX timestamp */
+			return -EAGAIN;
 		} else if (rc < 0) {
 			fprintf(stderr, "poll for tx timestamp failed: %s\n",
 				strerror(rc));
@@ -395,6 +397,10 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 		fprintf(stderr, "recvmsg%sfailed: %s\n",
 			flags == MSG_ERRQUEUE ? " tx timestamp " : " ",
 			strerror(errno));
+
+	app_hdr = (struct app_header *)(buf + sizeof(struct ether_header));
+	tstamp->seqid = ntohs(app_hdr->seqid);
+	tstamp->tx_time = __be64_to_cpu(app_hdr->tx_time);
 
 	for (cm = CMSG_FIRSTHDR(&msg); cm != NULL; cm = CMSG_NXTHDR(&msg, cm)) {
 		int level = cm->cmsg_level;

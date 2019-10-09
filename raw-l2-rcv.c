@@ -33,10 +33,6 @@ struct app_private {
 	clockid_t clkid;
 };
 
-struct app_header {
-	short seqid;
-};
-
 int signal_received = 0;
 
 /**
@@ -152,7 +148,8 @@ static int server_loop(struct prog_data *prog, void *app_data)
 	int rc = 0;
 
 	do {
-		len = sk_receive(prog->fd, prog->rcvbuf, BUF_SIZ, &tstamp, 0);
+		len = sk_receive(prog->fd, prog->rcvbuf, BUF_SIZ, &tstamp, 0,
+				 TXTSTAMP_TIMEOUT_MS);
 		/* Suppress "Interrupted system call" message */
 		if (len < 0 && errno != EINTR) {
 			fprintf(stderr, "recvfrom returned %d: %s\n",
