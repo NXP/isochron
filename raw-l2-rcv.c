@@ -59,33 +59,25 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	struct ether_header *eth_hdr = (struct ether_header *)rcvbuf;
 	struct app_header *app_hdr = (struct app_header *)(eth_hdr + 1);
 	struct app_private *priv = app_data;
+	char gate_buf[TIMESPEC_BUFSIZ];
 	char hwts_buf[TIMESPEC_BUFSIZ];
 	char swts_buf[TIMESPEC_BUFSIZ];
-	char now_buf[TIMESPEC_BUFSIZ];
 	char smac_buf[MACADDR_BUFSIZ];
 	char dmac_buf[MACADDR_BUFSIZ];
-	struct timespec now_ts;
-	s64 hwts, swts, now;
+	s64 hwts, swts;
 	int i, rc;
 
-	rc = clock_gettime(priv->clkid, &now_ts);
-	if (rc < 0) {
-		fprintf(stderr, "clock_gettime returned %d: %s", errno,
-			strerror(errno));
-		return -errno;
-	}
 	hwts = timespec_to_ns(&tstamp->hw);
 	swts = timespec_to_ns(&tstamp->sw);
-	now = timespec_to_ns(&now_ts);
 
 	/* Print packet */
-	ns_sprintf(now_buf, now);
 	ns_sprintf(hwts_buf, hwts);
 	ns_sprintf(swts_buf, swts);
+	ns_sprintf(gate_buf, __be64_to_cpu(app_hdr->tx_time));
 	mac_addr_sprintf(smac_buf, eth_hdr->ether_shost);
 	mac_addr_sprintf(dmac_buf, eth_hdr->ether_dhost);
 	printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-	       now_buf, smac_buf, dmac_buf, ntohs(eth_hdr->ether_type),
+	       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->ether_type),
 	       ntohs(app_hdr->seqid), hwts_buf, swts_buf);
 
 	return 0;
