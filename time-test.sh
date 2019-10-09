@@ -616,6 +616,13 @@ do_prepare() {
 			ip link set ${eth} up
 		done
 	esac
+
+	for cpu in cpu0 cpu1; do
+		local max=$(cat /sys/devices/system/cpu/${cpu}/cpufreq/scaling_max_freq)
+
+		echo $max > /sys/devices/system/cpu/${cpu}/cpufreq/scaling_min_freq
+		echo performance > /sys/devices/system/cpu/${cpu}/cpufreq/scaling_governor
+	done
 }
 
 do_print_config_done() {
