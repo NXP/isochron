@@ -114,6 +114,9 @@ def parse(raw_l2_send_txt, raw_l2_rcv_txt):
                         hw=rx_hwts)
         process(tx, rx, r)
 
+    if (args.summary):
+        print('All times are relative to the gate event (first column)')
+
     return r
 
 def process(tx, rx, r):
@@ -128,6 +131,9 @@ def process(tx, rx, r):
     if (abs(gate_delay) > GATE_DELAY_THRESHOLD):
         r.gate_deadline_misses += 1
     r.gate_delay.append(gate_delay)
+
+    if (args.summary):
+        return
 
     print('[{}] seqid {} HW TX {} SW TX {} HW RX {} SW RX {}'.format(
             ns_to_timespec(tx.gate),
@@ -144,7 +150,8 @@ def print_array(label, array):
           ns_to_timespec(mean(array)),
           ns_to_timespec(stdev(array))))
 
-def display(r):
+def print_summary(r):
+    print('Summary:')
     print_array('Gate delay', r.gate_delay)
     print_array('Path delay', r.path_delay)
     print('All times are relative to the gate event (first column)')
@@ -171,9 +178,11 @@ parser.add_argument('-r', '--rx-log', required=True,
                     help='Output from raw-l2-rcv')
 parser.add_argument('-u', '--utc-offset', required=True,
                     help='UTC-to-TAI offset (37 leap seconds as of 2019) in nanoseconds or sec.nsec format')
+parser.add_argument('-s', '--summary', action='store_true',
+                    help='Don\'t print the frames, just the statistics')
 
 args = parser.parse_args()
 
 utc_offset = timespec_to_ns(args.utc_offset)
 r = parse(args.tx_log, args.rx_log)
-display(r)
+print_summary(r)
