@@ -206,7 +206,6 @@ enetc_8021qbv_config() {
 felix_8021qbv_config() {
 	local iface=$1
 
-	do_vlan_subinterface eno2 100
 	for eth in ${iface} swp4; do
 		bridge vlan add vid 100 dev "${eth}"
 		tsntool pcpmap --device "${eth}" --enable 2&>1 /dev/null
@@ -298,24 +297,21 @@ get_queue_counters() {
 do_send_traffic() {
 	local remote="root@${board2_ip}"
 	local iface=
-	local mgmt_iface=
 	local err=false
 
 	case "${scenario}" in
 	enetc)
-		iface="eno0.100"
-		mgmt_iface="eno0"
+		iface="eno0"
 		;;
 	felix)
-		iface="eno2.100"
-		mgmt_iface="eno2"
+		iface="eno2"
 		;;
 	esac
 
 	check_sync
 
 	printf "Getting destination MAC address... "
-	dmac="$(get_remote_mac ${board2_ip} iproute2 ${mgmt_iface})" || err=true
+	dmac="$(get_remote_mac ${board2_ip} iproute2 ${iface})" || err=true
 	# Make sure 0001-mscc-ocelot-don-t-duplicate-broadcast-traffic.patch
 	# is applied to the kernel.
 	if [ -z "${dmac}" ] || [ ${err} = true ]; then
@@ -333,13 +329,14 @@ do_send_traffic() {
 
 	do_8021qbv true
 
-	before=$(get_queue_counters ${mgmt_iface} ${txq})
+	before=$(get_queue_counters ${iface} ${txq})
 
 	echo "Opening transmitter process..."
 	trace-cmd record -e irq -e net -e syscalls -e sched \
 		"${TOPDIR}/raw-l2-send" \
 		--interface "${iface}" \
 		--dmac "${dmac}" \
+		--vid 100 \
 		--priority "${txq}" \
 		--base-time "${os_base_time}" \
 		--cycle-time "${cycle_time}" \
@@ -353,7 +350,7 @@ do_send_traffic() {
 
 	receiver_open=false
 
-	after=$(get_queue_counters ${mgmt_iface} ${txq})
+	after=$(get_queue_counters ${iface} ${txq})
 
 	do_8021qbv false
 
@@ -386,10 +383,10 @@ do_start_rcv_traffic() {
 
 	case "${scenario}" in
 	enetc)
-		iface="eno0.100"
+		iface="eno0"
 		;;
 	felix)
-		iface="eno2.100"
+		iface="eno2"
 		;;
 	esac
 
@@ -601,9 +598,6 @@ prerequisites() {
 
 do_prepare() {
 	case "${scenario}" in
-	enetc)
-		do_vlan_subinterface eno0 100
-		;;
 	felix)
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
 		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
@@ -615,6 +609,7 @@ do_prepare() {
 			ip link set ${eth} master br0
 			ip link set ${eth} up
 		done
+		;;
 	esac
 
 	for cpu in cpu0 cpu1; do
@@ -679,7 +674,6 @@ case "${board}" in
 		;;
 	teardown)
 		do_8021qbu false
-		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		;;
 	*)
 		usage
@@ -704,7 +698,6 @@ case "${board}" in
 		do_print_config_done ${board}
 		;;
 	teardown)
-		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		;;
 	*)
 		usage

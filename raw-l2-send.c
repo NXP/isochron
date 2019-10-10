@@ -51,6 +51,7 @@ struct prog_data {
 	int log_buf_len;
 	char *log_buf;
 	long tx_len;
+	long vid;
 	int fd;
 	struct app_private priv;
 };
@@ -112,7 +113,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 
 	clock_gettime(clkid, &now_ts);
 	app_hdr = (struct app_header *)(priv->sendbuf +
-					sizeof(struct ether_header));
+					sizeof(struct vlan_ethhdr));
 	app_hdr->tx_time = __cpu_to_be64(scheduled);
 	app_hdr->seqid = htons(iteration);
 
@@ -208,8 +209,8 @@ static int run_nanosleep(struct prog_data *prog)
 
 static void app_init(void *data)
 {
+	int i = sizeof(struct vlan_ethhdr);
 	struct app_private *priv = data;
-	int i = sizeof(struct ether_header);
 
 	/* Packet data */
 	while (i < priv->tx_len) {
@@ -277,7 +278,7 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 static int prog_init(struct prog_data *prog)
 {
 	char now_buf[TIMESPEC_BUFSIZ];
-	struct ether_header *eh;
+	struct vlan_ethhdr *hdr;
 	struct timespec now_ts;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
@@ -322,11 +323,14 @@ static int prog_init(struct prog_data *prog)
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
 	/* Ethernet header */
-	eh = (struct ether_header *) prog->sendbuf;
-	memcpy(eh->ether_shost, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
-	memcpy(eh->ether_dhost, prog->dest_mac, ETH_ALEN);
+	hdr = (struct vlan_ethhdr *)prog->sendbuf;
+	memcpy(hdr->h_source, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
+	memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
+	hdr->h_vlan_proto = htons(ETH_P_8021Q);
 	/* Ethertype field */
-	eh->ether_type = htons(ETH_P_TSN);
+	hdr->h_vlan_encapsulated_proto = htons(ETH_P_TSN);
+	hdr->h_vlan_TCI = htons((prog->priority << VLAN_PRIO_SHIFT) |
+				(prog->vid & VLAN_VID_MASK));
 
 	/* Index of the network device */
 	prog->socket_address.sll_ifindex = if_idx.ifr_ifindex;
@@ -459,6 +463,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_ptr = {
 				.ptr = &prog->tx_len,
 			},
+		}, {
+			.short_opt = "-v",
+			.long_opt = "--vid",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->vid,
+			},
+			.optional = true,
 		},
 	};
 	char *prog_name = argv[0];

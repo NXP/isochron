@@ -56,8 +56,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		    const struct timestamp *tstamp)
 {
 	/* Header structures */
-	struct ether_header *eth_hdr = (struct ether_header *)rcvbuf;
-	struct app_header *app_hdr = (struct app_header *)(eth_hdr + 1);
+	struct vlan_ethhdr *vlan_hdr = (struct vlan_ethhdr *)rcvbuf;
+	struct app_header *app_hdr = (struct app_header *)(vlan_hdr + 1);
 	struct app_private *priv = app_data;
 	char gate_buf[TIMESPEC_BUFSIZ];
 	char hwts_buf[TIMESPEC_BUFSIZ];
@@ -74,10 +74,11 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	ns_sprintf(hwts_buf, hwts);
 	ns_sprintf(swts_buf, swts);
 	ns_sprintf(gate_buf, __be64_to_cpu(app_hdr->tx_time));
-	mac_addr_sprintf(smac_buf, eth_hdr->ether_shost);
-	mac_addr_sprintf(dmac_buf, eth_hdr->ether_dhost);
+	mac_addr_sprintf(smac_buf, vlan_hdr->h_source);
+	mac_addr_sprintf(dmac_buf, vlan_hdr->h_dest);
 	printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-	       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->ether_type),
+	       gate_buf, smac_buf, dmac_buf,
+	       ntohs(vlan_hdr->h_vlan_encapsulated_proto),
 	       ntohs(app_hdr->seqid), hwts_buf, swts_buf);
 
 	return 0;
@@ -134,7 +135,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 
 static int server_loop(struct prog_data *prog, void *app_data)
 {
-	struct ether_header *eth_hdr = (struct ether_header *)prog->rcvbuf;
+	struct vlan_ethhdr *vlan_hdr = (struct vlan_ethhdr *)prog->rcvbuf;
 	struct timestamp tstamp;
 	ssize_t len;
 	int rc = 0;
@@ -150,7 +151,8 @@ static int server_loop(struct prog_data *prog, void *app_data)
 			break;
 		}
 		if (ether_addr_to_u64(prog->dest_mac) &&
-		    ether_addr_to_u64(prog->dest_mac) != ether_addr_to_u64(eth_hdr->ether_dhost))
+		    ether_addr_to_u64(prog->dest_mac) !=
+		    ether_addr_to_u64(vlan_hdr->h_dest))
 			continue;
 		rc = app_loop(app_data, prog->rcvbuf, len, &tstamp);
 		if (rc < 0)
@@ -219,8 +221,8 @@ static int prog_init(struct prog_data *prog)
 		return -errno;
 	}
 
-	/* Open PF_PACKET socket, listening for EtherType ETH_P_TSN */
-	prog->fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_TSN));
+	/* Open PF_PACKET socket, listening for EtherType ETH_P_8021Q */
+	prog->fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_8021Q));
 	if (prog->fd < 0) {
 		perror("listener: socket");
 		return -errno;

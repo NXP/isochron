@@ -398,7 +398,7 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 			flags == MSG_ERRQUEUE ? " tx timestamp " : " ",
 			strerror(errno));
 
-	app_hdr = (struct app_header *)(buf + sizeof(struct ether_header));
+	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
 	tstamp->seqid = ntohs(app_hdr->seqid);
 	tstamp->tx_time = __be64_to_cpu(app_hdr->tx_time);
 
