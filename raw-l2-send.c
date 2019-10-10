@@ -516,7 +516,7 @@ int main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
 	struct app_private *priv = &prog.priv;
-	int rc;
+	int rc_save, rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
@@ -533,9 +533,11 @@ int main(int argc, char *argv[])
 
 	app_init(priv);
 
-	rc = run_nanosleep(&prog);
+	rc_save = run_nanosleep(&prog);
+
+	rc = prog_teardown(&prog);
 	if (rc < 0)
 		return rc;
 
-	return prog_teardown(&prog);
+	return rc_save;
 }
