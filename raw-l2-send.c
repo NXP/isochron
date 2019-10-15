@@ -77,7 +77,7 @@ static void rtflush(struct prog_data *prog)
 	int rc, i = 0;
 
 	while (i < prog->log_buf_len && prog->log_buf[i]) {
-		rc = printf(prog->log_buf + i);
+		rc = printf("%s", prog->log_buf + i);
 		i += (rc + 1);
 	}
 }
