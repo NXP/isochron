@@ -523,7 +523,7 @@ set_qbv_params() {
 			gawk '/\<currentUtcOffset\>/ { print $2; }')
 	mac_base_time="$(($sec + 1)).0"
 	os_base_time="$(($sec + 1 - $utc_offset)).0"
-	cycle_time=$((200 * $NSEC_PER_USEC))
+	cycle_time=$((1000 * $NSEC_PER_USEC))
 	frames="10000"
 	length="100"
 	txq=5
