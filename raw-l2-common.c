@@ -17,11 +17,6 @@
 #include <time.h>
 #include "raw-l2-common.h"
 
-int sched_setattr(pid_t pid, const struct sched_attr *attr, unsigned int flags)
-{
-	return syscall(__NR_sched_setattr, pid, attr, flags);
-}
-
 int mac_addr_from_string(__u8 *to, char *from)
 {
 	unsigned long byte;
@@ -397,10 +392,6 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 		fprintf(stderr, "recvmsg%sfailed: %s\n",
 			flags == MSG_ERRQUEUE ? " tx timestamp " : " ",
 			strerror(errno));
-
-	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
-	tstamp->seqid = ntohs(app_hdr->seqid);
-	tstamp->tx_time = __be64_to_cpu(app_hdr->tx_time);
 
 	for (cm = CMSG_FIRSTHDR(&msg); cm != NULL; cm = CMSG_NXTHDR(&msg, cm)) {
 		int level = cm->cmsg_level;

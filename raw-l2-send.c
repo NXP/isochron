@@ -82,22 +82,26 @@ static void rtflush(struct prog_data *prog)
 	}
 }
 
-static void process_txtstamp(struct prog_data *prog, struct timestamp *tstamp)
+static void process_txtstamp(struct prog_data *prog, const char *buf,
+			     struct timestamp *tstamp)
 {
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char hwts_buf[TIMESPEC_BUFSIZ];
 	char swts_buf[TIMESPEC_BUFSIZ];
+	struct app_header *app_hdr;
 	__s64 hwts, swts;
+
+	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
 
 	hwts = timespec_to_ns(&tstamp->hw);
 	swts = timespec_to_ns(&tstamp->sw);
 
-	ns_sprintf(scheduled_buf, tstamp->tx_time);
+	ns_sprintf(scheduled_buf, __be64_to_cpu(app_hdr->tx_time));
 	ns_sprintf(hwts_buf, hwts);
 	ns_sprintf(swts_buf, swts);
 
 	rtprintf(prog, "[%s] seqid %d txtstamp %s swts %s\n",
-		 scheduled_buf, tstamp->seqid, hwts_buf, swts_buf);
+		 scheduled_buf, ntohs(app_hdr->seqid), hwts_buf, swts_buf);
 	prog->timestamped++;
 }
 
@@ -134,7 +138,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	/* If a timestamp becomes available, process it now
 	 * (don't wait for later)
 	 */
-	process_txtstamp(prog, &tstamp);
+	process_txtstamp(prog, err_pkt, &tstamp);
 
 	return 0;
 }
@@ -159,7 +163,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 		/* If a timestamp becomes available, process it now
 		 * (don't wait for later)
 		 */
-		process_txtstamp(prog, &tstamp);
+		process_txtstamp(prog, err_pkt, &tstamp);
 	}
 
 	return 0;
