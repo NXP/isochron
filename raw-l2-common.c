@@ -254,7 +254,7 @@ struct timespec ns_to_timespec(__s64 ns)
 {
 	return (struct timespec) {
 		.tv_sec = ns / NSEC_PER_SEC,
-		.tv_nsec = abs(ns) % NSEC_PER_SEC,
+		.tv_nsec = llabs(ns) % NSEC_PER_SEC,
 	};
 }
 
