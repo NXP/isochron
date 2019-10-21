@@ -383,7 +383,7 @@ do_start_rcv_traffic() {
 
 	case "${scenario}" in
 	enetc)
-		iface="eno0"
+		iface="eno0.100"
 		;;
 	felix)
 		iface="eno2"
@@ -598,6 +598,11 @@ prerequisites() {
 
 do_prepare() {
 	case "${scenario}" in
+	enetc)
+		if [ $board = 2 ]; then
+			do_vlan_subinterface eno0 100
+		fi
+		;;
 	felix)
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
 		ip link add name br0 type bridge stp_state 0 vlan_filtering 1
@@ -698,6 +703,7 @@ case "${board}" in
 		do_print_config_done ${board}
 		;;
 	teardown)
+		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
 		;;
 	*)
 		usage
