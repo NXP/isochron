@@ -133,7 +133,8 @@ def process(tx, rx, r):
     gate_delay = tx.hw - adjusted_gate
     if (abs(gate_delay) >= cycle_time):
         r.gate_deadline_misses += 1
-        r.cycles_missed += int(gate_delay / cycle_time)
+        if (gate_delay > 0):
+            r.cycles_missed += int(gate_delay / cycle_time)
     r.gate_delay.append(gate_delay)
 
     if (args.summary):
