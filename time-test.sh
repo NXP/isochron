@@ -298,6 +298,7 @@ do_send_traffic() {
 	local remote="root@${board2_ip}"
 	local iface=
 	local err=false
+	local sched_prio=0
 
 	case "${scenario}" in
 	enetc)
@@ -330,9 +331,13 @@ do_send_traffic() {
 	do_8021qbv true
 
 	before=$(get_queue_counters ${iface} ${txq})
-
 	echo "Opening transmitter process..."
 	trace-cmd record -e irq -e net -e syscalls -e sched \
+		chrt --deadline \
+			--sched-runtime "${cycle_time}" \
+			--sched-period "${cycle_time}" \
+			--sched-deadline "${cycle_time}" \
+			"${sched_prio}"  \
 		"${TOPDIR}/raw-l2-send" \
 		--interface "${iface}" \
 		--dmac "${dmac}" \

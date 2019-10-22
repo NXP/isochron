@@ -225,39 +225,6 @@ static void app_init(void *data)
 	}
 }
 
-static int prog_configure_rt(struct prog_data *prog)
-{
-	struct sched_attr attr = {
-		.size = sizeof(struct sched_attr),
-		.sched_policy = SCHED_DEADLINE,
-		.sched_runtime = prog->advance_time / 2,
-		.sched_deadline = prog->advance_time / 2,
-		.sched_period = prog->cycle_time,
-	};
-	int rc;
-
-	/* Prevent the process's virtual memory from being swapped out, by
-	 * locking all current and future pages
-	 */
-	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
-	if (rc < 0) {
-		fprintf(stderr, "mlockall returned %d: %s\n",
-			errno, strerror(errno));
-		return rc;
-	}
-
-	rc = sched_setattr(getpid(), &attr, 0);
-	if (rc < 0) {
-		fprintf(stderr, "sched_setattr returned %d: %s\n",
-			errno, strerror(errno));
-		fprintf(stderr,
-			"Make sure the cycle-time and advance-time values are reasonable\n");
-		return rc;
-	}
-
-	return 0;
-}
-
 /* Calculate the first base_time in the future that satisfies this
  * relationship:
  *
@@ -379,9 +346,15 @@ static int prog_init(struct prog_data *prog)
 		return -ENOMEM;
 	prog->log_buf_len = -1;
 
-	rc = prog_configure_rt(prog);
-	if (rc < 0)
+	/* Prevent the process's virtual memory from being swapped out, by
+	 * locking all current and future pages
+	 */
+	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
+	if (rc < 0) {
+		fprintf(stderr, "mlockall returned %d: %s\n",
+			errno, strerror(errno));
 		return rc;
+	}
 
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }
