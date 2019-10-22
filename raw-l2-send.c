@@ -1,5 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0+
-/* Based on code from:
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright 2019 NXP Semiconductors */
+/* This file contains code snippets from:
+ * - The Linux kernel
+ * - The linuxptp project
+ * Initial prototype based on:
  * https://gist.github.com/austinmarton/1922600
  * https://sourceforge.net/p/linuxptp/mailman/message/31998404/
  */

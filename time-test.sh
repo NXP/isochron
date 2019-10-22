@@ -1,6 +1,6 @@
 #!/bin/bash
-# SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2019 NXP Semiconductors
+# SPDX-License-Identifier: GPL-2.0
+# Copyright 2019 NXP Semiconductors
 
 set -e -u -o pipefail
 

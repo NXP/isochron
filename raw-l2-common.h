@@ -1,4 +1,10 @@
-// SPDX-License-Identifier: GPL-3.0+
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright 2019 NXP Semiconductors */
+/* This file contains code snippets from:
+ * - libnfnetlink.h
+ * - The Linux kernel
+ * - The linuxptp project
+ */
 #ifndef _COMMON_H
 #define _COMMON_H
 

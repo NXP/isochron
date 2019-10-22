@@ -1,6 +1,10 @@
-// SPDX-License-Identifier: GPL-3.0+
-/* Based on code from:
- * https://gist.github.com/austinmarton/2862515
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright 2019 NXP Semiconductors */
+/* This file contains code snippets from:
+ * - The Linux kernel
+ * - The linuxptp project
+ * Initial prototype based on:
+ * - https://gist.github.com/austinmarton/2862515
  */
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
