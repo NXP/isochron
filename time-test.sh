@@ -332,7 +332,7 @@ do_send_traffic() {
 
 	before=$(get_queue_counters ${iface} ${txq})
 	echo "Opening transmitter process..."
-	trace-cmd record -e irq -e net -e syscalls -e sched \
+	trace-cmd record -e irq -e net -e sock -e napi -e qdisc -e syscalls -e sched \
 		chrt --deadline \
 			--sched-runtime "${cycle_time}" \
 			--sched-period "${cycle_time}" \
