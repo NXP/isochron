@@ -13,14 +13,9 @@
 #include <net/if.h>
 #include <netinet/ether.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <sched.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <time.h>
 /* For va_start and va_end */
 #include <stdarg.h>
 #include "raw-l2-common.h"

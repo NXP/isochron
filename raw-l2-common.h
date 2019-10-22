@@ -2,12 +2,9 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
-#define _GNU_SOURCE
-#include <linux/sched.h>
-#include <sys/types.h>
-#include <stdint.h>
 #define NSEC_PER_SEC	1000000000LL
 #define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
+
 #define TIMESPEC_BUFSIZ	32
 #define MACADDR_BUFSIZ	32
 
