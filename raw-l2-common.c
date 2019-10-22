@@ -25,7 +25,7 @@ int mac_addr_from_string(__u8 *to, char *from)
 
 	for (i = 0; i < ETH_ALEN; i++) {
 		byte = strtoul(p, &p, 16);
-		to[i] = (__u8 )byte;
+		to[i] = (__u8)byte;
 		if (i == (ETH_ALEN - 1) && *p != 0)
 			/* 6 bytes processed but more are present */
 			return -EFBIG;
@@ -101,7 +101,7 @@ static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 	return 0;
 }
 
-static const char *prog_arg_type_str[] = {
+static const char * const prog_arg_type_str[] = {
 	[PROG_ARG_MAC_ADDR] = "MAC address",
 	[PROG_ARG_LONG] = "Long integer",
 	[PROG_ARG_TIME] = "Time in sec.nsec format",
@@ -130,7 +130,7 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	struct prog_arg_string string;
 	struct prog_arg_time time;
 	int rc, i, parsed = 0;
-	long int *long_ptr;
+	long *long_ptr;
 	bool *parsed_arr;
 	char *arg;
 
@@ -293,11 +293,15 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 		return rc;
 	}
 
-	if (cfg.tx_type != tx_type || cfg.rx_filter != rx_filter) {
-		fprintf(stderr, "tx_type   %d not %d\n", cfg.tx_type, tx_type);
-		fprintf(stderr, "rx_filter %d not %d\n", cfg.rx_filter, rx_filter);
-		fprintf(stderr, "The current filter does not match the required\n");
-	}
+	if (cfg.tx_type != tx_type)
+		fprintf(stderr, "tx_type   %d not %d\n",
+			cfg.tx_type, tx_type);
+	if (cfg.rx_filter != rx_filter)
+		fprintf(stderr, "rx_filter %d not %d\n",
+			cfg.rx_filter, rx_filter);
+	if (cfg.tx_type != tx_type || cfg.rx_filter != rx_filter)
+		fprintf(stderr,
+			"The current filter does not match the required\n");
 
 	return 0;
 }
@@ -323,7 +327,7 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 		return rc;
 
 	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING,
-		        &flags, sizeof(flags));
+			&flags, sizeof(flags));
 	if (rc < 0) {
 		fprintf(stderr, "ioctl SO_TIMESTAMPING failed: %s\n",
 			strerror(errno));
@@ -339,7 +343,7 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 
 	flags = 1;
 	rc = setsockopt(fd, SOL_SOCKET, SO_SELECT_ERR_QUEUE,
-		        &flags, sizeof(flags));
+			&flags, sizeof(flags));
 	if (rc < 0) {
 		fprintf(stderr, "%s: SO_SELECT_ERR_QUEUE: %s", if_name,
 			strerror(errno));
@@ -371,6 +375,7 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 
 	if (flags == MSG_ERRQUEUE) {
 		struct pollfd pfd = { fd, POLLPRI, 0 };
+
 		rc = poll(&pfd, 1, timeout);
 		if (rc == 0) {
 			/* Timed out waiting for TX timestamp */
@@ -380,7 +385,7 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 				strerror(rc));
 			return rc;
 		} else if (!(pfd.revents & POLLPRI)) {
-			fprintf(stderr, "poll for tx timestamp woke up on non ERR event\n");
+			fprintf(stderr, "poll woke up on non ERR event\n");
 			return -1;
 		}
 		/* On success a positive number is returned */

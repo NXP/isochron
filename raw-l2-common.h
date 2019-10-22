@@ -102,7 +102,7 @@ struct prog_arg_time {
 };
 
 struct prog_arg_long {
-	long int *ptr;
+	long *ptr;
 };
 
 struct prog_arg_mac_addr {

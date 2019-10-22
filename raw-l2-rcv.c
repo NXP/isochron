@@ -33,7 +33,7 @@ struct app_private {
 	clockid_t clkid;
 };
 
-int signal_received = 0;
+int signal_received;
 
 /**
  * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
@@ -85,7 +85,7 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 
 /* Borrowed from raw_configure in linuxptp */
 static int multicast_listen(int fd, unsigned int if_index,
-			    unsigned char *macaddr, int enable)
+			    unsigned char *macaddr, bool enable)
 {
 	int rc, filter_test, option;
 	struct packet_mreq mreq;
@@ -168,7 +168,8 @@ static int server_loop(struct prog_data *prog, void *app_data)
 	close(prog->fd);
 
 	if (ether_addr_to_u64(prog->dest_mac))
-		rc = multicast_listen(prog->fd, prog->if_index, prog->dest_mac, 0);
+		rc = multicast_listen(prog->fd, prog->if_index,
+				      prog->dest_mac, false);
 
 	return rc;
 }
@@ -215,8 +216,8 @@ static int prog_init(struct prog_data *prog)
 
 	prog->if_index = if_nametoindex(prog->if_name);
 	if (!prog->if_index) {
-		fprintf(stderr, "if_nametoindex(%s) returned %s\n", prog->if_name,
-			strerror(errno));
+		fprintf(stderr, "if_nametoindex(%s) returned %s\n",
+			prog->if_name, strerror(errno));
 		return -errno;
 	}
 
@@ -231,7 +232,7 @@ static int prog_init(struct prog_data *prog)
 	 * is closed prematurely
 	 */
 	rc = setsockopt(prog->fd, SOL_SOCKET, SO_REUSEADDR, &sockopt,
-			sizeof sockopt);
+			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
 		close(prog->fd);
@@ -247,7 +248,8 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (ether_addr_to_u64(prog->dest_mac))
-		rc = multicast_listen(prog->fd, prog->if_index, prog->dest_mac, 1);
+		rc = multicast_listen(prog->fd, prog->if_index,
+				      prog->dest_mac, true);
 
 	return sk_timestamping_init(prog->fd, prog->if_name, 1);
 }

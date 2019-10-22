@@ -153,7 +153,8 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 		rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
 				MSG_ERRQUEUE, TXTSTAMP_TIMEOUT_MS);
 		if (rc < 0) {
-			fprintf(stderr, "Timed out waiting for TX timestamp: %d (%s)\n",
+			fprintf(stderr,
+				"Timed out waiting for TX timestamp: %d (%s)\n",
 				rc, strerror(-rc));
 			fprintf(stderr, "%ld timestamps unacknowledged\n",
 				prog->iterations - prog->timestamped);
@@ -329,8 +330,7 @@ static int prog_init(struct prog_data *prog)
 
 		ns_sprintf(base_time_buf, prog->base_time);
 		fprintf(stderr,
-			"Base time %s is in the past, "
-			"winding it into the future\n",
+			"Base time %s is in the past, winding it into the future\n",
 			base_time_buf);
 
 		prog->base_time = future_base_time(prog->base_time,
@@ -478,11 +478,13 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		prog->advance_time = prog->cycle_time;
 
 	if (prog->advance_time > prog->cycle_time) {
-		fprintf(stderr, "Advance time cannot be higher than cycle time\n");
+		fprintf(stderr,
+			"Advance time cannot be higher than cycle time\n");
 		return -EINVAL;
 	}
 	if (prog->shift_time > prog->cycle_time) {
-		fprintf(stderr, "Shift time cannot be higher than cycle time\n");
+		fprintf(stderr,
+			"Shift time cannot be higher than cycle time\n");
 		return -EINVAL;
 	}
 
