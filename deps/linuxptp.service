@@ -10,7 +10,7 @@ Description=Precision Time Protocol (PTP) service
 Type=simple
 ExecStartPre=/usr/sbin/phc_ctl %PHC% set
 ExecStartPre=/usr/sbin/phc_ctl %PHC% freq 0
-ExecStart=/usr/sbin/ptp4l -f /etc/linuxptp/ptp4l.cfg
+ExecStart=/bin/chrt -r 10 /usr/sbin/ptp4l -f /etc/linuxptp/ptp4l.cfg
 
 [Install]
 WantedBy=multi-user.target

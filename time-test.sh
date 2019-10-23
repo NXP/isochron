@@ -334,9 +334,9 @@ do_send_traffic() {
 	echo "Opening transmitter process..."
 	trace-cmd record -e irq -e net -e syscalls -e sched \
 		chrt --deadline \
-			--sched-runtime "${cycle_time}" \
+			--sched-runtime "$((${cycle_time} / 2))" \
+			--sched-deadline "$((${cycle_time} / 2))" \
 			--sched-period "${cycle_time}" \
-			--sched-deadline "${cycle_time}" \
 			"${sched_prio}"  \
 		"${TOPDIR}/raw-l2-send" \
 		--interface "${iface}" \
@@ -528,7 +528,7 @@ set_qbv_params() {
 			gawk '/\<currentUtcOffset\>/ { print $2; }')
 	mac_base_time="$(($sec + 1)).0"
 	os_base_time="$(($sec + 1 - $utc_offset)).0"
-	cycle_time=$((100 * $NSEC_PER_USEC))
+	cycle_time=$((200 * $NSEC_PER_USEC))
 	frames="100000"
 	length="100"
 	txq=5
