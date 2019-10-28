@@ -28,27 +28,64 @@ scenario="enetc"
 # in sync via phc2sys. One of the boards runs as PTP master and the other as
 # PTP slave.
 #
+# Here is the "enetc" scenario:
+#
 #   Board 1:
 #
 #   +---------------------------------------------------------------------------------+
-#   |     scenario="enetc"     raw-l2-send       scenario="felix"                     |
+#   | raw-l2-send                                                                     |
 #   | +------------+   +------------+  +------------+  +------------+  +------------+ |
 #   | |            |   |            |  |            |  |            |  |            | |
-#   | |            |-+ |            |  |            |-+|            |  |            | |
-#   | |            | | |            |  |            | ||            |  |            | |
-#   +-+------------+-|-+------------+--+------------+-|+------------+--+------------+-+
-#          MAC0      |      SW0             SW1       |     SW2              SW3
-#                    |                                |
-#   Board 2:         |                                |
-#                    |                                |
-#   +----------------|--------------------------------|-------------------------------+
-#   |                |         raw-l2-rcv             |                               |
-#   | +------------+ | +------------+  +------------+ |+------------+  +------------+ |
-#   | |            | | |            |  |            | ||            |  |            | |
-#   | |            |-+ |            |  |            |-+|            |  |            | |
+#   | |            |-+ |            |  |            |  |            |  |            | |
+#   | |            | | |            |  |            |  |            |  |            | |
+#   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
+#          MAC0      |      SW0             SW1             SW2              SW3
+#                    |
+#   Board 3:         |
+#                    |
+#   +----------------|----------------------------------------------------------------+
+#   |                |      PSFP                                                      |
+#   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
+#   | |            | | |            |  |            |  |            |  |            | |
+#   | |            | +-|            |+-|            |  |            |  |            | |
+#   | |            |   |            || |            |  |            |  |            | |
+#   +-+------------+---+------------+|-+------------+--+------------+--+------------+-+
+#          MAC0             SW0      |      SW1             SW2              SW3
+#   Board 2:         +---------------+
+#                    |
+#   +----------------|----------------------------------------------------------------+
+#   | raw-l2-rcv     |                                                                |
+#   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
+#   | |            | | |            |  |            |  |            |  |            | |
+#   | |            |-+ |            |  |            |  |            |  |            | |
 #   | |            |   |            |  |            |  |            |  |            | |
 #   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
 #          MAC0             SW0             SW1             SW2              SW3
+#
+# And here is the "felix" scenario:
+#
+#   Board 1:
+#
+#   +---------------------------------------------------------------------------------+
+#   |                                    raw-l2-send                                  |
+#   | +------------+   +------------+  +------------+  +------------+  +------------+ |
+#   | |            |   |            |  |            |  |            |  |            | |
+#   | |            |   |            |  |            |-+|            |  |            | |
+#   | |            |   |            |  |            | ||            |  |            | |
+#   +-+------------+---+------------+--+------------+-|+------------+--+------------+-+
+#          MAC0             SW0             SW1       |     SW2              SW3
+#                                                     |
+#   Board 2:                                          |
+#                                                     |
+#   +-------------------------------------------------|-------------------------------+
+#   |                                    raw-l2-rcv   |                               |
+#   | +------------+   +------------+  +------------+ |+------------+  +------------+ |
+#   | |            |   |            |  |            | ||            |  |            | |
+#   | |            |   |            |  |            |-+|            |  |            | |
+#   | |            |   |            |  |            |  |            |  |            | |
+#   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
+#          MAC0             SW0             SW1             SW2              SW3
+#
 #
 # In the case of Felix switch ports, a VLAN sub-interface of eno2 is used to
 # originate traffic (due to QoS classification not being supported through the
@@ -547,6 +584,143 @@ set_qbv_params() {
 	shift_time=$(($t0 + $t1))
 }
 
+# Recommended read: Figure 16-23. Overview of Per-Stream Filtering and Policing
+# (Qci) from LS1028ARM.pdf
+#
+#          Stream Identity Table                                 Stream Filter Instance Table
+#           (aka cbstreamidset)                                         (aka qcisfiset)
+# +-----------+-----------+---------------+         +---------------+-----------+--------+-------+------+
+# | Port list | Stream ID | Stream Handle |         | Stream Handle | Port list | Filter | Meter | Gate |
+# +-----------+-----------+---------------+         +---------------+-----------+--------+-------+------+
+# |     1     |    NULL   |      1234     |--+----->|      1234     |     1     | xxxxxx |   5   |  11  |
+# |    ...    |    ...    |      ...      |  |      |      ...      |    ...    |   ...  |  ...  |  ... |
+# |     3     |    NULL   |      1357     |-------->|      1357     |     3     | yyyyyy |   29  |  11  |
+# |     2     | SMAC/VLAN |      5678     |-------->|      5678     |     2     | zzzzzz |   29  |  43  |
+# |    ...    |    ...    |      ...      |  |      |      ...      |    ...    |   ...  |  ...  |  ... |
+# |     1     |    NULL   |      1234     |--+      +---------------+-----------+--------+-------+------+
+# +-----------+-----------+---------------+                                                  |       |
+#                                                                                            |       |
+#                            +---------------------------------------------------------------+       |
+#                            |                                    +----------------------------------+
+#                            |      Flow Meter Instance Table     |       Stream Gate Instance Table
+#                            |           (aka qcifmiset)          |             (aka qcisgiset)
+#                            |  +----------+-------------------+  |  +---------+------------+-----------+
+#                            |  | Meter ID |  Meter Parameters |  |  | Gate ID | Gate State | Gate List |
+#                            |  +----------+-------------------+  |  +---------+------------+-----------+
+#                            +->|    29    | CIR, CBS, EIR etc |  +->|    11   |    Open    |   0..n    |
+#                               |     5    | CIR, CBS, EIR etc |     |    43   |   Closed   |   0..m    |
+#                               +----------+-------------------+     +---------+------------+-----------+
+do_8021qci() {
+	local err=false
+	# The fact that the ingress policing classification rules are done
+	# by looking up the egress port is a hardware quirk of Felix
+	local egress_port=
+	local dmac_iproute2=$(get_remote_mac $board2_ip iproute2 br0) || err=true
+	local dmac=$(get_remote_mac $board2_ip tsntool br0) || err=true
+	# raw-l2-send
+	local rt_vid=100
+	# Bridge's default_pvid
+	local best_effort_vid=1
+
+	if [ -z "${dmac_iproute2}" ] || [ ${err} = true ]; then
+		echo "failed: $?"
+		echo "Board 2 ($board2_ip) does not appear to be connected."
+		return 1
+	fi
+
+	echo "Looking up MAC $dmac_iproute2 in the switch FDB..."
+	egress_port=$(bridge fdb | grep -i $dmac_iproute2 | awk '{ print $3; exit; }')
+	echo "Found egress port $egress_port"
+
+	streamhandle=0
+	# PSFP Policer id, ranges from 63 to 383.
+	flowmeter=63
+	gateid=1
+
+	# Rate-limit to 54 Mbps, test with:
+	# Board 2: iperf3 -s
+	# Board 1: iperf3 -c 10.0.0.102 -u -b 0
+	committed_kbps=$((54 * 1000))
+	committed_burst_size_bytes=$((1522 * 10))
+	excess_kbps=$((54 * 1000))
+	excess_burst_size_bytes=$((1522 * 10))
+
+	# From include/linux/tsn.h, "sourcetagged" and "nulltagged" mean:
+	#
+	# /* tsnCpeNullDownTagged. It can take the following values:
+	# * 1 tagged: A frame must have a VLAN tag to be recognized as belonging
+	# * to the Stream.
+	# * 2 priority: A frame must be untagged, or have a VLAN tag with a VLAN
+	# * ID = 0 to be recognized as belonging to the Stream.
+	# * 3 all: A frame is recognized as belonging to the Stream whether
+	# * tagged or not.
+	# */
+	#
+	# --sourcetagged is used if we're talking about a source stream
+	# identification function, while --nulltagged applies to a null
+	# stream id function.
+
+	# Felix only supports NULL stream identification, aka DMAC/VID.
+
+	# Can't say --disable here
+	# Also, Felix only supports --nulltagged 1, aka tagged. The
+	# --nulltagged argument is completely ignored.
+	tsntool cbstreamidset --device $egress_port --index 0 \
+		--streamhandle $streamhandle \
+		--nullstreamid \
+		--nulldmac $dmac \
+		--nullvid $best_effort_vid \
+		--enable
+
+	# Some things to keep in mind:
+	#
+	# * --streamhandle is not used for the SFI table on Felix.
+	#   SIT->SFI match is done by
+	#   $(cbstreamidset --streamhandle) == $(qcisfiset --index).
+	#
+	# * Only SFI table --index 0 can be written at the moment on
+	#   Felix, all others do not error out, but error out on read,
+	#   and do not work.
+	#
+	# * --device does not matter beyond identifying the Felix
+	#   driver (not the port index).
+	#
+	# * Specifying --flowmeterid is MANDATORY, otherwise all
+	#   traffic is dropped.
+	tsntool qcisfiset --device $egress_port \
+		--flowmeterid $flowmeter \
+		--index $streamhandle \
+		--gateid $gateid \
+		--enable
+	tsntool qcifmiset --device $egress_port \
+		--index $flowmeter \
+		--cir $committed_kbps \
+		--cbs $committed_burst_size_bytes \
+		--eir $excess_kbps \
+		--ebs $excess_burst_size_bytes \
+		--cf \
+		--cm \
+		--dropyellow
+
+	# It appears that setting even one single gate as closed eventually
+	# makes the switch drop all traffic matching this SFID.
+	cat > sgi1.txt <<-EOF
+	# entry  gate status IPV delta (ns)     SDU limit
+	t0       1b          1   10000000       0
+	t1       1b          0   10000000       0
+	EOF
+	tsntool qcisgiset --device $egress_port \
+		--index $gateid \
+		--initgate 1 \
+		--enable \
+		--gatelistfile sgi1.txt \
+		--basetime 0 \
+		|| : # "fatal reply error,  errno -95", then "nonfatal reply error: errno 0"
+
+	echo "PSFP configuration successful. Check counters with:"
+	echo "watch -n 1 'tsntool qcisfiget --device $egress_port --index $streamhandle'"
+}
+
 do_install_deps() {
 	local phc_master=
 	local phc_slave=
@@ -558,17 +732,6 @@ do_install_deps() {
 			apt install ${pkg}
 		fi
 	done
-	install -Dm0644 "${TOPDIR}/deps/linuxptp-system-clock.service" \
-		"/lib/systemd/system/linuxptp-system-clock.service"
-	install -Dm0644 "${TOPDIR}/deps/linuxptp-phc2phc.service" \
-		"/lib/systemd/system/linuxptp-phc2phc.service"
-	install -Dm0644 "${TOPDIR}/deps/linuxptp.service" \
-		"/lib/systemd/system/linuxptp.service"
-	install -Dm0644 "${TOPDIR}/deps/ptp4l.cfg" \
-		"/etc/linuxptp/ptp4l.cfg"
-	if [ "${board}" = 2 ]; then
-		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.cfg
-	fi
 	case "${scenario}" in
 	felix)
 		phc_master="/dev/ptp1"
@@ -576,11 +739,33 @@ do_install_deps() {
 		iface="swp1"
 		;;
 	enetc)
-		phc_master="/dev/ptp0"
-		phc_slave="/dev/ptp1"
-		iface="eno0"
+		if [ $board = 3 ]; then
+			phc_master="/dev/ptp1"
+			phc_slave="/dev/ptp0"
+			iface="%IFACE%" # Unused
+		else
+			phc_master="/dev/ptp0"
+			phc_slave="/dev/ptp1"
+			iface="eno0"
+		fi
 		;;
 	esac
+	install -Dm0644 "${TOPDIR}/deps/linuxptp-system-clock.service" \
+		"/lib/systemd/system/linuxptp-system-clock.service"
+	install -Dm0644 "${TOPDIR}/deps/linuxptp-phc2phc.service" \
+		"/lib/systemd/system/linuxptp-phc2phc.service"
+	install -Dm0644 "${TOPDIR}/deps/linuxptp.service" \
+		"/lib/systemd/system/linuxptp.service"
+	if [ $board = 3 ]; then
+		install -Dm0644 "${TOPDIR}/deps/ptp4l-P2P-TC.cfg" \
+			"/etc/linuxptp/ptp4l.cfg"
+	else
+		install -Dm0644 "${TOPDIR}/deps/ptp4l-OC.cfg" \
+			"/etc/linuxptp/ptp4l.cfg"
+	fi
+	if [ "${board}" = 2 ]; then
+		sed -i -e 's|slaveOnly		0|slaveOnly		1|g' /etc/linuxptp/ptp4l.cfg
+	fi
 	sed -i -e "s|%PHC%|${phc_master}|g" /lib/systemd/system/linuxptp.service
 	sed -i -e "s|%PHC_MASTER%|${phc_master}|g" /lib/systemd/system/linuxptp-phc2phc.service
 	sed -i -e "s|%PHC_SLAVE%|${phc_slave}|g" /lib/systemd/system/linuxptp-phc2phc.service
@@ -604,9 +789,17 @@ prerequisites() {
 do_prepare() {
 	case "${scenario}" in
 	enetc)
-		if [ $board = 2 ]; then
+		case $board in
+		2)
 			do_vlan_subinterface eno0 100
-		fi
+			;;
+		3)
+			ip link set dev br0 type bridge vlan_filtering 1
+			bridge vlan add dev swp0 vid 100
+			bridge vlan add dev swp1 vid 100
+			do_8021qci
+			;;
+		esac
 		;;
 	felix)
 		[ -d /sys/class/net/br0 ] && ip link del dev br0
@@ -652,6 +845,11 @@ do_print_config_done() {
 		iface="eno2"
 		;;
 	esac
+
+	# Board 3 does not need an IP address (acts as a switch).
+	if [ $board = 3 ]; then
+		return
+	fi
 
 	echo "Configuration successful. Suggestion:"
 	echo "ip addr flush dev ${iface} && ip addr add ${ip}/24 dev ${iface} && ip link set dev ${iface} up"
@@ -709,6 +907,29 @@ case "${board}" in
 		;;
 	teardown)
 		[ -d "/sys/class/net/eno0.100" ] && ip link del dev eno0.100
+		;;
+	*)
+		usage
+		;;
+	esac
+	;;
+3)
+	if [ $# -lt 1 ]; then
+		usage
+		exit 1
+	fi
+	if ! [ $scenario = "enetc" ]; then
+		echo "Board 3 is only valid in the enetc scenario."
+		exit 1
+	fi
+	cmd="$1"; shift
+	case "${cmd}" in
+	prepare)
+		do_install_deps
+		do_prepare
+		do_print_config_done ${board}
+		;;
+	teardown)
 		;;
 	*)
 		usage
