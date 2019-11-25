@@ -58,23 +58,28 @@ prerequisites() {
 	# need to be disabled first, otherwise there will be uncontrolled
 	# loops:
 	# 1. No DHCP over the VLAN interfaces.
-	if ! grep -q 'denyinterfaces eno*.*' /etc/dhcpcd.conf; then
-		echo 'Please add the following line to /etc/dhcpcd.conf:'
-		echo 'denyinterfaces eno*.*'
-		echo 'and then run "systemctl restart dhcpcd"'
-		return 1
+	if systemctl is-active --quiet dhcpcd; then
+		if ! grep -q 'denyinterfaces eno*.*' /etc/dhcpcd.conf; then
+			echo 'Please add the following line to /etc/dhcpcd.conf:'
+			echo 'denyinterfaces eno*.*'
+			echo 'and then run "systemctl restart dhcpcd"'
+			return 1
+		fi
 	fi
 	# 2. Disable Link-Local Multicast Name Resolution over VLAN interfaces
-	if ! [ -f /etc/systemd/network/90-vlan-nollmnr.network ]; then
-		echo 'Please create /etc/systemd/network/90-vlan-nollmnr.network with the content between bars:'
-		echo '==========================='
-		echo '[Match]'
-		echo 'Name=eno*.*'
-		echo ''
-		echo '[Network]'
-		echo 'LLMNR=no'
-		echo '==========================='
-		return 1
+	if systemctl is-active --quiet systemd-networkd; then
+		if ! [ -f /etc/systemd/network/90-vlan-nollmnr.network ]; then
+			echo 'Please create /etc/systemd/network/90-vlan-nollmnr.network with the content between bars:'
+			echo '==========================='
+			echo '[Match]'
+			echo 'Name=eno*.*'
+			echo ''
+			echo '[Network]'
+			echo 'LLMNR=no'
+			echo '==========================='
+			echo 'and then run "systemctl restart systemd-networkd"'
+			return 1
+		fi
 	fi
 	# Please note that depending on system configuration, there might be
 	# other programs that try to access the VLAN interfaces automatically.
