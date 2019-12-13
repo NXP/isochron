@@ -1,0 +1,34 @@
+{
+	"rules": [
+		{
+			"match": {
+				"ingress-port-mask": [ "swp4" ],
+				"dmac": "%BOARD2_MAC_ADDRESS%",
+				"vid": "%BOARD2_VID%"
+			},
+			"action": {
+				"type": "split",
+				"egress-port-mask": [ "swp0", "swp1" ]
+			}
+		}, {
+			"match": {
+				"ingress-port-mask": [ "swp4" ],
+				"dmac": "%BOARD3_MAC_ADDRESS%",
+				"vid": "%BOARD3_VID%"
+			},
+			"action": {
+				"type": "split",
+				"egress-port-mask": [ "swp0", "swp1" ]
+			}
+		}, {
+			"match": {
+				"egress-port": "swp4",
+				"dmac": "%BOARD1_MAC_ADDRESS%",
+				"vid": "%BOARD1_VID%"
+			},
+			"action": {
+				"type": "recover"
+			}
+		}
+	]
+}

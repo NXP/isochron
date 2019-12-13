@@ -5,14 +5,7 @@
 set -e -u -o pipefail
 
 export TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
-source "${TOPDIR}/common.sh"
 
-# This example will send a unidirectional traffic stream from Board 2 to
-# Board 1 through two paths:
-#
-# - Directly through B2.SWP4 -> B2.SWP1 -> B1.SWP1 -> B1.SWP4
-# - Through Board 3: B2.SWP4 -> B2.SWP2 -> B3.SWP2 -> B1.SWP0 -> B1.SWP4
-#
 #   Board 1:
 #
 #   +---------------------------------------------------------------------------------+
@@ -53,154 +46,78 @@ usage() {
 	return 1
 }
 
-prerequisites() {
-	# With more complex systemd-based distributions, these extra things
-	# need to be disabled first, otherwise there will be uncontrolled
-	# loops:
-	# 1. No DHCP over the VLAN interfaces.
-	if systemctl is-active --quiet dhcpcd; then
-		if ! grep -q 'denyinterfaces eno*.*' /etc/dhcpcd.conf; then
-			echo 'Please add the following line to /etc/dhcpcd.conf:'
-			echo 'denyinterfaces eno*.*'
-			echo 'and then run "systemctl restart dhcpcd"'
-			return 1
-		fi
-	fi
-	# 2. Disable Link-Local Multicast Name Resolution over VLAN interfaces
-	if systemctl is-active --quiet systemd-networkd; then
-		if ! [ -f /etc/systemd/network/90-vlan-nollmnr.network ]; then
-			echo 'Please create /etc/systemd/network/90-vlan-nollmnr.network with the content between bars:'
-			echo '==========================='
-			echo '[Match]'
-			echo 'Name=eno*.*'
-			echo ''
-			echo '[Network]'
-			echo 'LLMNR=no'
-			echo '==========================='
-			echo 'and then run "systemctl restart systemd-networkd"'
-			return 1
-		fi
-	fi
-	# Please note that depending on system configuration, there might be
-	# other programs that try to access the VLAN interfaces automatically.
+board1_mac_address="00:04:9f:63:35:ea"
+board2_mac_address="00:04:9f:63:35:eb"
+board3_mac_address="00:04:9f:63:35:ec"
+board1_vid="101"
+board2_vid="102"
+board3_vid="103"
 
-	packages="arping gawk"
-	for pkg in ${packages}; do
-		if ! command -v ${pkg} > /dev/null; then
-			echo "Please install the ${pkg} package"
-			return 1
-		fi
-	done
-}
-
-prerequisites
+# 1 -> 2: split at B1.SWP1, recover at B2.SWP4
+# 1 -> 3: split at B1.SWP0, recover at B3.SWP4
+# 2 -> 1: split at B2.SWP1, recover at B1.SWP4
+# 2 -> 3: split at B2.SWP2, recover at B3.SWP4
+# 3 -> 1: split at B3.SWP0, recover at B3.SWP4
+# 3 -> 2: split at B3.SWP2, recover at B3.SWP4
 
 [ $# = 1 ] || usage
-board=$1; shift
+num=$1; shift
 
-[ -d /sys/class/net/br0 ] && ip link del dev br0
-ip link add name br0 type bridge stp_state 0 vlan_filtering 1
-ip link set br0 arp off
-ip link set br0 up
+eval $(echo my_mac=\$board${num}_mac_address)
+eval $(echo my_vid=\$board${num}_vid)
 
-for eth in swp0 swp1 swp2 swp3 swp4 swp5; do
-	ip addr flush dev ${eth}
-	ip link set ${eth} master br0
-	ip link set ${eth} up
-	# No pvid by default
-	bridge vlan del vid 1 dev ${eth}
+ip link set dev eno2 address ${my_mac}
+
+sed -i -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
+	-e "s|%BOARD2_MAC_ADDRESS%|${board2_mac_address}|g" \
+	-e "s|%BOARD3_MAC_ADDRESS%|${board3_mac_address}|g" \
+	-e "s|%BOARD1_VID%|${board1_vid}|g" \
+	-e "s|%BOARD2_VID%|${board2_vid}|g" \
+	-e "s|%BOARD3_VID%|${board3_vid}|g" \
+	${TOPDIR}/8021cb-board${num}.json
+
+${TOPDIR}/8021cb-load-config.sh -f ${TOPDIR}/8021cb-board${num}.json
+
+for board in 1 2 3; do
+	if [ ${board} = ${num} ]; then
+		continue
+	fi
+	eval $(echo other_mac=\$board${board}_mac_address)
+	eval $(echo other_vid=\$board${board}_vid)
+	echo "To board ${board}:"
+	echo "${TOPDIR}/raw-l2-send -i eno2 -d ${other_mac} -v ${other_vid} -p 0 -b 0 -c 0.2 -n 20000 -s 100"
 done
 
-case "${board}" in
-1)
-	ip addr flush dev eno2; ip addr add 192.168.1.1/24 dev eno2; ip link set dev eno2 up
-	do_switch_vlan 1 "swp0 swp1 swp4" "pvid untagged"
+echo "To see traffic to this board:"
+echo "${TOPDIR}/raw-l2-rcv -i eno2.${my_vid}"
+echo "Or raw:"
+echo "tcpdump -i eno2 -e -n -Q in"
 
-	# Terminates replicated, unidirectional L2 traffic from Board 1,
-	# over VID 100
-	do_switch_vlan 100 "swp0 swp1 swp4" ""
-	do_vlan_subinterface eno2 100 192.168.100.1/24
-	board1=$(get_local_mac eno2 tsntool)
-	tsntool cbstreamidset --device swp4 --streamhandle 1 \
-		--nullstreamid --nulldmac "${board1}" --nullvid 100
-	# The port does not matter
-	tsntool cbrec --device swp5 --index 1 \
-		--seq_len 16 --his_len 31 --rtag_pop_en
+exit 0
 
-	echo "Configuration successful."
-	echo "To test with traffic, run:"
-	echo "${TOPDIR}/raw-l2-rcv -i eno2.100"
-	echo "ip link set dev swp0 down"
-	echo "ip link set dev swp0 up"
-	echo "ip link set dev swp1 down"
-	echo "ip link set dev swp1 up"
-	;;
-2)
-	ip addr flush dev eno2; ip addr add 192.168.1.2/24 dev eno2; ip link set dev eno2 up
-	do_switch_vlan 1 "swp1 swp2 swp4" "pvid untagged"
+# FIXME: This is an attempt to make IP traffic, such as ping, work between
+# boards, through the redundancy VLANs. The trouble is the return path (ICMP
+# reply), which will have the VID of the receiver, when it should really have
+# the VID of the sender. We need a rule of some sorts to do the VLAN ID
+# mangling.
+#
+# From Board 1:
+# ping 172.15.102.2 # to board 2
+# ping 172.15.103.3 # to board 3
+# From Board 2:
+# ping 172.15.101.1 # to board 1
+# ping 172.15.103.3 # to board 3
+# From Board 3:
+# ping 172.15.101.1 # to board 1
+# ping 172.15.102.2 # to board 2
 
-	# Originates replicated, unidirectional L2 traffic to Board 1
-	do_switch_vlan 100 "swp1 swp2 swp4" ""
-	do_vlan_subinterface eno2 100 192.168.100.2/24
-	board1=$(get_remote_mac 192.168.1.1 tsntool eno2)
-	# Configure two Seamless Stream IDs (SSID) for outbound traffic to
-	# board 1.  This configuration needs to be applied over each switch
-	# port that will be performing egress.
-	tsntool cbstreamidset --device swp1 --streamhandle 1 \
-		--nullstreamid --nulldmac "${board1}" --nullvid 100
-	# The switch port specified as parameter to --device here does not
-	# matter, it is simply an anchor for tsntool to talk to the switch
-	# driver.  As a convention, swp5 will be used.
-	#
-	# The --index option points to the SSID for which the generation rule is
-	# applied. It must match the --streamhandle option for cbstreamidset.
-	#
-	# The --iport_mask specifies on which ingress switch ports this
-	# sequence generation rule will match. This is in contrast with
-	# --device swp3 specified to cbstreamidset, which specifies the egress
-	# switch port. By specifying e.g. the 0x3f port mask, the rule will
-	# match traffic coming from any ingress port.
-	#
-	# The --split_mask argument configures the egress ports onto which this
-	# stream generation rule will replicate the packets. This is in
-	# addition to the standard L2 forwarding rules.
-	tsntool cbgen --device swp5 --index 1 --seq_len 16 --seq_num 0 \
-		--iport_mask $((1<<4)) --split_mask $((1<<1 | 1<<2))
-
-	board1=$(get_remote_mac 192.168.1.1 iproute2 eno2)
-	arp -s 192.168.100.1 "${board1}" dev eno2.100
-	cat <<-EOF
-	Configuration successful.
-	To test with traffic, run:
-
-	${TOPDIR}/raw-l2-send \\
-		--interface eno2.100 \\
-		--dmac ${board1} \\
-		--priority 7 \\
-		--base-time +0.1 \\
-		--advance-time 0.0 \\
-		--cycle-time 0.2 \\
-		--num-frames 30 \\
-		--frame-size 64
-	EOF
-	;;
-3)
-	# The untagged port-based VLAN (pvid) has the loop intentionally broken
-	# here at swp0.  This is similar, but not the same, as enabling STP
-	# which would put the entire port in BLOCKING state, the latter being
-	# undesirable as it would disallow the transmission of all VLAN-tagged
-	# traffic.
-	# We allow loops in the VID 100 used for redundancy but explicitly
-	# control which frames are tagged with that VLAN.
-	ip addr flush dev eno2; ip addr add 192.168.1.3/24 dev eno2; ip link set dev eno2 up
-	do_switch_vlan 1 "swp2 swp4" "pvid untagged"
-
-	# Forwards one member stream of the replicated traffic
-	do_switch_vlan 100 "swp0 swp2" ""
-	echo "Configuration successful."
-	echo "This board is forwarding redundant traffic, no further configuration needed."
-	;;
-*)
-	usage
-	;;
-esac
+for vid in ${board1_vid} ${board2_vid} ${board3_vid}; do
+	ip addr add 172.15.${vid}.${num}/24 dev eno2.${vid}
+	for board in 1 2 3; do
+		if [ ${board} = ${num} ]; then
+			continue
+		fi
+		eval $(echo other_mac=\$board${board}_mac_address)
+		arp -s 172.15.${vid}.${board} ${other_mac} dev eno2.${vid}
+	done
+done
