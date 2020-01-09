@@ -35,23 +35,6 @@ struct app_private {
 
 int signal_received;
 
-/**
- * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
- * @addr: Pointer to a six-byte array containing the Ethernet address
- *
- * Return a u64 value of the address
- */
-static inline __u64 ether_addr_to_u64(const unsigned char *addr)
-{
-	__u64 u = 0;
-	int i;
-
-	for (i = 0; i < ETH_ALEN; i++)
-		u = u << 8 | addr[i];
-
-	return u;
-}
-
 static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		    const struct timestamp *tstamp)
 {

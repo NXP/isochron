@@ -150,4 +150,21 @@ struct timespec ns_to_timespec(__s64 ns);
 void mac_addr_sprintf(char *buf, __u8 *addr);
 void ns_sprintf(char *buf, __s64 ns);
 
+/**
+ * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return a u64 value of the address
+ */
+static inline __u64 ether_addr_to_u64(const unsigned char *addr)
+{
+	__u64 u = 0;
+	int i;
+
+	for (i = 0; i < ETH_ALEN; i++)
+		u = u << 8 | addr[i];
+
+	return u;
+}
+
 #endif

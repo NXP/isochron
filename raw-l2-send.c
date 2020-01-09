@@ -36,6 +36,7 @@ struct app_private {
 
 struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
+	__u8 src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;
@@ -291,11 +292,14 @@ static int prog_init(struct prog_data *prog)
 		return rc;
 	}
 
+	if (!ether_addr_to_u64(prog->src_mac))
+		memcpy(prog->src_mac, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
+
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
 	/* Ethernet header */
 	hdr = (struct vlan_ethhdr *)prog->sendbuf;
-	memcpy(hdr->h_source, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
+	memcpy(hdr->h_source, prog->src_mac, ETH_ALEN);
 	memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
 	hdr->h_vlan_proto = htons(ETH_P_8021Q);
 	/* Ethertype field */
@@ -384,6 +388,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.mac = {
 				.buf = prog->dest_mac,
 			},
+		}, {
+			.short_opt = "-A",
+			.long_opt = "--smac",
+			.type = PROG_ARG_MAC_ADDR,
+			.mac = {
+				.buf = prog->src_mac,
+			},
+			.optional = true,
 		}, {
 			.short_opt = "-p",
 			.long_opt = "--priority",
