@@ -15,6 +15,8 @@ usage() {
 	exit
 }
 
+tsntool_bin=$(which tsntool)
+
 O=`getopt -l help,file: -- hf: "$@"` || exit 1
 eval set -- "$O"
 while true; do
@@ -58,7 +60,7 @@ tsntool_macaddr() {
 
 tsntool() {
 	echo tsntool $@
-	/bin/tsntool $@
+	${tsntool_bin} $@
 }
 
 clear_stream_table() {
