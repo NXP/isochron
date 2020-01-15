@@ -15,6 +15,15 @@ usage() {
 	exit
 }
 
+error() {
+	local lineno="$1"
+	local code="${2:-1}"
+
+	echo "Error on line ${lineno}; status ${code}, exiting."
+	exit "${code}"
+}
+trap 'error ${LINENO}' ERR
+
 tsntool_bin=$(which tsntool)
 
 O=`getopt -l help,file: -- hf: "$@"` || exit 1
