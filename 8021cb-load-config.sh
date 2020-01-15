@@ -257,7 +257,7 @@ limit_rogue_traffic() {
 
 	#iptables -o ${iface} -A OUTPUT -m pkttype --pkt-type broadcast -j DROP
 	iptables -o ${iface} -A OUTPUT -d 224.0.0.0/8 -j DROP
-	sysctl -w net.ipv6.conf.${iface}.disable_ipv6=1
+	echo 1 > /proc/sys/net/ipv6/conf/${iface}/disable_ipv6
 }
 
 install_vlans() {
