@@ -11,9 +11,9 @@ https://source.codeaurora.org/external/qoriq/qoriq-components/linux/?h=LSDK-19.0
 Copy this folder to the home directory of the root user on three boards and run
 as follows:
 
-[root@board1]# ./tsn-scripts/8021cb.sh 1 prepare
-[root@board2]# ./tsn-scripts/8021cb.sh 2 prepare
-[root@board3]# ./tsn-scripts/8021cb.sh 3 prepare
+[root@board1]# ./tsn-scripts/8021cb.sh 1
+[root@board2]# ./tsn-scripts/8021cb.sh 2
+[root@board3]# ./tsn-scripts/8021cb.sh 3
 
 Then follow the commands printed by the scripts above. Example:
 
