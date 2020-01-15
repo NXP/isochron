@@ -110,6 +110,15 @@ static const char * const prog_arg_type_str[] = {
 	[PROG_ARG_LONG] = "Long integer",
 	[PROG_ARG_TIME] = "Time in sec.nsec format",
 	[PROG_ARG_STRING] = "String",
+	[PROG_ARG_BOOL] = "Boolean",
+};
+
+static int required_args[] = {
+	[PROG_ARG_MAC_ADDR] = 1,
+	[PROG_ARG_LONG] = 1,
+	[PROG_ARG_TIME] = 1,
+	[PROG_ARG_STRING] = 1,
+	[PROG_ARG_BOOL] = 0,
 };
 
 void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
@@ -134,6 +143,7 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	struct prog_arg_string string;
 	struct prog_arg_time time;
 	int rc, i, parsed = 0;
+	bool *boolean_ptr;
 	long *long_ptr;
 	bool *parsed_arr;
 	char *arg;
@@ -163,7 +173,7 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 			argc--;
 			argv++;
 
-			if (!argc) {
+			if (argc < required_args[prog_args[i].type]) {
 				fprintf(stderr, "Value expected after %s\n",
 					arg);
 				free(parsed_arr);
@@ -207,6 +217,11 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 					return -1;
 				}
 				break;
+			case PROG_ARG_BOOL:
+				boolean_ptr = prog_args[i].boolean_ptr.ptr;
+
+				*boolean_ptr = true;
+				break;
 			case PROG_ARG_STRING:
 				string = prog_args[i].string;
 				strncpy(string.buf, argv[0], string.size);
@@ -219,9 +234,9 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 			}
 
 			/* Consume actual argument */
-			parsed++;
-			argc--;
-			argv++;
+			parsed += required_args[prog_args[i].type];
+			argc -= required_args[prog_args[i].type];
+			argv += required_args[prog_args[i].type];
 			parsed_arr[i] = true;
 
 			/* Success, stop searching */

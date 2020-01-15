@@ -92,6 +92,7 @@ enum prog_arg_type {
 	PROG_ARG_LONG,
 	PROG_ARG_TIME,
 	PROG_ARG_STRING,
+	PROG_ARG_BOOL,
 };
 
 struct prog_arg_string {
@@ -112,6 +113,10 @@ struct prog_arg_mac_addr {
 	char *buf;
 };
 
+struct prog_arg_boolean {
+	bool *ptr;
+};
+
 struct prog_arg {
 	const char *short_opt;
 	const char *long_opt;
@@ -122,6 +127,7 @@ struct prog_arg {
 		struct prog_arg_time time;
 		struct prog_arg_long long_ptr;
 		struct prog_arg_mac_addr mac;
+		struct prog_arg_boolean boolean_ptr;
 	};
 };
 
