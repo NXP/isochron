@@ -85,11 +85,11 @@ for board in 1 2 3; do
 	eval $(echo other_mac=\$board${board}_mac_address)
 	eval $(echo other_vid=\$board${board}_vid)
 	echo "To board ${board}:"
-	echo "${TOPDIR}/raw-l2-send -i eno2 -d ${other_mac} -v ${other_vid} -p 0 -b 0 -c 0.2 -n 20000 -s 100"
+	echo "${TOPDIR}/raw-l2-send -i eno2 -d ${other_mac} -v ${other_vid} -p 0 -b 0 -c 0.2 -n 20000 -s 100 -T"
 done
 
 echo "To see traffic to this board:"
-echo "${TOPDIR}/raw-l2-rcv -i eno2.${my_vid}"
+echo "${TOPDIR}/raw-l2-rcv -i eno2.${my_vid} -T"
 echo "Or raw:"
 echo "tcpdump -i eno2 -e -n -Q in"
 

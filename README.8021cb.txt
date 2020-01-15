@@ -17,8 +17,8 @@ as follows:
 
 Then follow the commands printed by the scripts above. Example:
 
-[root@board1]# ./tsn-scripts/raw-l2-rcv eno2.101
-[root@board1]# ./tsn-scripts/raw-l2-send -i eno2 -d 00:04:9f:63:35:eb -v 102 -p 0 -b 0 -c 0.2 -n 20000 -s 100
+[root@board1]# ./tsn-scripts/raw-l2-rcv eno2.101 -T
+[root@board1]# ./tsn-scripts/raw-l2-send -i eno2 -T -d 00:04:9f:63:35:eb -v 102 -p 0 -b 0 -c 0.2 -n 20000 -s 100
 
 You may unplug any single cable at a time from the setup and still notice zero
 downtime (no skips in reported sequence numbers in raw-l2-rcv).
