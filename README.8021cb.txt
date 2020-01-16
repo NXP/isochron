@@ -8,6 +8,12 @@ BR2_PACKAGE_TCPDUMP=y
 and kernel LSDK-19.09-update-311219-V4.19:
 https://source.codeaurora.org/external/qoriq/qoriq-components/linux/?h=LSDK-19.09-update-311219-V4.19
 
+On each board, make sure that all Ethernet ports are up first. Typically this
+is the task of a network manager, but if you are not running one, it must be
+done manually:
+
+[root@OpenIL]# for eth in eno0 eno2 eno3 swp0 swp1 swp2 swp3 swp4 swp5; do ip link set dev $eth up; done
+
 Copy this folder to the home directory of the root user on three boards and run
 as follows:
 
