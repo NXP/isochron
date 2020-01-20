@@ -26,11 +26,9 @@ struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
 	unsigned int if_index;
 	__u8 rcvbuf[BUF_SIZ];
-	int fd;
-};
-
-struct app_private {
 	clockid_t clkid;
+	bool do_ts;
+	int fd;
 };
 
 int signal_received;
@@ -41,10 +39,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	/* Header structures */
 	struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
 	struct app_header *app_hdr = (struct app_header *)(eth_hdr + 1);
-	struct app_private *priv = app_data;
+	struct prog_data *prog = app_data;
 	char gate_buf[TIMESPEC_BUFSIZ];
-	char hwts_buf[TIMESPEC_BUFSIZ];
-	char swts_buf[TIMESPEC_BUFSIZ];
 	char smac_buf[MACADDR_BUFSIZ];
 	char dmac_buf[MACADDR_BUFSIZ];
 	__s64 hwts, swts;
@@ -54,14 +50,25 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	swts = timespec_to_ns(&tstamp->sw);
 
 	/* Print packet */
-	ns_sprintf(hwts_buf, hwts);
-	ns_sprintf(swts_buf, swts);
 	ns_sprintf(gate_buf, __be64_to_cpu(app_hdr->tx_time));
 	mac_addr_sprintf(smac_buf, eth_hdr->h_source);
 	mac_addr_sprintf(dmac_buf, eth_hdr->h_dest);
-	printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-	       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
-	       ntohs(app_hdr->seqid), hwts_buf, swts_buf);
+
+	if (prog->do_ts) {
+		char hwts_buf[TIMESPEC_BUFSIZ];
+		char swts_buf[TIMESPEC_BUFSIZ];
+
+		ns_sprintf(hwts_buf, hwts);
+		ns_sprintf(swts_buf, swts);
+
+		printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
+		       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
+		       ntohs(app_hdr->seqid), hwts_buf, swts_buf);
+	} else {
+		printf("[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
+		       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
+		       ntohs(app_hdr->seqid));
+	}
 
 	return 0;
 }
@@ -118,7 +125,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 static int server_loop(struct prog_data *prog, void *app_data)
 {
 	struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
-	struct timestamp tstamp;
+	struct timestamp tstamp = {0};
 	ssize_t len;
 	int rc = 0;
 
@@ -157,13 +164,6 @@ static int server_loop(struct prog_data *prog, void *app_data)
 	return rc;
 }
 
-static void app_init(void *data)
-{
-	struct app_private *priv = data;
-
-	priv->clkid = CLOCK_REALTIME;
-}
-
 void sig_handler(int signo)
 {
 	switch (signo) {
@@ -181,6 +181,10 @@ static int prog_init(struct prog_data *prog)
 	struct sigaction sa;
 	int sockopt = 1;
 	int rc;
+
+	prog->clkid = CLOCK_REALTIME;
+	/* Convert negative logic from cmdline to positive */
+	prog->do_ts = !prog->do_ts;
 
 	sa.sa_handler = sig_handler;
 	sa.sa_flags = 0;
@@ -234,7 +238,10 @@ static int prog_init(struct prog_data *prog)
 		rc = multicast_listen(prog->fd, prog->if_index,
 				      prog->dest_mac, true);
 
-	return sk_timestamping_init(prog->fd, prog->if_name, 1);
+	if (prog->do_ts)
+		return sk_timestamping_init(prog->fd, prog->if_name, 1);
+
+	return 0;
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
@@ -254,6 +261,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_MAC_ADDR,
 			.mac = {
 				.buf = prog->dest_mac,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-T",
+			.long_opt = "--no-ts",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->do_ts,
 			},
 			.optional = true,
 		},
@@ -284,7 +299,6 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 int main(int argc, char *argv[])
 {
-	struct app_private priv = {0};
 	struct prog_data prog = {0};
 	int rc;
 
@@ -296,7 +310,5 @@ int main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	app_init(&priv);
-
-	return server_loop(&prog, &priv);
+	return server_loop(&prog, &prog);
 }

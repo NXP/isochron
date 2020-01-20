@@ -53,6 +53,7 @@ struct prog_data {
 	long tx_len;
 	long vid;
 	int fd;
+	bool do_ts;
 	struct app_private priv;
 };
 
@@ -105,13 +106,25 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	prog->timestamped++;
 }
 
+static void print_no_tstamp(struct prog_data *prog, const char *buf)
+{
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	struct app_header *app_hdr;
+
+	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
+
+	ns_sprintf(scheduled_buf, __be64_to_cpu(app_hdr->tx_time));
+
+	rtprintf(prog, "[%s] seqid %d\n", scheduled_buf, ntohs(app_hdr->seqid));
+}
+
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		   clockid_t clkid)
 {
 	struct app_private *priv = &prog->priv;
 	unsigned char err_pkt[BUF_SIZ];
+	struct timestamp tstamp = {0};
 	struct app_header *app_hdr;
-	struct timestamp tstamp;
 	struct timespec now_ts;
 	int rc;
 
@@ -128,17 +141,21 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		perror("send\n");
 		return rc;
 	}
-	rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
-			MSG_ERRQUEUE, 0);
-	if (rc == -EAGAIN)
-		return 0;
-	if (rc < 0)
-		return rc;
+	if (prog->do_ts) {
+		rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
+				MSG_ERRQUEUE, 0);
+		if (rc == -EAGAIN)
+			return 0;
+		if (rc < 0)
+			return rc;
 
-	/* If a timestamp becomes available, process it now
-	 * (don't wait for later)
-	 */
-	process_txtstamp(prog, err_pkt, &tstamp);
+		/* If a timestamp becomes available, process it now
+		 * (don't wait for later)
+		 */
+		process_txtstamp(prog, err_pkt, &tstamp);
+	} else {
+		print_no_tstamp(prog, priv->sendbuf);
+	}
 
 	return 0;
 }
@@ -148,6 +165,9 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp;
 	int rc;
+
+	if (!prog->do_ts)
+		return 0;
 
 	while (prog->timestamped < prog->iterations) {
 		rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
@@ -258,6 +278,8 @@ static int prog_init(struct prog_data *prog)
 	int rc;
 
 	prog->clkid = CLOCK_REALTIME;
+	/* Convert negative logic from cmdline to positive */
+	prog->do_ts = !prog->do_ts;
 
 	/* Open RAW socket to send on */
 	prog->fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
@@ -359,7 +381,10 @@ static int prog_init(struct prog_data *prog)
 		return rc;
 	}
 
-	return sk_timestamping_init(prog->fd, prog->if_name, 1);
+	if (prog->do_ts)
+		return sk_timestamping_init(prog->fd, prog->if_name, 1);
+
+	return 0;
 }
 
 static int prog_teardown(struct prog_data *prog)
@@ -451,6 +476,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_ptr = {
 				.ptr = &prog->tx_len,
 			},
+		}, {
+			.short_opt = "-T",
+			.long_opt = "--no-ts",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->do_ts,
+			},
+			.optional = true,
 		}, {
 			.short_opt = "-v",
 			.long_opt = "--vid",
