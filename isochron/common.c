@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <time.h>
-#include "raw-l2-common.h"
+#include "common.h"
 
 int mac_addr_from_string(__u8 *to, char *from)
 {

@@ -22,7 +22,7 @@
 #include <time.h>
 /* For va_start and va_end */
 #include <stdarg.h>
-#include "raw-l2-common.h"
+#include "common.h"
 
 #define BUF_SIZ		1522
 #define LOGBUF_SIZ	(10 * 1024 * 1024) /* 10 MiB */
