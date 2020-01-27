@@ -1,4 +1,6 @@
 #!/bin/bash
+# For command line output debugging, append -x to the above line
+#
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2019 NXP Semiconductors
 
@@ -11,54 +13,39 @@ export TOPDIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
 #   +---------------------------------------------------------------------------------+
 #   |                                                                                 |
 #   | +------------+   +------------+  +------------+  +------------+  +------------+ |
-#   | |            |   | To Board 3 |  | To Board 2 |  |            |  |            | |
-#   | |            | +-|    SW0     |  |    SW1     |  |            |  |            | |
+#   | |            |   | To Board 2 |  | To Board 2 |  |            |  |            | |
+#   | |            | +-|    SW1     |  |    SW0     |  |            |  |            | |
 #   | |            | | |            |  |            |  |            |  |            | |
 #   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
 #          MAC0      |      SW0             SW1             SW2              SW3
 #                    |                       |
-#   Board 2:         |                       |
-#                    |                       |
-#   +----------------|-----------------------+----------------------------------------+
-#   |                |                       |                                        |
+#   Board 2:         |       +---------------+
+#                    |       |
+#   +----------------|-------|--------------------------------------------------------+
+#   |                |       |                                                        |
 #   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
-#   | |            | | |            |  | To Board 1 |  | To Board 3 |  |            | |
-#   | |            | | |            |  |    SW1     |  |    SW2     |  |            | |
+#   | |            | | | To Board 1 |  | To Board 1 |  |            |  |            | |
+#   | |            | | |    SW1     |  |    SW0     |  |            |  |            | |
 #   | |            | | |            |  |            |  |            |  |            | |
 #   +-+------------+-|-+------------+--+------------+--+------------+--+------------+-+
 #          MAC0      |      SW0             SW1             SW2              SW3
-#                    |                                       |
-#                    |                                       |
-#   Board 3:         |                                       |
-#                    |                                       |
-#   +----------------|---------------------------------------+------------------------+
-#   |                |                                       |                        |
-#   | +------------+ | +------------+  +------------+  +------------+  +------------+ |
-#   | |            | | | To Board 1 |  |            |  | To Board 2 |  |            | |
-#   | |            | +-|    SW0     |  |            |  |    SW2     |  |            | |
-#   | |            |   |            |  |            |  |            |  |            | |
-#   +-+------------+---+------------+--+------------+--+------------+--+------------+-+
-#          MAC0             SW0             SW1             SW2              SW3
+#                    |                       |
+#                    +-----------------------+
+#
 
 usage() {
 	echo "Usage:"
-	echo "$0 1|2|3"
+	echo "$0 1|2"
 	return 1
 }
 
 board1_mac_address="00:04:9f:63:35:ea"
 board2_mac_address="00:04:9f:63:35:eb"
-board3_mac_address="00:04:9f:63:35:ec"
 board1_vid="101"
-board2_vid="102"
-board3_vid="103"
+board2_vid="101"
 
 # 1 -> 2: split at B1.SWP1, recover at B2.SWP4
-# 1 -> 3: split at B1.SWP0, recover at B3.SWP4
 # 2 -> 1: split at B2.SWP1, recover at B1.SWP4
-# 2 -> 3: split at B2.SWP2, recover at B3.SWP4
-# 3 -> 1: split at B3.SWP0, recover at B3.SWP4
-# 3 -> 2: split at B3.SWP2, recover at B3.SWP4
 
 [ $# = 1 ] || usage
 num=$1; shift
@@ -75,16 +62,14 @@ done
 
 sed     -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
 	-e "s|%BOARD2_MAC_ADDRESS%|${board2_mac_address}|g" \
-	-e "s|%BOARD3_MAC_ADDRESS%|${board3_mac_address}|g" \
 	-e "s|%BOARD1_VID%|${board1_vid}|g" \
 	-e "s|%BOARD2_VID%|${board2_vid}|g" \
-	-e "s|%BOARD3_VID%|${board3_vid}|g" \
 	${TOPDIR}/8021cb-board${num}.json.template > \
 	${TOPDIR}/8021cb-board${num}.json
 
 ${TOPDIR}/8021cb-load-config.sh -f ${TOPDIR}/8021cb-board${num}.json
 
-for board in 1 2 3; do
+for board in 1 2; do
 	if [ ${board} = ${num} ]; then
 		continue
 	fi
@@ -99,27 +84,26 @@ echo "${TOPDIR}/raw-l2-rcv -i eno2.${my_vid} -T"
 echo "Or raw:"
 echo "tcpdump -i eno2 -e -n -Q in"
 
-exit 0
-
 # FIXME: This is an attempt to make IP traffic, such as ping, work between
 # boards, through the redundancy VLANs. The trouble is the return path (ICMP
 # reply), which will have the VID of the receiver, when it should really have
 # the VID of the sender. We need a rule of some sorts to do the VLAN ID
 # mangling.
+# -> This was "fixed" by using one VLAN ID
+#
+# FIXME: ARP causes the network to become conjested for some reason.  Turn it
+# off on the ring subnet and use static assingments as a workaround.
 #
 # From Board 1:
 # ping 172.15.102.2 # to board 2
-# ping 172.15.103.3 # to board 3
 # From Board 2:
 # ping 172.15.101.1 # to board 1
-# ping 172.15.103.3 # to board 3
-# From Board 3:
-# ping 172.15.101.1 # to board 1
-# ping 172.15.102.2 # to board 2
 
-for vid in ${board1_vid} ${board2_vid} ${board3_vid}; do
+for vid in ${board1_vid}; do
+	echo "*** Assigning eno2.vid IP addresses ***"
+	ip link set dev eno2.${vid} arp off
 	ip addr add 172.15.${vid}.${num}/24 dev eno2.${vid}
-	for board in 1 2 3; do
+	for board in 1 2; do
 		if [ ${board} = ${num} ]; then
 			continue
 		fi

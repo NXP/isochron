@@ -1,4 +1,6 @@
 #!/bin/bash
+# For command line output debugging, append -x to the above line
+#
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2019 NXP Semiconductors
 

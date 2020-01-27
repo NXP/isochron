@@ -19,7 +19,6 @@ as follows:
 
 [root@board1]# ./tsn-scripts/8021cb.sh 1
 [root@board2]# ./tsn-scripts/8021cb.sh 2
-[root@board3]# ./tsn-scripts/8021cb.sh 3
 
 Then follow the commands printed by the scripts above. Example:
 
