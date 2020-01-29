@@ -73,12 +73,13 @@ for eth in eno2 eno3 swp0 swp1 swp2 swp3 swp4; do
 	ip link set dev $eth up
 done
 
-sed -i -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
+sed     -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
 	-e "s|%BOARD2_MAC_ADDRESS%|${board2_mac_address}|g" \
 	-e "s|%BOARD3_MAC_ADDRESS%|${board3_mac_address}|g" \
 	-e "s|%BOARD1_VID%|${board1_vid}|g" \
 	-e "s|%BOARD2_VID%|${board2_vid}|g" \
 	-e "s|%BOARD3_VID%|${board3_vid}|g" \
+	${TOPDIR}/8021cb-board${num}.json.template > \
 	${TOPDIR}/8021cb-board${num}.json
 
 ${TOPDIR}/8021cb-load-config.sh -f ${TOPDIR}/8021cb-board${num}.json
