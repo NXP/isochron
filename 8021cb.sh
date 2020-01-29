@@ -67,6 +67,7 @@ eval $(echo my_mac=\$board${num}_mac_address)
 eval $(echo my_vid=\$board${num}_vid)
 
 ip link set dev eno2 address ${my_mac}
+ip link set dev eno2 mtu 1496
 
 sed -i -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
 	-e "s|%BOARD2_MAC_ADDRESS%|${board2_mac_address}|g" \
