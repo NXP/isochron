@@ -69,6 +69,10 @@ eval $(echo my_vid=\$board${num}_vid)
 ip link set dev eno2 address ${my_mac}
 ip link set dev eno2 mtu 1496
 
+for eth in eno2 eno3 swp0 swp1 swp2 swp3 swp4; do
+	ip link set dev $eth up
+done
+
 sed -i -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
 	-e "s|%BOARD2_MAC_ADDRESS%|${board2_mac_address}|g" \
 	-e "s|%BOARD3_MAC_ADDRESS%|${board3_mac_address}|g" \
