@@ -27,7 +27,7 @@ struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
 	unsigned int if_index;
 	__u8 rcvbuf[BUF_SIZ];
-	struct rtprint rt;
+	struct isochron_log log;
 	clockid_t clkid;
 	int stats_listenfd;
 	int data_fd;
@@ -42,36 +42,19 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	/* Header structures */
 	struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
 	struct app_header *app_hdr = (struct app_header *)(eth_hdr + 1);
+	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct prog_data *prog = app_data;
-	char gate_buf[TIMESPEC_BUFSIZ];
-	char smac_buf[MACADDR_BUFSIZ];
-	char dmac_buf[MACADDR_BUFSIZ];
-	__s64 hwts, swts;
 	int i, rc;
 
-	hwts = timespec_to_ns(&tstamp->hw);
-	swts = timespec_to_ns(&tstamp->sw);
+	rcv_pkt.tx_time = __be64_to_cpu(app_hdr->tx_time);
+	rcv_pkt.etype = ntohs(eth_hdr->h_proto);
+	memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);
+	memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
+	rcv_pkt.seqid = ntohs(app_hdr->seqid);
+	rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
+	rcv_pkt.swts = timespec_to_ns(&tstamp->sw);
 
-	/* Print packet */
-	ns_sprintf(gate_buf, __be64_to_cpu(app_hdr->tx_time));
-	mac_addr_sprintf(smac_buf, eth_hdr->h_source);
-	mac_addr_sprintf(dmac_buf, eth_hdr->h_dest);
-
-	if (prog->do_ts) {
-		char hwts_buf[TIMESPEC_BUFSIZ];
-		char swts_buf[TIMESPEC_BUFSIZ];
-
-		ns_sprintf(hwts_buf, hwts);
-		ns_sprintf(swts_buf, swts);
-
-		rtprintf(&prog->rt, "[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-		       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
-		       ntohs(app_hdr->seqid), hwts_buf, swts_buf);
-	} else {
-		rtprintf(&prog->rt, "[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
-		       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
-		       ntohs(app_hdr->seqid));
-	}
+	isochron_log_data(&prog->log, &rcv_pkt, sizeof(rcv_pkt));
 
 	return 0;
 }
@@ -206,8 +189,7 @@ static int server_loop(struct prog_data *prog, void *app_data)
 
 			stats_fd = rc;
 
-			rtflush(&prog->rt, stats_fd);
-			rtflush(&prog->rt, 0);
+			isochron_log_xmit(&prog->log, stats_fd);
 
 			close(stats_fd);
 		}
@@ -241,7 +223,7 @@ static int prog_init(struct prog_data *prog)
 	int sockopt = 1;
 	int rc;
 
-	rc = rtprint_init(&prog->rt);
+	rc = isochron_log_init(&prog->log);
 	if (rc < 0)
 		return rc;
 
@@ -387,8 +369,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 static int prog_teardown(struct prog_data *prog)
 {
-	rtflush(&prog->rt, STDOUT_FILENO);
-	rtprint_teardown(&prog->rt);
+	isochron_rcv_log_print(&prog->log);
+	isochron_log_teardown(&prog->log);
 	close(prog->stats_listenfd);
 	close(prog->data_fd);
 

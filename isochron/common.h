@@ -81,16 +81,18 @@ struct vlan_ethhdr {
 	__be16		h_vlan_encapsulated_proto;
 };
 
-struct rtprint {
-	int log_buf_len;
-	char *log_buf;
+struct isochron_log {
+	int buf_len;
+	char *buf;
 };
 
-int rtprint_init(struct rtprint *rt);
-int rtprintf(struct rtprint *rt, char *fmt, ...);
-int rtprint_rcv(struct rtprint *rt, int fd);
-void rtflush(struct rtprint *rt, int fd);
-void rtprint_teardown(struct rtprint *rt);
+int isochron_log_init(struct isochron_log *log);
+void isochron_log_data(struct isochron_log *log, void *data, int len);
+int isochron_log_xmit(struct isochron_log *log, int fd);
+int isochron_log_recv(struct isochron_log *log, int fd);
+void isochron_log_teardown(struct isochron_log *log);
+void isochron_rcv_log_print(struct isochron_log *log);
+void isochron_send_log_print(struct isochron_log *log);
 
 #define ISOCHRON_STATS_PORT	5000
 
@@ -158,6 +160,23 @@ struct app_header {
 struct timestamp {
 	struct timespec		hw;
 	struct timespec		sw;
+};
+
+struct isochron_send_pkt_data {
+	__s64 tx_time;
+	__s64 hwts;
+	__s64 swts;
+	short seqid;
+};
+
+struct isochron_rcv_pkt_data {
+	char smac[ETH_ALEN];
+	char dmac[ETH_ALEN];
+	__s64 tx_time;
+	__s64 hwts;
+	__s64 swts;
+	short etype;
+	short seqid;
 };
 
 int mac_addr_from_string(__u8 *to, char *from);

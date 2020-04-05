@@ -446,54 +446,55 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 	return len;
 }
 
-int rtprint_init(struct rtprint *rt)
+int isochron_log_init(struct isochron_log *log)
 {
-	rt->log_buf = calloc(sizeof(char), LOGBUF_SIZ);
-	if (!rt->log_buf)
+	log->buf = calloc(sizeof(char), LOGBUF_SIZ);
+	if (!log->buf)
 		return -ENOMEM;
 
-	rt->log_buf_len = -1;
+	log->buf_len = 0;
 
 	return 0;
 }
 
-int rtprintf(struct rtprint *rt, char *fmt, ...)
+void isochron_log_data(struct isochron_log *log, void *data, int len)
 {
-	char *buf = rt->log_buf + rt->log_buf_len + 1;
-	va_list args;
+	char *p = log->buf + log->buf_len;
+
+	memcpy(p, data, len);
+	log->buf_len += len;
+}
+
+int isochron_log_xmit(struct isochron_log *log, int fd)
+{
+	int cnt = log->buf_len;
+	char *p = log->buf;
+	char *pos;
 	int rc;
 
-	va_start(args, fmt);
+	while ((rc = write(fd, p, cnt)) > 0) {
+		cnt -= rc;
+		p += rc;
+	}
 
-	rc = vsnprintf(buf, LOGBUF_SIZ - rt->log_buf_len, fmt, args);
-	rt->log_buf_len += (rc + 1);
-
-	va_end(args);
+	if (rc < 0) {
+		fprintf(stderr, "write returned %d: %s\n",
+			errno, strerror(errno));
+		rc = -errno;
+	}
 
 	return rc;
 }
 
-void rtflush(struct rtprint *rt, int fd)
+int isochron_log_recv(struct isochron_log *log, int fd)
 {
-	int rc, i = 0;
-
-	while (i < rt->log_buf_len && rt->log_buf[i]) {
-		rc = dprintf(fd, "%s", rt->log_buf + i);
-		i += (rc + 1);
-	}
-}
-
-int rtprint_rcv(struct rtprint *rt, int fd)
-{
-	char *p = rt->log_buf;
+	char *p = log->buf;
 	char *pos;
 	int rc;
 
 	while ((rc = read(fd, p, LOGBUF_SIZ)) > 0) {
 		p += rc;
-		*p = '\0';
-		p++;
-		rt->log_buf_len += rc + 1;
+		log->buf_len += rc;
 	}
 
 	if (rc < 0) {
@@ -505,7 +506,61 @@ int rtprint_rcv(struct rtprint *rt, int fd)
 	return rc;
 }
 
-void rtprint_teardown(struct rtprint *rt)
+void isochron_log_teardown(struct isochron_log *log)
 {
-	free(rt->log_buf);
+	free(log->buf);
+}
+
+void isochron_rcv_log_print(struct isochron_log *log)
+{
+	char *log_buf_end = log->buf + log->buf_len;
+	struct isochron_rcv_pkt_data *rcv_pkt;
+
+	for (rcv_pkt = (struct isochron_rcv_pkt_data *)log->buf;
+	     (char *)rcv_pkt < log_buf_end; rcv_pkt++) {
+		char scheduled_buf[TIMESPEC_BUFSIZ];
+		char smac_buf[MACADDR_BUFSIZ];
+		char dmac_buf[MACADDR_BUFSIZ];
+
+		/* Print packet */
+		ns_sprintf(scheduled_buf, rcv_pkt->tx_time);
+		mac_addr_sprintf(smac_buf, rcv_pkt->smac);
+		mac_addr_sprintf(dmac_buf, rcv_pkt->smac);
+
+		if (rcv_pkt->hwts) {
+			char hwts_buf[TIMESPEC_BUFSIZ];
+			char swts_buf[TIMESPEC_BUFSIZ];
+
+			ns_sprintf(hwts_buf, rcv_pkt->hwts);
+			ns_sprintf(swts_buf, rcv_pkt->swts);
+
+			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
+			       scheduled_buf, smac_buf, dmac_buf, rcv_pkt->etype,
+			       rcv_pkt->seqid, hwts_buf, swts_buf);
+		} else {
+			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
+			       scheduled_buf, smac_buf, dmac_buf, rcv_pkt->etype,
+			       rcv_pkt->seqid);
+		}
+	}
+}
+
+void isochron_send_log_print(struct isochron_log *log)
+{
+	char *log_buf_end = log->buf + log->buf_len;
+	struct isochron_send_pkt_data *send_pkt;
+
+	for (send_pkt = (struct isochron_send_pkt_data *)log->buf;
+	     (char *)send_pkt < log_buf_end; send_pkt++) {
+		char scheduled_buf[TIMESPEC_BUFSIZ];
+		char hwts_buf[TIMESPEC_BUFSIZ];
+		char swts_buf[TIMESPEC_BUFSIZ];
+
+		ns_sprintf(scheduled_buf, send_pkt->tx_time);
+		ns_sprintf(hwts_buf, send_pkt->hwts);
+		ns_sprintf(swts_buf, send_pkt->swts);
+
+		printf("[%s] seqid %d txtstamp %s swts %s\n",
+		       scheduled_buf, send_pkt->seqid, hwts_buf, swts_buf);
+	}
 }

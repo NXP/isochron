@@ -31,7 +31,7 @@ struct prog_data {
 	char sendbuf[BUF_SIZ];
 	char stats_srv_addr[INET6_ADDRSTRLEN];
 	struct sockaddr_ll socket_address;
-	struct rtprint rt;
+	struct isochron_log log;
 	long timestamped;
 	long iterations;
 	clockid_t clkid;
@@ -49,37 +49,33 @@ struct prog_data {
 static void process_txtstamp(struct prog_data *prog, const char *buf,
 			     struct timestamp *tstamp)
 {
-	char scheduled_buf[TIMESPEC_BUFSIZ];
-	char hwts_buf[TIMESPEC_BUFSIZ];
-	char swts_buf[TIMESPEC_BUFSIZ];
+	struct isochron_send_pkt_data send_pkt = {0};
 	struct app_header *app_hdr;
 	__s64 hwts, swts;
 
 	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
 
-	hwts = timespec_to_ns(&tstamp->hw);
-	swts = timespec_to_ns(&tstamp->sw);
+	send_pkt.tx_time = __be64_to_cpu(app_hdr->tx_time);
+	send_pkt.seqid = ntohs(app_hdr->seqid);
+	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
+	send_pkt.swts = timespec_to_ns(&tstamp->sw);
 
-	ns_sprintf(scheduled_buf, __be64_to_cpu(app_hdr->tx_time));
-	ns_sprintf(hwts_buf, hwts);
-	ns_sprintf(swts_buf, swts);
+	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 
-	rtprintf(&prog->rt, "[%s] seqid %d txtstamp %s swts %s\n",
-		 scheduled_buf, ntohs(app_hdr->seqid), hwts_buf, swts_buf);
 	prog->timestamped++;
 }
 
-static void print_no_tstamp(struct prog_data *prog, const char *buf)
+static void log_no_tstamp(struct prog_data *prog, const char *buf)
 {
-	char scheduled_buf[TIMESPEC_BUFSIZ];
+	struct isochron_send_pkt_data send_pkt = {0};
 	struct app_header *app_hdr;
 
 	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
 
-	ns_sprintf(scheduled_buf, __be64_to_cpu(app_hdr->tx_time));
+	send_pkt.tx_time = __be64_to_cpu(app_hdr->tx_time);
+	send_pkt.seqid = ntohs(app_hdr->seqid);
 
-	rtprintf(&prog->rt, "[%s] seqid %d\n", scheduled_buf,
-		 ntohs(app_hdr->seqid));
+	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
 
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
@@ -118,7 +114,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		 */
 		process_txtstamp(prog, err_pkt, &tstamp);
 	} else {
-		print_no_tstamp(prog, prog->sendbuf);
+		log_no_tstamp(prog, prog->sendbuf);
 	}
 
 	return 0;
@@ -321,7 +317,7 @@ static int prog_init(struct prog_data *prog)
 	ns_sprintf(now_buf, now);
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
-	rc = rtprint_init(&prog->rt);
+	rc = isochron_log_init(&prog->log);
 	if (rc < 0)
 		return rc;
 
@@ -358,7 +354,7 @@ static int prog_collect_rcv_stats(struct prog_data *prog)
 		.sin_family = AF_INET,
 		.sin_port = htons(ISOCHRON_STATS_PORT),
 	};
-	struct rtprint rcv_rt;
+	struct isochron_log rcv_log;
 	int stats_fd;
 	int rc;
 
@@ -390,9 +386,9 @@ static int prog_collect_rcv_stats(struct prog_data *prog)
 	}
 
 	printf("Collecting receiver stats\n");
-	rtprint_init(&rcv_rt);
-	rtprint_rcv(&rcv_rt, stats_fd);
-	rtflush(&rcv_rt, STDOUT_FILENO);
+	isochron_log_init(&rcv_log);
+	isochron_log_recv(&rcv_log, stats_fd);
+	isochron_rcv_log_print(&rcv_log);
 
 	return 0;
 }
@@ -401,13 +397,13 @@ static int prog_teardown(struct prog_data *prog)
 {
 	int rc;
 
-	rtflush(&prog->rt, STDOUT_FILENO);
+	isochron_send_log_print(&prog->log);
 
 	rc = prog_collect_rcv_stats(prog);
 	if (rc)
 		return rc;
 
-	rtprint_teardown(&prog->rt);
+	isochron_log_teardown(&prog->log);
 
 	return rc;
 }
