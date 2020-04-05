@@ -27,13 +27,6 @@
 #define BUF_SIZ		1522
 #define LOGBUF_SIZ	(10 * 1024 * 1024) /* 10 MiB */
 
-struct app_private {
-	struct sockaddr *sockaddr;
-	char *sendbuf;
-	int data_fd;
-	int tx_len;
-};
-
 struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
 	__u8 src_mac[ETH_ALEN];
@@ -54,7 +47,6 @@ struct prog_data {
 	int data_fd;
 	long vid;
 	bool do_ts;
-	struct app_private priv;
 };
 
 static int rtprintf(struct prog_data *prog, char *fmt, ...)
@@ -121,7 +113,6 @@ static void print_no_tstamp(struct prog_data *prog, const char *buf)
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		   clockid_t clkid)
 {
-	struct app_private *priv = &prog->priv;
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp = {0};
 	struct app_header *app_hdr;
@@ -129,14 +120,15 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	int rc;
 
 	clock_gettime(clkid, &now_ts);
-	app_hdr = (struct app_header *)(priv->sendbuf +
+	app_hdr = (struct app_header *)(prog->sendbuf +
 					sizeof(struct vlan_ethhdr));
 	app_hdr->tx_time = __cpu_to_be64(scheduled);
 	app_hdr->seqid = htons(iteration);
 
 	/* Send packet */
-	rc = sendto(priv->data_fd, priv->sendbuf, priv->tx_len, 0,
-		    priv->sockaddr, sizeof(struct sockaddr_ll));
+	rc = sendto(prog->data_fd, prog->sendbuf, prog->tx_len, 0,
+		    (const struct sockaddr *)&prog->socket_address,
+		    sizeof(struct sockaddr_ll));
 	if (rc < 0) {
 		perror("send\n");
 		return rc;
@@ -154,7 +146,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		 */
 		process_txtstamp(prog, err_pkt, &tstamp);
 	} else {
-		print_no_tstamp(prog, priv->sendbuf);
+		print_no_tstamp(prog, prog->sendbuf);
 	}
 
 	return 0;
@@ -234,16 +226,6 @@ static int run_nanosleep(struct prog_data *prog)
 
 static void app_init(void *data)
 {
-	int i = sizeof(struct vlan_ethhdr);
-	struct app_private *priv = data;
-
-	/* Packet data */
-	while (i < priv->tx_len) {
-		priv->sendbuf[i++] = 0xde;
-		priv->sendbuf[i++] = 0xad;
-		priv->sendbuf[i++] = 0xbe;
-		priv->sendbuf[i++] = 0xef;
-	}
 }
 
 /* Calculate the first base_time in the future that satisfies this
@@ -269,6 +251,7 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 
 static int prog_init(struct prog_data *prog)
 {
+	int i = sizeof(struct vlan_ethhdr);
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct vlan_ethhdr *hdr;
 	struct timespec now_ts;
@@ -383,6 +366,14 @@ static int prog_init(struct prog_data *prog)
 
 	if (prog->do_ts)
 		return sk_timestamping_init(prog->data_fd, prog->if_name, 1);
+
+	/* Packet data */
+	while (i < prog->tx_len) {
+		prog->sendbuf[i++] = 0xde;
+		prog->sendbuf[i++] = 0xad;
+		prog->sendbuf[i++] = 0xbe;
+		prog->sendbuf[i++] = 0xef;
+	}
 
 	return 0;
 }
@@ -533,7 +524,6 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 int isochron_send_main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
-	struct app_private *priv = &prog.priv;
 	int rc_save, rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
@@ -543,13 +533,6 @@ int isochron_send_main(int argc, char *argv[])
 	rc = prog_init(&prog);
 	if (rc < 0)
 		return rc;
-
-	priv->sockaddr = (struct sockaddr *)&prog.socket_address;
-	priv->sendbuf = prog.sendbuf;
-	priv->data_fd = prog.data_fd;
-	priv->tx_len = prog.tx_len;
-
-	app_init(priv);
 
 	rc_save = run_nanosleep(&prog);
 
