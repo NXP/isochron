@@ -29,6 +29,7 @@ struct prog_data {
 	__u8 src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
+	char stats_srv_addr[INET6_ADDRSTRLEN];
 	struct sockaddr_ll socket_address;
 	struct rtprint rt;
 	long timestamped;
@@ -334,8 +335,11 @@ static int prog_init(struct prog_data *prog)
 		return rc;
 	}
 
-	if (prog->do_ts)
-		return sk_timestamping_init(prog->data_fd, prog->if_name, 1);
+	if (prog->do_ts) {
+		rc = sk_timestamping_init(prog->data_fd, prog->if_name, 1);
+		if (rc < 0)
+			return rc;
+	}
 
 	/* Packet data */
 	while (i < prog->tx_len) {
@@ -348,12 +352,64 @@ static int prog_init(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_teardown(struct prog_data *prog)
+static int prog_collect_rcv_stats(struct prog_data *prog)
 {
-	rtflush(&prog->rt);
-	rtprint_teardown(&prog->rt);
+	struct sockaddr_in serv_addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(ISOCHRON_STATS_PORT),
+	};
+	struct rtprint rcv_rt;
+	int stats_fd;
+	int rc;
+
+	rc = inet_pton(serv_addr.sin_family, prog->stats_srv_addr,
+		       &serv_addr.sin_addr);
+	if (rc <= 0) {
+		if (rc == 0)
+			fprintf(stderr, "%s not in presentation format",
+				prog->stats_srv_addr);
+		else
+			fprintf(stderr, "inet_pton returned %d: %s\n",
+				errno, strerror(errno));
+		return -EAFNOSUPPORT;
+	}
+
+	stats_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (stats_fd < 0) {
+		fprintf(stderr, "socket returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	rc = connect(stats_fd, (struct sockaddr *)&serv_addr,
+		     sizeof(serv_addr));
+	if (rc < 0) {
+		fprintf(stderr, "connect returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	printf("Collecting receiver stats\n");
+	rtprint_init(&rcv_rt);
+	rtprint_rcv(&rcv_rt, stats_fd);
+	rtflush(&rcv_rt, STDOUT_FILENO);
 
 	return 0;
+}
+
+static int prog_teardown(struct prog_data *prog)
+{
+	int rc;
+
+	rtflush(&prog->rt, STDOUT_FILENO);
+
+	rc = prog_collect_rcv_stats(prog);
+	if (rc)
+		return rc;
+
+	rtprint_teardown(&prog->rt);
+
+	return rc;
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
@@ -453,6 +509,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->vid,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-C",
+			.long_opt = "--client",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->stats_srv_addr,
+				.size = INET6_ADDRSTRLEN,
+			},
 		},
 	};
 	int rc;

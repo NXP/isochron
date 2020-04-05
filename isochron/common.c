@@ -473,14 +473,36 @@ int rtprintf(struct rtprint *rt, char *fmt, ...)
 	return rc;
 }
 
-void rtflush(struct rtprint *rt)
+void rtflush(struct rtprint *rt, int fd)
 {
 	int rc, i = 0;
 
 	while (i < rt->log_buf_len && rt->log_buf[i]) {
-		rc = printf("%s", rt->log_buf + i);
+		rc = dprintf(fd, "%s", rt->log_buf + i);
 		i += (rc + 1);
 	}
+}
+
+int rtprint_rcv(struct rtprint *rt, int fd)
+{
+	char *p = rt->log_buf;
+	char *pos;
+	int rc;
+
+	while ((rc = read(fd, p, LOGBUF_SIZ)) > 0) {
+		p += rc;
+		*p = '\0';
+		p++;
+		rt->log_buf_len += rc + 1;
+	}
+
+	if (rc < 0) {
+		fprintf(stderr, "read returned %d: %s\n",
+			errno, strerror(errno));
+		rc = -errno;
+	}
+
+	return rc;
 }
 
 void rtprint_teardown(struct rtprint *rt)

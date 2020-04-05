@@ -88,8 +88,11 @@ struct rtprint {
 
 int rtprint_init(struct rtprint *rt);
 int rtprintf(struct rtprint *rt, char *fmt, ...);
-void rtflush(struct rtprint *rt);
+int rtprint_rcv(struct rtprint *rt, int fd);
+void rtflush(struct rtprint *rt, int fd);
 void rtprint_teardown(struct rtprint *rt);
+
+#define ISOCHRON_STATS_PORT	5000
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
 #define VLAN_PRIO_SHIFT		13

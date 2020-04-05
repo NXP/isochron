@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
+#include <poll.h>
 #include "common.h"
 
 #define BUF_SIZ		1522
@@ -28,6 +29,7 @@ struct prog_data {
 	__u8 rcvbuf[BUF_SIZ];
 	struct rtprint rt;
 	clockid_t clkid;
+	int stats_listenfd;
 	int data_fd;
 	bool do_ts;
 };
@@ -125,42 +127,93 @@ static int multicast_listen(int fd, unsigned int if_index,
 
 static int server_loop(struct prog_data *prog, void *app_data)
 {
-	struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
 	struct timestamp tstamp = {0};
+	struct pollfd pfd[2] = {
+		[0] = {
+			.fd = prog->data_fd,
+			.events = POLLIN | POLLERR | POLLPRI,
+		},
+		[1] = {
+			.fd = prog->stats_listenfd,
+			.events = POLLIN | POLLERR | POLLPRI,
+		},
+	};
 	ssize_t len;
 	int rc = 0;
+	int cnt;
 
 	do {
-		len = sk_receive(prog->data_fd, prog->rcvbuf, BUF_SIZ, &tstamp,
-				 0, TXTSTAMP_TIMEOUT_MS);
-		/* Suppress "Interrupted system call" message */
-		if (len < 0 && errno != EINTR) {
-			fprintf(stderr, "recvfrom returned %d: %s\n",
-				errno, strerror(errno));
-			rc = -errno;
+		cnt = poll(pfd, ARRAY_SIZE(pfd), -1);
+		if (cnt < 0) {
+			if (errno == EINTR) {
+				break;
+			} else {
+				fprintf(stderr, "poll returned %d: %s\n",
+					errno, strerror(errno));
+				rc = -errno;
+				break;
+			}
+		} else if (!cnt) {
 			break;
 		}
-		if (ether_addr_to_u64(prog->dest_mac) &&
-		    ether_addr_to_u64(prog->dest_mac) !=
-		    ether_addr_to_u64(eth_hdr->h_dest))
-			continue;
-		rc = app_loop(app_data, prog->rcvbuf, len, &tstamp);
-		if (rc < 0)
-			break;
+
+		if (pfd[0].revents & (POLLIN | POLLERR | POLLPRI)) {
+			struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
+
+			len = sk_receive(prog->data_fd, prog->rcvbuf,
+					 BUF_SIZ, &tstamp, 0,
+					 TXTSTAMP_TIMEOUT_MS);
+			/* Suppress "Interrupted system call" message */
+			if (len < 0 && errno != EINTR) {
+				fprintf(stderr, "recvfrom returned %d: %s\n",
+					errno, strerror(errno));
+				rc = -errno;
+				break;
+			}
+			if (ether_addr_to_u64(prog->dest_mac) &&
+			    ether_addr_to_u64(prog->dest_mac) !=
+			    ether_addr_to_u64(eth_hdr->h_dest))
+				continue;
+			rc = app_loop(app_data, prog->rcvbuf, len, &tstamp);
+			if (rc < 0)
+				break;
+		}
+
+		if (pfd[1].revents & (POLLIN | POLLERR | POLLPRI)) {
+			char client_addr[INET6_ADDRSTRLEN];
+			struct sockaddr_in addr;
+			socklen_t addr_len;
+			int stats_fd;
+
+			addr_len = sizeof(struct sockaddr_in);
+			rc = accept(prog->stats_listenfd,
+				    (struct sockaddr *)&addr, &addr_len);
+			if (rc < 0) {
+				if (errno != EINTR)
+					fprintf(stderr, "accept returned %d: %s\n",
+						errno, strerror(errno));
+				return -errno;
+			}
+
+			if (!inet_ntop(addr.sin_family, &addr.sin_addr.s_addr,
+				       client_addr, addr_len)) {
+				fprintf(stderr, "inet_pton returned %d: %s\n",
+					errno, strerror(errno));
+				return -errno;
+			}
+
+			printf("Accepted connection from %s\n", client_addr);
+
+			stats_fd = rc;
+
+			rtflush(&prog->rt, stats_fd);
+			rtflush(&prog->rt, 0);
+
+			close(stats_fd);
+		}
 		if (signal_received)
 			break;
 	} while (1);
-
-	/* Avoid the nanosecond portion of last output line
-	 * from getting truncated when process is killed
-	 */
-	fflush(stdout);
-
-	close(prog->data_fd);
-
-	if (ether_addr_to_u64(prog->dest_mac))
-		rc = multicast_listen(prog->data_fd, prog->if_index,
-				      prog->dest_mac, false);
 
 	return rc;
 }
@@ -179,6 +232,11 @@ void sig_handler(int signo)
 
 static int prog_init(struct prog_data *prog)
 {
+	struct sockaddr_in serv_addr = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_ANY),
+		.sin_port = htons(ISOCHRON_STATS_PORT),
+	};
 	struct sigaction sa;
 	int sockopt = 1;
 	int rc;
@@ -213,10 +271,40 @@ static int prog_init(struct prog_data *prog)
 		return -errno;
 	}
 
+	prog->stats_listenfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (prog->stats_listenfd < 0) {
+		perror("listener: stats socket");
+		return -errno;
+	}
+
+	/* Allow the socket to be reused, in case the connection
+	 * is closed prematurely
+	 */
+	rc = setsockopt(prog->stats_listenfd, SOL_SOCKET, SO_REUSEADDR, &sockopt,
+			sizeof(int));
+	if (rc < 0) {
+		perror("setsockopt");
+		close(prog->stats_listenfd);
+		return -errno;
+	}
+
+	rc = bind(prog->stats_listenfd, (struct sockaddr*)&serv_addr,
+		  sizeof(serv_addr));
+	if (rc < 0) {
+		perror("listener: bind");
+		return -errno;
+	}
+
+	rc = listen(prog->stats_listenfd, 1);
+	if (rc < 0) {
+		perror("listener: listen");
+		return -errno;
+	}
+
 	/* Open PF_PACKET socket, listening for EtherType ETH_P_TSN */
 	prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_TSN));
 	if (prog->data_fd < 0) {
-		perror("listener: socket");
+		perror("listener: data socket");
 		return -errno;
 	}
 
@@ -299,8 +387,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 static int prog_teardown(struct prog_data *prog)
 {
-	rtflush(&prog->rt);
+	rtflush(&prog->rt, STDOUT_FILENO);
 	rtprint_teardown(&prog->rt);
+	close(prog->stats_listenfd);
+	close(prog->data_fd);
+
+	if (ether_addr_to_u64(prog->dest_mac))
+		multicast_listen(prog->data_fd, prog->if_index,
+				 prog->dest_mac, false);
 
 	return 0;
 }
