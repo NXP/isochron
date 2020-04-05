@@ -27,8 +27,8 @@ struct prog_data {
 	unsigned int if_index;
 	__u8 rcvbuf[BUF_SIZ];
 	clockid_t clkid;
+	int data_fd;
 	bool do_ts;
-	int fd;
 };
 
 int signal_received;
@@ -130,8 +130,8 @@ static int server_loop(struct prog_data *prog, void *app_data)
 	int rc = 0;
 
 	do {
-		len = sk_receive(prog->fd, prog->rcvbuf, BUF_SIZ, &tstamp, 0,
-				 TXTSTAMP_TIMEOUT_MS);
+		len = sk_receive(prog->data_fd, prog->rcvbuf, BUF_SIZ, &tstamp,
+				 0, TXTSTAMP_TIMEOUT_MS);
 		/* Suppress "Interrupted system call" message */
 		if (len < 0 && errno != EINTR) {
 			fprintf(stderr, "recvfrom returned %d: %s\n",
@@ -155,10 +155,10 @@ static int server_loop(struct prog_data *prog, void *app_data)
 	 */
 	fflush(stdout);
 
-	close(prog->fd);
+	close(prog->data_fd);
 
 	if (ether_addr_to_u64(prog->dest_mac))
-		rc = multicast_listen(prog->fd, prog->if_index,
+		rc = multicast_listen(prog->data_fd, prog->if_index,
 				      prog->dest_mac, false);
 
 	return rc;
@@ -209,8 +209,8 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	/* Open PF_PACKET socket, listening for EtherType ETH_P_TSN */
-	prog->fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_TSN));
-	if (prog->fd < 0) {
+	prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_TSN));
+	if (prog->data_fd < 0) {
 		perror("listener: socket");
 		return -errno;
 	}
@@ -218,28 +218,28 @@ static int prog_init(struct prog_data *prog)
 	/* Allow the socket to be reused, in case the connection
 	 * is closed prematurely
 	 */
-	rc = setsockopt(prog->fd, SOL_SOCKET, SO_REUSEADDR, &sockopt,
+	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_REUSEADDR, &sockopt,
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
-		close(prog->fd);
+		close(prog->data_fd);
 		return -errno;
 	}
 	/* Bind to device */
-	rc = setsockopt(prog->fd, SOL_SOCKET, SO_BINDTODEVICE,
+	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_BINDTODEVICE,
 			prog->if_name, IFNAMSIZ - 1);
 	if (rc < 0) {
 		perror("SO_BINDTODEVICE");
-		close(prog->fd);
+		close(prog->data_fd);
 		exit(EXIT_FAILURE);
 	}
 
 	if (ether_addr_to_u64(prog->dest_mac))
-		rc = multicast_listen(prog->fd, prog->if_index,
+		rc = multicast_listen(prog->data_fd, prog->if_index,
 				      prog->dest_mac, true);
 
 	if (prog->do_ts)
-		return sk_timestamping_init(prog->fd, prog->if_name, 1);
+		return sk_timestamping_init(prog->data_fd, prog->if_name, 1);
 
 	return 0;
 }

@@ -30,8 +30,8 @@
 struct app_private {
 	struct sockaddr *sockaddr;
 	char *sendbuf;
+	int data_fd;
 	int tx_len;
-	int fd;
 };
 
 struct prog_data {
@@ -51,8 +51,8 @@ struct prog_data {
 	int log_buf_len;
 	char *log_buf;
 	long tx_len;
+	int data_fd;
 	long vid;
-	int fd;
 	bool do_ts;
 	struct app_private priv;
 };
@@ -135,14 +135,14 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	app_hdr->seqid = htons(iteration);
 
 	/* Send packet */
-	rc = sendto(priv->fd, priv->sendbuf, priv->tx_len, 0,
+	rc = sendto(priv->data_fd, priv->sendbuf, priv->tx_len, 0,
 		    priv->sockaddr, sizeof(struct sockaddr_ll));
 	if (rc < 0) {
 		perror("send\n");
 		return rc;
 	}
 	if (prog->do_ts) {
-		rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
+		rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp,
 				MSG_ERRQUEUE, 0);
 		if (rc == -EAGAIN)
 			return 0;
@@ -170,7 +170,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 		return 0;
 
 	while (prog->timestamped < prog->iterations) {
-		rc = sk_receive(prog->fd, err_pkt, BUF_SIZ, &tstamp,
+		rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp,
 				MSG_ERRQUEUE, TXTSTAMP_TIMEOUT_MS);
 		if (rc < 0) {
 			fprintf(stderr,
@@ -282,35 +282,35 @@ static int prog_init(struct prog_data *prog)
 	prog->do_ts = !prog->do_ts;
 
 	/* Open RAW socket to send on */
-	prog->fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
-	if (prog->fd < 0) {
+	prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
+	if (prog->data_fd < 0) {
 		perror("socket");
 		return -EINVAL;
 	}
 
-	rc = setsockopt(prog->fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
+	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
-		close(prog->fd);
+		close(prog->data_fd);
 		return rc;
 	}
 
 	/* Get the index of the interface to send on */
 	memset(&if_idx, 0, sizeof(struct ifreq));
 	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
-	if (ioctl(prog->fd, SIOCGIFINDEX, &if_idx) < 0) {
+	if (ioctl(prog->data_fd, SIOCGIFINDEX, &if_idx) < 0) {
 		perror("SIOCGIFINDEX");
-		close(prog->fd);
+		close(prog->data_fd);
 		return rc;
 	}
 
 	/* Get the MAC address of the interface to send on */
 	memset(&if_mac, 0, sizeof(struct ifreq));
 	strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
-	if (ioctl(prog->fd, SIOCGIFHWADDR, &if_mac) < 0) {
+	if (ioctl(prog->data_fd, SIOCGIFHWADDR, &if_mac) < 0) {
 		perror("SIOCGIFHWADDR");
-		close(prog->fd);
+		close(prog->data_fd);
 		return rc;
 	}
 
@@ -339,7 +339,7 @@ static int prog_init(struct prog_data *prog)
 	rc = clock_gettime(prog->clkid, &now_ts);
 	if (rc < 0) {
 		perror("clock_gettime");
-		close(prog->fd);
+		close(prog->data_fd);
 		return rc;
 	}
 
@@ -382,7 +382,7 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (prog->do_ts)
-		return sk_timestamping_init(prog->fd, prog->if_name, 1);
+		return sk_timestamping_init(prog->data_fd, prog->if_name, 1);
 
 	return 0;
 }
@@ -546,7 +546,7 @@ int isochron_send_main(int argc, char *argv[])
 
 	priv->sockaddr = (struct sockaddr *)&prog.socket_address;
 	priv->sendbuf = prog.sendbuf;
-	priv->fd = prog.fd;
+	priv->data_fd = prog.data_fd;
 	priv->tx_len = prog.tx_len;
 
 	app_init(priv);
