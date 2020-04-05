@@ -19,7 +19,11 @@
 #include <stdio.h>
 #include <errno.h>
 #include <time.h>
+/* For va_start and va_end */
+#include <stdarg.h>
 #include "common.h"
+
+#define LOGBUF_SIZ	(10 * 1024 * 1024) /* 10 MiB */
 
 int mac_addr_from_string(__u8 *to, char *from)
 {
@@ -440,4 +444,46 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 	}
 
 	return len;
+}
+
+int rtprint_init(struct rtprint *rt)
+{
+	rt->log_buf = calloc(sizeof(char), LOGBUF_SIZ);
+	if (!rt->log_buf)
+		return -ENOMEM;
+
+	rt->log_buf_len = -1;
+
+	return 0;
+}
+
+int rtprintf(struct rtprint *rt, char *fmt, ...)
+{
+	char *buf = rt->log_buf + rt->log_buf_len + 1;
+	va_list args;
+	int rc;
+
+	va_start(args, fmt);
+
+	rc = vsnprintf(buf, LOGBUF_SIZ - rt->log_buf_len, fmt, args);
+	rt->log_buf_len += (rc + 1);
+
+	va_end(args);
+
+	return rc;
+}
+
+void rtflush(struct rtprint *rt)
+{
+	int rc, i = 0;
+
+	while (i < rt->log_buf_len && rt->log_buf[i]) {
+		rc = printf("%s", rt->log_buf + i);
+		i += (rc + 1);
+	}
+}
+
+void rtprint_teardown(struct rtprint *rt)
+{
+	free(rt->log_buf);
 }

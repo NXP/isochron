@@ -81,6 +81,16 @@ struct vlan_ethhdr {
 	__be16		h_vlan_encapsulated_proto;
 };
 
+struct rtprint {
+	int log_buf_len;
+	char *log_buf;
+};
+
+int rtprint_init(struct rtprint *rt);
+int rtprintf(struct rtprint *rt, char *fmt, ...);
+void rtflush(struct rtprint *rt);
+void rtprint_teardown(struct rtprint *rt);
+
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
 #define VLAN_PRIO_SHIFT		13
 #define VLAN_CFI_MASK		0x1000 /* Canonical Format Indicator / Drop Eligible Indicator */

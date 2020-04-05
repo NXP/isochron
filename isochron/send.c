@@ -20,12 +20,9 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <time.h>
-/* For va_start and va_end */
-#include <stdarg.h>
 #include "common.h"
 
 #define BUF_SIZ		1522
-#define LOGBUF_SIZ	(10 * 1024 * 1024) /* 10 MiB */
 
 struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
@@ -33,6 +30,7 @@ struct prog_data {
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct sockaddr_ll socket_address;
+	struct rtprint rt;
 	long timestamped;
 	long iterations;
 	clockid_t clkid;
@@ -41,39 +39,11 @@ struct prog_data {
 	__s64 cycle_time;
 	__s64 base_time;
 	long priority;
-	int log_buf_len;
-	char *log_buf;
 	long tx_len;
 	int data_fd;
 	long vid;
 	bool do_ts;
 };
-
-static int rtprintf(struct prog_data *prog, char *fmt, ...)
-{
-	char *buf = prog->log_buf + prog->log_buf_len + 1;
-	va_list args;
-	int rc;
-
-	va_start(args, fmt);
-
-	rc = vsnprintf(buf, LOGBUF_SIZ - prog->log_buf_len, fmt, args);
-	prog->log_buf_len += (rc + 1);
-
-	va_end(args);
-
-	return rc;
-}
-
-static void rtflush(struct prog_data *prog)
-{
-	int rc, i = 0;
-
-	while (i < prog->log_buf_len && prog->log_buf[i]) {
-		rc = printf("%s", prog->log_buf + i);
-		i += (rc + 1);
-	}
-}
 
 static void process_txtstamp(struct prog_data *prog, const char *buf,
 			     struct timestamp *tstamp)
@@ -93,7 +63,7 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	ns_sprintf(hwts_buf, hwts);
 	ns_sprintf(swts_buf, swts);
 
-	rtprintf(prog, "[%s] seqid %d txtstamp %s swts %s\n",
+	rtprintf(&prog->rt, "[%s] seqid %d txtstamp %s swts %s\n",
 		 scheduled_buf, ntohs(app_hdr->seqid), hwts_buf, swts_buf);
 	prog->timestamped++;
 }
@@ -107,7 +77,8 @@ static void print_no_tstamp(struct prog_data *prog, const char *buf)
 
 	ns_sprintf(scheduled_buf, __be64_to_cpu(app_hdr->tx_time));
 
-	rtprintf(prog, "[%s] seqid %d\n", scheduled_buf, ntohs(app_hdr->seqid));
+	rtprintf(&prog->rt, "[%s] seqid %d\n", scheduled_buf,
+		 ntohs(app_hdr->seqid));
 }
 
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
@@ -349,10 +320,9 @@ static int prog_init(struct prog_data *prog)
 	ns_sprintf(now_buf, now);
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
-	prog->log_buf = calloc(sizeof(char), LOGBUF_SIZ);
-	if (!prog->log_buf)
-		return -ENOMEM;
-	prog->log_buf_len = -1;
+	rc = rtprint_init(&prog->rt);
+	if (rc < 0)
+		return rc;
 
 	/* Prevent the process's virtual memory from being swapped out, by
 	 * locking all current and future pages
@@ -380,8 +350,8 @@ static int prog_init(struct prog_data *prog)
 
 static int prog_teardown(struct prog_data *prog)
 {
-	rtflush(prog);
-	free(prog->log_buf);
+	rtflush(&prog->rt);
+	rtprint_teardown(&prog->rt);
 
 	return 0;
 }

@@ -26,6 +26,7 @@ struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
 	unsigned int if_index;
 	__u8 rcvbuf[BUF_SIZ];
+	struct rtprint rt;
 	clockid_t clkid;
 	int data_fd;
 	bool do_ts;
@@ -61,11 +62,11 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		ns_sprintf(hwts_buf, hwts);
 		ns_sprintf(swts_buf, swts);
 
-		printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
+		rtprintf(&prog->rt, "[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
 		       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
 		       ntohs(app_hdr->seqid), hwts_buf, swts_buf);
 	} else {
-		printf("[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
+		rtprintf(&prog->rt, "[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
 		       gate_buf, smac_buf, dmac_buf, ntohs(eth_hdr->h_proto),
 		       ntohs(app_hdr->seqid));
 	}
@@ -182,6 +183,10 @@ static int prog_init(struct prog_data *prog)
 	int sockopt = 1;
 	int rc;
 
+	rc = rtprint_init(&prog->rt);
+	if (rc < 0)
+		return rc;
+
 	prog->clkid = CLOCK_REALTIME;
 	/* Convert negative logic from cmdline to positive */
 	prog->do_ts = !prog->do_ts;
@@ -292,10 +297,18 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	return 0;
 }
 
+static int prog_teardown(struct prog_data *prog)
+{
+	rtflush(&prog->rt);
+	rtprint_teardown(&prog->rt);
+
+	return 0;
+}
+
 int isochron_rcv_main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
-	int rc;
+	int rc, rc_save;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
@@ -305,5 +318,11 @@ int isochron_rcv_main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	return server_loop(&prog, &prog);
+	rc_save = server_loop(&prog, &prog);
+
+	rc = prog_teardown(&prog);
+	if (rc < 0)
+		return rc;
+
+	return rc_save;
 }
