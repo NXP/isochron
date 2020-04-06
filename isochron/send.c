@@ -494,12 +494,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.optional = true,
 		},
 	};
-	char *prog_name = argv[0];
 	int rc;
-
-	/* Consume prog_name */
-	argc--;
-	argv++;
 
 	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
 
@@ -511,7 +506,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	} else if (rc < argc) {
 		fprintf(stderr, "%d unconsumed arguments. First: %s\n",
 			argc - rc, argv[rc]);
-		prog_usage(prog_name, args, ARRAY_SIZE(args));
+		prog_usage("isochron-send", args, ARRAY_SIZE(args));
 		return -1;
 	}
 
@@ -535,7 +530,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	return 0;
 }
 
-int main(int argc, char *argv[])
+int isochron_send_main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
 	struct app_private *priv = &prog.priv;

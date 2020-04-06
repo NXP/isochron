@@ -1,4 +1,3 @@
-raw-l2-send
-raw-l2-rcv
+isochron/isochron
 trace.dat
 *.o
