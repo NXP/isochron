@@ -4,6 +4,7 @@
  * - The Linux kernel
  * - The linuxptp project
  */
+#include <time.h>
 #include <linux/net_tstamp.h>
 #include <netinet/ether.h>
 #include <linux/sockios.h>
@@ -18,7 +19,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
-#include <time.h>
 /* For va_start and va_end */
 #include <stdarg.h>
 #include "common.h"
