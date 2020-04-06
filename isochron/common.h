@@ -201,14 +201,8 @@ struct isochron_stats {
 	int frame_count;
 	int gate_deadline_misses;
 	int cycles_missed;
-	__s64 tx_ts_mean;
-	__s64 rx_ts_mean;
-	__s64 headroom_mean;
-	__s64 gate_delay_mean;
-	__s64 path_delay_mean;
-	__s64 headroom_stddev;
-	__s64 path_delay_stddev;
-	__s64 gate_delay_stddev;
+	double tx_sync_offset_mean;
+	double rx_sync_offset_mean;
 };
 
 int mac_addr_from_string(__u8 *to, char *from);

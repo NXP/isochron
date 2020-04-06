@@ -9,6 +9,8 @@
  */
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
+#include <limits.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -443,13 +445,45 @@ static void isochron_process_stat(struct prog_data *prog,
 	}
 
 	stats->frame_count++;
-	stats->gate_delay_mean += entry->gate_delay;
-	stats->path_delay_mean += entry->path_delay;
-	stats->headroom_mean += entry->headroom;
-	stats->tx_ts_mean += tx_ts_diff;
-	stats->rx_ts_mean += rx_ts_diff;
+	stats->tx_sync_offset_mean += send_pkt->hwts -
+				      utc_to_tai(send_pkt->swts);
+	stats->rx_sync_offset_mean += rcv_pkt->hwts -
+				      utc_to_tai(rcv_pkt->swts);
 
 	LIST_INSERT_HEAD(&stats->entries, entry, list);
+}
+
+static void isochron_print_one_stat(struct isochron_stats *stats,
+				    int stat_offset,
+				    const char *name)
+{
+	__s64 min = LONG_MAX, max = LONG_MIN;
+	double mean = 0, sumsqr = 0, stddev;
+	struct isochron_stat_entry *entry;
+
+	LIST_FOREACH(entry, &stats->entries, list) {
+		__s64 *stat = (__s64 *)((char *)entry + stat_offset);
+
+		if (*stat < min)
+			min = *stat;
+		if (*stat > max)
+			max = *stat;
+		mean += *stat;
+	}
+
+	mean /= (double)stats->frame_count;
+
+	LIST_FOREACH(entry, &stats->entries, list) {
+		__s64 *stat = (__s64 *)((char *)entry + stat_offset);
+		double deviation = (double)*stat - mean;
+
+		sumsqr += deviation * deviation;
+	}
+
+	stddev = sqrt(sumsqr / (double)stats->frame_count);
+
+	printf("%s: min %lld max %lld mean %.3lf stddev %.3lf\n",
+	       name, min, max, mean, stddev);
 }
 
 static void isochron_print_stats(struct prog_data *prog,
@@ -460,12 +494,6 @@ static void isochron_print_stats(struct prog_data *prog,
 	struct isochron_send_pkt_data *send_pkt;
 	struct isochron_stat_entry *entry, *tmp;
 	struct isochron_stats stats = {0};
-	double gate_delay_stddev;
-	double path_delay_stddev;
-	double headroom_stddev;
-	__s64 gate_delay_sumsqr;
-	__s64 path_delay_sumsqr;
-	__s64 headroom_sumsqr;
 
 	LIST_INIT(&stats.entries);
 
@@ -484,66 +512,39 @@ static void isochron_print_stats(struct prog_data *prog,
 		isochron_log_remove(rcv_log, rcv_pkt, sizeof(*rcv_pkt));
 	}
 
-	stats.gate_delay_mean /= stats.frame_count;
-	stats.path_delay_mean /= stats.frame_count;
-	stats.headroom_mean /= stats.frame_count;
-	stats.tx_ts_mean /= stats.frame_count;
-	stats.rx_ts_mean /= stats.frame_count;
+	stats.tx_sync_offset_mean /= stats.frame_count;
+	stats.rx_sync_offset_mean /= stats.frame_count;
 
-	LIST_FOREACH_SAFE(entry, &stats.entries, list, tmp) {
-		__s64 gate_delay_dev;
-		__s64 path_delay_dev;
-		__s64 headroom_dev;
-
-		gate_delay_dev = entry->gate_delay - stats.gate_delay_mean;
-		path_delay_dev = entry->path_delay - stats.path_delay_mean;
-		headroom_dev = entry->headroom - stats.headroom_mean;
-
-		gate_delay_sumsqr += gate_delay_dev * gate_delay_dev;
-		path_delay_sumsqr += path_delay_dev * path_delay_dev;
-		headroom_sumsqr += headroom_dev * headroom_dev;
-		LIST_REMOVE(entry, list);
-		free(entry);
-	}
-
-	gate_delay_stddev = sqrt(gate_delay_sumsqr / stats.frame_count);
-	path_delay_stddev = sqrt(path_delay_sumsqr / stats.frame_count);
-	headroom_stddev = sqrt(headroom_sumsqr / stats.frame_count);
-
-	if (llabs(stats.tx_ts_mean) > NSEC_PER_SEC) {
+	if (llabs(stats.tx_sync_offset_mean) > NSEC_PER_SEC) {
 		printf("Sender PHC not synchronized (mean PHC to system time "
-		       "diff %lld ns larger than 1 second)\n", stats.tx_ts_mean);
-		return;
+		       "diff %lld ns larger than 1 second)\n",
+		       stats.tx_sync_offset_mean);
+		goto out;
 	}
-	if (llabs(stats.rx_ts_mean) > NSEC_PER_SEC) {
+	if (llabs(stats.rx_sync_offset_mean) > NSEC_PER_SEC) {
 		printf("Receiver PHC not synchronized (mean PHC to system time "
-		       "diff %lld ns larger than 1 second)\n", stats.rx_ts_mean);
-		return;
+		       "diff %lld ns larger than 1 second)\n",
+		       stats.rx_sync_offset_mean);
+		goto out;
 	}
 
 	printf("Summary:\n");
-
-	if (stats.path_delay_mean < 0)
-		printf("Negative path delay. Is the receiver PHC synchronized to the sender?\n");
-	else
-		printf("Path delay (RX TS - TX TS): mean %lld ns stddev %.3lf ns\n",
-		       stats.path_delay_mean, path_delay_stddev);
-
-	if (stats.gate_delay_mean > 0)
-		printf("taprio qdisc offload detected."
-		       "Gate delay (TX TS - scheduled TX time): mean %lld ns stddev %.3lf ns\n",
-		       stats.gate_delay_mean, gate_delay_stddev);
-
-	if (stats.headroom_mean < 0)
-		printf("Negative headroom (packets delivered late by kernel). Too small cycle time?\n");
-	else
-		printf("Headroom (scheduled TX time - SW TX TS): mean %lld ns stddev %.3lf ns\n",
-		       stats.headroom_mean, headroom_stddev);
-
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				gate_delay), "Gate delay");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				path_delay), "Path delay");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				headroom), "Headroom");
 	printf("Gate deadline misses: %d (%.3lf%%)\n",
 	       stats.gate_deadline_misses,
 	       100.0f * stats.gate_deadline_misses / stats.frame_count);
 	printf("Cycles missed: %d\n", stats.cycles_missed);
+
+out:
+	LIST_FOREACH_SAFE(entry, &stats.entries, list, tmp) {
+		LIST_REMOVE(entry, list);
+		free(entry);
+	}
 }
 
 static int prog_teardown(struct prog_data *prog)
