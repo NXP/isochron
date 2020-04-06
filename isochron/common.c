@@ -338,7 +338,7 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 		SOF_TIMESTAMPING_RAW_HARDWARE |
 		SOF_TIMESTAMPING_OPT_TX_SWHW;
 
-	filter = HWTSTAMP_FILTER_PTP_V2_L2_EVENT;
+	filter = HWTSTAMP_FILTER_ALL;
 
 	if (on)
 		tx_type = HWTSTAMP_TX_ON;
