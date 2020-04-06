@@ -45,6 +45,7 @@ struct prog_data {
 	int data_fd;
 	long vid;
 	bool do_ts;
+	bool quiet;
 };
 
 static void process_txtstamp(struct prog_data *prog, const char *buf,
@@ -424,9 +425,10 @@ static void isochron_process_stat(struct prog_data *prog,
 	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
 	ns_sprintf(rx_swts_buf, rcv_pkt->swts);
 
-	printf("seqid %d gate %s tx %s sw %s rx %s sw %s\n",
-	       send_pkt->seqid, scheduled_buf, tx_hwts_buf,
-	       tx_swts_buf, rx_hwts_buf, rx_swts_buf);
+	if (!prog->quiet)
+		printf("seqid %d gate %s tx %s sw %s rx %s sw %s\n",
+		       send_pkt->seqid, scheduled_buf, tx_hwts_buf,
+		       tx_swts_buf, rx_hwts_buf, rx_swts_buf);
 
 	entry = malloc(sizeof(*entry));
 	if (!entry)
@@ -562,7 +564,8 @@ static int prog_teardown(struct prog_data *prog)
 
 		isochron_log_teardown(&rcv_log);
 	} else {
-		isochron_send_log_print(&prog->log);
+		if (!prog->quiet)
+			isochron_send_log_print(&prog->log);
 	}
 
 	isochron_log_teardown(&prog->log);
@@ -674,6 +677,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.string = {
 				.buf = prog->stats_srv_addr,
 				.size = INET6_ADDRSTRLEN,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-q",
+			.long_opt = "--quiet",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->quiet,
 			},
 			.optional = true,
 		},

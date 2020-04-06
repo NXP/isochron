@@ -32,6 +32,7 @@ struct prog_data {
 	int stats_listenfd;
 	int data_fd;
 	bool do_ts;
+	bool quiet;
 };
 
 int signal_received;
@@ -350,6 +351,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->do_ts,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-q",
+			.long_opt = "--quiet",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->quiet,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -373,7 +382,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 static int prog_teardown(struct prog_data *prog)
 {
-	isochron_rcv_log_print(&prog->log);
+	if (!prog->quiet)
+		isochron_rcv_log_print(&prog->log);
 	isochron_log_teardown(&prog->log);
 	close(prog->stats_listenfd);
 	close(prog->data_fd);
