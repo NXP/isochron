@@ -20,6 +20,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 #include "common.h"
 
 #define BUF_SIZ		1522
@@ -348,13 +349,13 @@ static int prog_init(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_collect_rcv_stats(struct prog_data *prog)
+static int prog_collect_rcv_stats(struct prog_data *prog,
+				  struct isochron_log *rcv_log)
 {
 	struct sockaddr_in serv_addr = {
 		.sin_family = AF_INET,
 		.sin_port = htons(ISOCHRON_STATS_PORT),
 	};
-	struct isochron_log rcv_log;
 	int stats_fd;
 	int rc;
 
@@ -385,23 +386,184 @@ static int prog_collect_rcv_stats(struct prog_data *prog)
 		return -errno;
 	}
 
-	printf("Collecting receiver stats\n");
-	isochron_log_init(&rcv_log);
-	isochron_log_recv(&rcv_log, stats_fd);
-	isochron_rcv_log_print(&rcv_log);
+	return isochron_log_recv(rcv_log, stats_fd);
+}
 
-	return 0;
+static struct isochron_rcv_pkt_data
+*isochron_rcv_log_find(struct isochron_log *rcv_log, int seqid, __s64 tx_time)
+{
+	char *log_buf_end = rcv_log->buf + rcv_log->buf_len;
+	struct isochron_rcv_pkt_data *rcv_pkt;
+
+	for (rcv_pkt = (struct isochron_rcv_pkt_data *)rcv_log->buf;
+	     (char *)rcv_pkt < log_buf_end; rcv_pkt++)
+		if (rcv_pkt->seqid == seqid &&
+		    rcv_pkt->tx_time == tx_time)
+			return rcv_pkt;
+
+	return NULL;
+}
+
+static void isochron_process_stat(struct prog_data *prog,
+				  struct isochron_send_pkt_data *send_pkt,
+				  struct isochron_rcv_pkt_data *rcv_pkt,
+				  struct isochron_stats *stats)
+{
+	__s64 tx_ts_diff = send_pkt->hwts - utc_to_tai(send_pkt->swts);
+	__s64 rx_ts_diff = utc_to_tai(rcv_pkt->swts) - rcv_pkt->hwts;
+	struct isochron_stat_entry *entry;
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	char tx_hwts_buf[TIMESPEC_BUFSIZ];
+	char tx_swts_buf[TIMESPEC_BUFSIZ];
+	char rx_hwts_buf[TIMESPEC_BUFSIZ];
+	char rx_swts_buf[TIMESPEC_BUFSIZ];
+
+	ns_sprintf(scheduled_buf, send_pkt->tx_time);
+	ns_sprintf(tx_swts_buf, send_pkt->swts);
+	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
+	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
+	ns_sprintf(rx_swts_buf, rcv_pkt->swts);
+
+	printf("seqid %d gate %s tx %s sw %s rx %s sw %s\n",
+	       send_pkt->seqid, scheduled_buf, tx_hwts_buf,
+	       tx_swts_buf, rx_hwts_buf, rx_swts_buf);
+
+	entry = malloc(sizeof(*entry));
+	if (!entry)
+		return;
+
+	entry->gate_delay = send_pkt->hwts - utc_to_tai(send_pkt->tx_time);
+	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
+	entry->headroom = send_pkt->tx_time - send_pkt->swts;
+	if (entry->gate_delay > prog->cycle_time) {
+		stats->gate_deadline_misses++;
+		stats->cycles_missed += entry->gate_delay / prog->cycle_time;
+	}
+
+	stats->frame_count++;
+	stats->gate_delay_mean += entry->gate_delay;
+	stats->path_delay_mean += entry->path_delay;
+	stats->headroom_mean += entry->headroom;
+	stats->tx_ts_mean += tx_ts_diff;
+	stats->rx_ts_mean += rx_ts_diff;
+
+	LIST_INSERT_HEAD(&stats->entries, entry, list);
+}
+
+static void isochron_print_stats(struct prog_data *prog,
+				 struct isochron_log *send_log,
+				 struct isochron_log *rcv_log)
+{
+	char *log_buf_end = send_log->buf + send_log->buf_len;
+	struct isochron_send_pkt_data *send_pkt;
+	struct isochron_stat_entry *entry, *tmp;
+	struct isochron_stats stats = {0};
+	double gate_delay_stddev;
+	double path_delay_stddev;
+	double headroom_stddev;
+	__s64 gate_delay_sumsqr;
+	__s64 path_delay_sumsqr;
+	__s64 headroom_sumsqr;
+
+	LIST_INIT(&stats.entries);
+
+	for (send_pkt = (struct isochron_send_pkt_data *)send_log->buf;
+	     (char *)send_pkt < log_buf_end; send_pkt++) {
+		struct isochron_rcv_pkt_data *rcv_pkt;
+
+		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid,
+						send_pkt->tx_time);
+		if (!rcv_pkt) {
+			printf("seqid %d lost\n", send_pkt->seqid);
+			continue;
+		}
+
+		isochron_process_stat(prog, send_pkt, rcv_pkt, &stats);
+		isochron_log_remove(rcv_log, rcv_pkt, sizeof(*rcv_pkt));
+	}
+
+	stats.gate_delay_mean /= stats.frame_count;
+	stats.path_delay_mean /= stats.frame_count;
+	stats.headroom_mean /= stats.frame_count;
+	stats.tx_ts_mean /= stats.frame_count;
+	stats.rx_ts_mean /= stats.frame_count;
+
+	LIST_FOREACH_SAFE(entry, &stats.entries, list, tmp) {
+		__s64 gate_delay_dev;
+		__s64 path_delay_dev;
+		__s64 headroom_dev;
+
+		gate_delay_dev = entry->gate_delay - stats.gate_delay_mean;
+		path_delay_dev = entry->path_delay - stats.path_delay_mean;
+		headroom_dev = entry->headroom - stats.headroom_mean;
+
+		gate_delay_sumsqr += gate_delay_dev * gate_delay_dev;
+		path_delay_sumsqr += path_delay_dev * path_delay_dev;
+		headroom_sumsqr += headroom_dev * headroom_dev;
+		LIST_REMOVE(entry, list);
+		free(entry);
+	}
+
+	gate_delay_stddev = sqrt(gate_delay_sumsqr / stats.frame_count);
+	path_delay_stddev = sqrt(path_delay_sumsqr / stats.frame_count);
+	headroom_stddev = sqrt(headroom_sumsqr / stats.frame_count);
+
+	if (llabs(stats.tx_ts_mean) > NSEC_PER_SEC) {
+		printf("Sender PHC not synchronized (mean PHC to system time "
+		       "diff %lld ns larger than 1 second)\n", stats.tx_ts_mean);
+		return;
+	}
+	if (llabs(stats.rx_ts_mean) > NSEC_PER_SEC) {
+		printf("Receiver PHC not synchronized (mean PHC to system time "
+		       "diff %lld ns larger than 1 second)\n", stats.rx_ts_mean);
+		return;
+	}
+
+	printf("Summary:\n");
+
+	if (stats.path_delay_mean < 0)
+		printf("Negative path delay. Is the receiver PHC synchronized to the sender?\n");
+	else
+		printf("Path delay (RX TS - TX TS): mean %lld ns stddev %.3lf ns\n",
+		       stats.path_delay_mean, path_delay_stddev);
+
+	if (stats.gate_delay_mean > 0)
+		printf("taprio qdisc offload detected."
+		       "Gate delay (TX TS - scheduled TX time): mean %lld ns stddev %.3lf ns\n",
+		       stats.gate_delay_mean, gate_delay_stddev);
+
+	if (stats.headroom_mean < 0)
+		printf("Negative headroom (packets delivered late by kernel). Too small cycle time?\n");
+	else
+		printf("Headroom (scheduled TX time - SW TX TS): mean %lld ns stddev %.3lf ns\n",
+		       stats.headroom_mean, headroom_stddev);
+
+	printf("Gate deadline misses: %d (%.3lf%%)\n",
+	       stats.gate_deadline_misses,
+	       100.0f * stats.gate_deadline_misses / stats.frame_count);
+	printf("Cycles missed: %d\n", stats.cycles_missed);
 }
 
 static int prog_teardown(struct prog_data *prog)
 {
 	int rc;
 
-	isochron_send_log_print(&prog->log);
+	if (strlen(prog->stats_srv_addr)) {
+		struct isochron_log rcv_log;
 
-	rc = prog_collect_rcv_stats(prog);
-	if (rc)
-		return rc;
+		printf("Collecting receiver stats\n");
+
+		isochron_log_init(&rcv_log);
+		rc = prog_collect_rcv_stats(prog, &rcv_log);
+		if (rc)
+			return rc;
+
+		isochron_print_stats(prog, &prog->log, &rcv_log);
+
+		isochron_log_teardown(&rcv_log);
+	} else {
+		isochron_send_log_print(&prog->log);
+	}
 
 	isochron_log_teardown(&prog->log);
 
@@ -513,6 +675,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.buf = prog->stats_srv_addr,
 				.size = INET6_ADDRSTRLEN,
 			},
+			.optional = true,
 		},
 	};
 	int rc;

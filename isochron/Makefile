@@ -1,5 +1,5 @@
 isochron: isochron.o common.o rcv.o send.o
-	$(CC) $^ -o $@ $(LDFLAGS)
+	$(CC) $^ -o $@ $(LDFLAGS) -lm
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $^ -o $@

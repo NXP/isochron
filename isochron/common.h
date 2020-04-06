@@ -8,6 +8,8 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
+#include <sys/queue.h>
+
 #define NSEC_PER_SEC	1000000000LL
 #define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
 
@@ -29,6 +31,13 @@ enum {
 
 #define ARRAY_SIZE(array) \
 	(sizeof(array) / sizeof(*array))
+
+#ifndef LIST_FOREACH_SAFE
+#define	LIST_FOREACH_SAFE(var, head, field, tvar)			\
+	for ((var) = LIST_FIRST((head));				\
+	    (var) && ((tvar) = LIST_NEXT((var), field), 1);		\
+	    (var) = (tvar))
+#endif
 
 /* Copied from libnfnetlink.h */
 
@@ -93,6 +102,7 @@ int isochron_log_recv(struct isochron_log *log, int fd);
 void isochron_log_teardown(struct isochron_log *log);
 void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);
+void isochron_log_remove(struct isochron_log *log, void *p, int len);
 
 #define ISOCHRON_STATS_PORT	5000
 
@@ -179,6 +189,28 @@ struct isochron_rcv_pkt_data {
 	short seqid;
 };
 
+struct isochron_stat_entry {
+	LIST_ENTRY(isochron_stat_entry) list;
+	__s64 gate_delay;
+	__s64 path_delay;
+	__s64 headroom;
+};
+
+struct isochron_stats {
+	LIST_HEAD(stats_head, isochron_stat_entry) entries;
+	int frame_count;
+	int gate_deadline_misses;
+	int cycles_missed;
+	__s64 tx_ts_mean;
+	__s64 rx_ts_mean;
+	__s64 headroom_mean;
+	__s64 gate_delay_mean;
+	__s64 path_delay_mean;
+	__s64 headroom_stddev;
+	__s64 path_delay_stddev;
+	__s64 gate_delay_stddev;
+};
+
 int mac_addr_from_string(__u8 *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, int on);
 int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
@@ -187,6 +219,7 @@ __s64 timespec_to_ns(const struct timespec *ts);
 struct timespec ns_to_timespec(__s64 ns);
 void mac_addr_sprintf(char *buf, __u8 *addr);
 void ns_sprintf(char *buf, __s64 ns);
+__s64 utc_to_tai(__s64 utc);
 
 /**
  * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.

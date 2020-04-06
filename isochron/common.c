@@ -564,3 +564,14 @@ void isochron_send_log_print(struct isochron_log *log)
 		       scheduled_buf, send_pkt->seqid, hwts_buf, swts_buf);
 	}
 }
+
+void isochron_log_remove(struct isochron_log *log, void *p, int len)
+{
+	memcpy(p, p + len, log->buf_len - len);
+	log->buf_len -= len;
+}
+
+__s64 utc_to_tai(__s64 utc)
+{
+	return utc + 37 * NSEC_PER_SEC;
+}
