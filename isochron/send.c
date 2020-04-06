@@ -432,7 +432,7 @@ static void isochron_process_stat(struct prog_data *prog,
 		       send_pkt->seqid, scheduled_buf, tx_hwts_buf,
 		       tx_swts_buf, rx_hwts_buf, rx_swts_buf);
 
-	entry = malloc(sizeof(*entry));
+	entry = calloc(1, sizeof(*entry));
 	if (!entry)
 		return;
 
