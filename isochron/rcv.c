@@ -190,6 +190,10 @@ static int server_loop(struct prog_data *prog, void *app_data)
 			stats_fd = rc;
 
 			isochron_log_xmit(&prog->log, stats_fd);
+			isochron_log_teardown(&prog->log);
+			rc = isochron_log_init(&prog->log);
+			if (rc < 0)
+				break;
 
 			close(stats_fd);
 		}
