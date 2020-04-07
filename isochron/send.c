@@ -439,6 +439,9 @@ static void isochron_process_stat(struct prog_data *prog,
 	entry->hw_tx_deadline_delta = send_pkt->hwts -
 				      utc_to_tai(send_pkt->tx_time);
 	entry->sw_tx_deadline_delta = send_pkt->swts - send_pkt->tx_time;
+	entry->hw_rx_deadline_delta = rcv_pkt->hwts -
+				      utc_to_tai(rcv_pkt->tx_time);
+	entry->sw_rx_deadline_delta = rcv_pkt->swts - rcv_pkt->tx_time;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 
 	if (entry->hw_tx_deadline_delta > 0)
@@ -537,6 +540,10 @@ static void isochron_print_stats(struct prog_data *prog,
 				hw_tx_deadline_delta), "HW TX deadline delta");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				sw_tx_deadline_delta), "SW TX deadline delta");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				hw_rx_deadline_delta), "HW RX deadline delta");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				sw_rx_deadline_delta), "SW RX deadline delta");
 	printf("HW TX deadline misses: %d (%.3lf%%)\n",
 	       stats.hw_tx_deadline_misses,
 	       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);

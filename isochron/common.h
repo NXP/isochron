@@ -193,6 +193,8 @@ struct isochron_stat_entry {
 	LIST_ENTRY(isochron_stat_entry) list;
 	__s64 hw_tx_deadline_delta;
 	__s64 sw_tx_deadline_delta;
+	__s64 hw_rx_deadline_delta;
+	__s64 sw_rx_deadline_delta;
 	__s64 path_delay;
 };
 
