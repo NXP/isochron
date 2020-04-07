@@ -436,13 +436,15 @@ static void isochron_process_stat(struct prog_data *prog,
 	if (!entry)
 		return;
 
-	entry->gate_delay = send_pkt->hwts - utc_to_tai(send_pkt->tx_time);
+	entry->hw_tx_deadline_delta = send_pkt->hwts -
+				      utc_to_tai(send_pkt->tx_time);
+	entry->sw_tx_deadline_delta = send_pkt->swts - send_pkt->tx_time;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
-	entry->headroom = send_pkt->tx_time - send_pkt->swts;
-	if (entry->gate_delay > prog->cycle_time) {
-		stats->gate_deadline_misses++;
-		stats->cycles_missed += entry->gate_delay / prog->cycle_time;
-	}
+
+	if (entry->hw_tx_deadline_delta > 0)
+		stats->hw_tx_deadline_misses++;
+	if (entry->sw_tx_deadline_delta > 0)
+		stats->sw_tx_deadline_misses++;
 
 	stats->frame_count++;
 	stats->tx_sync_offset_mean += send_pkt->hwts -
@@ -530,15 +532,17 @@ static void isochron_print_stats(struct prog_data *prog,
 
 	printf("Summary:\n");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				gate_delay), "Gate delay");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				path_delay), "Path delay");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				headroom), "Headroom");
-	printf("Gate deadline misses: %d (%.3lf%%)\n",
-	       stats.gate_deadline_misses,
-	       100.0f * stats.gate_deadline_misses / stats.frame_count);
-	printf("Cycles missed: %d\n", stats.cycles_missed);
+				hw_tx_deadline_delta), "HW TX deadline delta");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				sw_tx_deadline_delta), "SW TX deadline delta");
+	printf("HW TX deadline misses: %d (%.3lf%%)\n",
+	       stats.hw_tx_deadline_misses,
+	       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
+	printf("SW TX deadline misses: %d (%.3lf%%)\n",
+	       stats.sw_tx_deadline_misses,
+	       100.0f * stats.sw_tx_deadline_misses / stats.frame_count);
 
 out:
 	LIST_FOREACH_SAFE(entry, &stats.entries, list, tmp) {
