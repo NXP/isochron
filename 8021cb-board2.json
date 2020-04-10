@@ -4,7 +4,7 @@
 			"match": {
 				"ingress-port-mask": [ "swp4" ],
 				"dmac": "%BOARD1_MAC_ADDRESS%",
-				"vid": "%BOARD1_VID%"
+				"vid": "%BOARD2_VID%"
 			},
 			"action": {
 				"type": "split",
@@ -14,7 +14,7 @@
 			"match": {
 				"ingress-port-mask": [ "swp4" ],
 				"dmac": "%BOARD3_MAC_ADDRESS%",
-				"vid": "%BOARD3_VID%"
+				"vid": "%BOARD2_VID%"
 			},
 			"action": {
 				"type": "split",
@@ -24,7 +24,16 @@
 			"match": {
 				"egress-port": "swp4",
 				"dmac": "%BOARD2_MAC_ADDRESS%",
-				"vid": "%BOARD2_VID%"
+				"vid": "%BOARD1_VID%"
+			},
+			"action": {
+				"type": "recover"
+			}
+		}, {
+			"match": {
+				"egress-port": "swp4",
+				"dmac": "%BOARD2_MAC_ADDRESS%",
+				"vid": "%BOARD3_VID%"
 			},
 			"action": {
 				"type": "recover"

@@ -296,12 +296,6 @@ install_vlans() {
 		for swp in ${total_port_list}; do
 			bridge vlan add dev ${swp} vid ${vid}
 		done
-
-		# FIXME: The VLAN sub-interfaces are not used ATM
-		[ -d "/sys/class/net/eno2.${vid}" ] && ip link del dev "eno2.${vid}"
-		ip link add link eno2 name "eno2.${vid}" type vlan id ${vid}
-		limit_rogue_traffic "eno2.${vid}"
-		ip link set dev "eno2.${vid}" up
 	done
 
 	for port in ${total_port_list}; do
@@ -315,6 +309,8 @@ install_vlans() {
 
 do_bridging
 clear_stream_table
+
+limit_rogue_traffic eno2
 
 num_rules=$(jq '.rules|length' <<< "${json}")
 
