@@ -273,9 +273,18 @@ add_passthrough_vlans() {
 limit_rogue_traffic() {
 	local iface="$1"
 
-	#iptables -o ${iface} -A OUTPUT -m pkttype --pkt-type broadcast -j DROP
 	iptables -o ${iface} -A OUTPUT -d 224.0.0.0/8 -j DROP
 	echo 1 > /proc/sys/net/ipv6/conf/${iface}/disable_ipv6
+}
+
+drop_looped_traffic() {
+	local iface="$1"
+	local this_host=$(ip link show dev eno2 | awk '/link\/ether/ {print $2; }')
+
+	tc qdisc del dev ${iface} clsact >/dev/null || :
+	tc qdisc add dev ${iface} clsact
+	tc filter add dev ${iface} ingress flower skip_sw dst_mac ff:ff:ff:ff:ff:ff action drop
+	tc filter add dev ${iface} ingress flower skip_sw src_mac ${this_host} action drop
 }
 
 install_vlans() {
@@ -293,6 +302,14 @@ install_vlans() {
 		ip link add link eno2 name "eno2.${vid}" type vlan id ${vid}
 		limit_rogue_traffic "eno2.${vid}"
 		ip link set dev "eno2.${vid}" up
+	done
+
+	for port in ${total_port_list}; do
+		# Don't drop traffic coming from the CPU port
+		if [ ${port} = swp4 ]; then
+			continue
+		fi
+		drop_looped_traffic "${port}"
 	done
 }
 
