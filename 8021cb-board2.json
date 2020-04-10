@@ -8,7 +8,7 @@
 			},
 			"action": {
 				"type": "split",
-				"egress-port-mask": [ "swp1", "swp2" ]
+				"egress-port-mask": [ "swp0", "swp1" ]
 			}
 		}, {
 			"match": {
@@ -18,7 +18,7 @@
 			},
 			"action": {
 				"type": "split",
-				"egress-port-mask": [ "swp1", "swp2" ]
+				"egress-port-mask": [ "swp0", "swp1" ]
 			}
 		}, {
 			"match": {
