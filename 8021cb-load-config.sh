@@ -208,16 +208,25 @@ add_split_action() {
 
 add_recover_action() {
 	local ssid="$1"
+	local passthrough="$2"
 	local seq_len=16
 	local his_len=31
+
+	if [ $passthrough = true ]; then
+		local opts=""
+		local label="Passthrough"
+	else
+		local opts="--rtag_pop_en"
+		local label="Sequence recovery"
+	fi
 
 	# The port does not matter
 	recover_actions+=("tsntool cbrec --device swp0 --index ${ssid} \
 		--seq_len ${seq_len} --his_len ${his_len} \
-		--rtag_pop_en")
+		${opts}")
 
-	printf 'Sequence recovery action for rule %d\n' \
-		"${ssid}"
+	printf '%s action for rule %d\n' \
+		"${label}" "${ssid}"
 }
 
 # The felix driver is very picky about the order of the tsntool commands. To be
@@ -314,7 +323,12 @@ for i in `seq 0 $((${num_rules}-1))`; do
 		egress_port=$(echo "${egress_port_mask}" | jq -r -c '.[0]')
 		;;
 	"recover")
-		add_recover_action "${i}"
+		add_recover_action "${i}" false
+
+		egress_port=$(echo "${match}" | jq -r '.["egress-port"]')
+		;;
+	"passthrough")
+		add_recover_action "${i}" true
 
 		egress_port=$(echo "${match}" | jq -r '.["egress-port"]')
 		;;
