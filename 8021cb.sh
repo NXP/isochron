@@ -102,10 +102,6 @@ echo "${TOPDIR}/raw-l2-rcv -i eno2.${my_vid} -T"
 echo "Or raw:"
 echo "tcpdump -i eno2 -e -n -Q in"
 
-[ -d "/sys/class/net/eno2.0" ] && ip link del dev eno2.0
-ip link add link eno2 name eno2.0 type vlan id 0
-ip link set dev eno2.0 up
-
 echo "Adding VLAN mangling rules (see with 'tc filter show dev eno2 egress && tc filter show dev eno2 ingress')"
 
 tc qdisc del dev eno2 clsact >/dev/null || :
