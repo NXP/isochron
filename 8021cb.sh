@@ -87,21 +87,6 @@ sed -i -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
 
 ${TOPDIR}/8021cb-load-config.sh -f ${TOPDIR}/8021cb-board${num}.json
 
-for board in 1 2 3; do
-	if [ ${board} = ${num} ]; then
-		continue
-	fi
-	eval $(echo other_mac=\$board${board}_mac_address)
-	eval $(echo other_vid=\$board${board}_vid)
-	echo "To board ${board}:"
-	echo "${TOPDIR}/raw-l2-send -i eno2 -d ${other_mac} -v ${other_vid} -p 0 -b 0 -c 0.2 -n 20000 -s 100 -T"
-done
-
-echo "To see traffic to this board:"
-echo "${TOPDIR}/raw-l2-rcv -i eno2.${my_vid} -T"
-echo "Or raw:"
-echo "tcpdump -i eno2 -e -n -Q in"
-
 echo "Adding VLAN mangling rules (see with 'tc filter show dev eno2 egress && tc filter show dev eno2 ingress')"
 
 if tc qdisc show dev eno2 | grep clsact; then tc qdisc del dev eno2 clsact; fi
@@ -136,3 +121,5 @@ for board in 1 2 3; do
 	eval $(echo other_ip=\$board${board}_ip_address)
 	arp -s ${other_ip} ${other_mac} dev eno2
 done
+
+echo "Ready to send/receive traffic. IP address of board is ${my_ip}"
