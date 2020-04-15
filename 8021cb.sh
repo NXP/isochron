@@ -124,6 +124,8 @@ tc filter add dev eno2 protocol 802.1Q ingress flower \
 tc filter add dev eno2 protocol 802.1Q ingress flower \
 	dst_mac $my_mac vlan_id $board3_vid \
 	action vlan pop
+# Accept all VLAN tags on ingress
+ethtool -K eno2 rx-vlan-filter off
 
 echo "Populating the ARP table..."
 for board in 1 2 3; do
