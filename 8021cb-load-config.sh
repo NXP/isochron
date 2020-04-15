@@ -73,7 +73,7 @@ tsntool() {
 }
 
 clear_stream_table() {
-	for eth in swp0 swp1 swp2 swp3 swp4 swp5; do
+	for eth in swp0 swp1 swp2 swp3 swp4; do
 		for ssid in $(seq 0 127); do
 			tsntool cbstreamidset --index $ssid --nullstreamid \
 				--streamhandle $ssid --device $eth \
@@ -184,7 +184,7 @@ add_split_action() {
 
 	# The switch port specified as parameter to --device here does not
 	# matter, it is simply an anchor for tsntool to talk to the switch
-	# driver.  As a convention, swp5 will be used.
+	# driver.  As a convention, swp0 will be used.
 	#
 	# The --index option points to the SSID for which the generation rule is
 	# applied. It must match the --streamhandle option for cbstreamidset.
@@ -198,7 +198,7 @@ add_split_action() {
 	# The --split_mask argument configures the egress ports onto which this
 	# stream generation rule will replicate the packets. This is in
 	# addition to the standard L2 forwarding rules.
-	split_actions+=("tsntool cbgen --device swp5 --index ${ssid} \
+	split_actions+=("tsntool cbgen --device swp0 --index ${ssid} \
 		--seq_len ${seq_len} --seq_num ${seq_num} \
 		--iport_mask ${iport_mask} --split_mask ${split_mask}")
 
@@ -254,7 +254,7 @@ do_bridging() {
 	ip link set br0 arp off
 	ip link set br0 up
 
-	for swp in swp0 swp1 swp2 swp3 swp4 swp5; do
+	for swp in swp0 swp1 swp2 swp3 swp4; do
 		ip link set dev ${swp} master br0
 		# No pvid by default, so no untagged communication.
 		bridge vlan del vid 1 dev ${swp}

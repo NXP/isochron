@@ -12,7 +12,7 @@ On each board, make sure that all Ethernet ports are up first. Typically this
 is the task of a network manager, but if you are not running one, it must be
 done manually:
 
-[root@OpenIL]# for eth in eno0 eno2 eno3 swp0 swp1 swp2 swp3 swp4 swp5; do ip link set dev $eth up; done
+[root@OpenIL]# for eth in eno2 eno3 swp0 swp1; do ip link set dev $eth up; done
 
 Copy this folder to the home directory of the root user on three boards and run
 as follows:
