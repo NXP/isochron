@@ -104,7 +104,7 @@ echo "tcpdump -i eno2 -e -n -Q in"
 
 echo "Adding VLAN mangling rules (see with 'tc filter show dev eno2 egress && tc filter show dev eno2 ingress')"
 
-tc qdisc del dev eno2 clsact >/dev/null || :
+if tc qdisc show dev eno2 | grep clsact; then tc qdisc del dev eno2 clsact; fi
 tc qdisc add dev eno2 clsact
 tc filter add dev eno2 egress flower \
 	dst_mac $board1_mac_address \

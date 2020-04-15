@@ -281,7 +281,7 @@ drop_looped_traffic() {
 	local iface="$1"
 	local this_host=$(ip link show dev eno2 | awk '/link\/ether/ {print $2; }')
 
-	tc qdisc del dev ${iface} clsact >/dev/null || :
+	if tc qdisc show dev ${iface} | grep clsact; then tc qdisc del dev ${iface} clsact; fi
 	tc qdisc add dev ${iface} clsact
 	tc filter add dev ${iface} ingress flower skip_sw dst_mac ff:ff:ff:ff:ff:ff action drop
 	tc filter add dev ${iface} ingress flower skip_sw src_mac ${this_host} action drop
