@@ -1,0 +1,44 @@
+From ea4548cbe03ba29336cad6ba1c125cae40b6540e Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Tue, 14 Apr 2020 22:18:46 +0300
+Subject: [PATCH 3/7] net: dsa: felix: accept VLAN config regardless of bridge
+ VLAN awareness state
+
+The ocelot core library is written with the idea in mind that the VLAN
+table is populated by the bridge. Otherwise, not even a sane default
+pvid is provided: in standalone mode, the default pvid is 0, and the
+core expects the bridge layer to change it to 1.
+
+So without this patch, the VLAN table is completely empty at the end of
+the commands below, and traffic is broken as a result:
+
+ip link add dev br0 type bridge vlan_filtering 0 && ip link set dev br0 up
+for eth in $(ls /sys/bus/pci/devices/0000\:00\:00.5/net/); do
+	ip link set dev $eth master br0
+	ip link set dev $eth up
+done
+ip link set dev br0 type bridge vlan_filtering 1
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+---
+ drivers/net/dsa/ocelot/felix.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/net/dsa/ocelot/felix.c b/drivers/net/dsa/ocelot/felix.c
+index 0891d51bad85..4768ec631b26 100644
+--- a/drivers/net/dsa/ocelot/felix.c
++++ b/drivers/net/dsa/ocelot/felix.c
+@@ -580,6 +580,10 @@ static int felix_setup(struct dsa_switch *ds)
+ 	 * In-band AN may take a few ms to complete, so we need to poll.
+ 	 */
+ 	ds->pcs_poll = true;
++	/* Accept VLAN configuration from bridge core irrespective of VLAN
++	 * filtering state.
++	 */
++	ds->vlan_bridge_vtu = true;
+ 
+ 	return 0;
+ }
+-- 
+2.17.1
+

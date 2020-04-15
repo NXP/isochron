@@ -1,0 +1,76 @@
+From b70bdc4832eb492fb6188cc06a8fc9b67d0fdf10 Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Tue, 28 Jan 2020 23:55:17 +0200
+Subject: [PATCH 5/7] arm64: dts: fsl: ls1028a-rdb: Free up eno2/swp4 for
+ 802.1CB by enabling eno3/swp5
+
+This patch moves the CPU port from swp4 to swp5 on the Felix switch, and
+uses the 2.5 port pair which used to be for DSA tagging in plain
+untagged mode.
+
+The switch core for 802.1CB FRER uses the MAC table (FDB) to assign
+packets to a Seamless Stream ID (SSID). In turn, the MAC table needs the
+Analyzer module (ANA) to inspect the frames.
+
+But traffic that passes to/from the DSA CPU port has the BYPASS flag set
+in the injection header, which means "bypass the analyzer module".
+
+So traffic originated from the CPU will not be correctly assigned to a
+SSID for 802.1CB if it is coming from the port pair where DSA tagging is
+enabled.
+
+As a workaround, we enable the other port pair and use that for 802.1CB
+traffic that needs to be terminated on the local CPU.
+
+Before:                               After:
+
+    eno2    eno3                         eno2      eno3
+     |       |                   Untagged |         |
+     | DSA   x disabled           traffic |         | DSA
+     | tags  |                  including |         | tags
+     |       |                    802.1CB |         |
+    swp4    swp5                         swp4      swp5
+
+Of course, in this context "untagged" means "not tagged with an
+injection/extraction DSA tag", it has nothing to do with the VLAN or
+802.1CB R-Tag.
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+---
+ arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts b/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts
+index e9a44aafcbc8..21eb2fd3f071 100644
+--- a/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts
++++ b/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts
+@@ -239,6 +239,10 @@
+ 	status = "disabled";
+ };
+ 
++&enetc_port3 {
++	status = "okay";
++};
++
+ &enetc_mdio_pf3 {
+ 	qsgmii_phy1: ethernet-phy@10 {
+ 		reg = <0x10>;
+@@ -288,6 +292,15 @@
+ 	};
+ };
+ 
++&mscc_felix_port4 {
++	/delete-property/ ethernet;
++};
++
++&mscc_felix_port5 {
++	status = "okay";
++	ethernet = <&enetc_port3>;
++};
++
+ &sai4 {
+ 	status = "okay";
+ };
+-- 
+2.17.1
+
