@@ -273,7 +273,7 @@ add_passthrough_vlans() {
 limit_rogue_traffic() {
 	local iface="$1"
 
-	iptables -o ${iface} -A OUTPUT -d 224.0.0.0/8 -j DROP
+	ip link set dev ${iface} multicast off
 	echo 1 > /proc/sys/net/ipv6/conf/${iface}/disable_ipv6
 }
 
