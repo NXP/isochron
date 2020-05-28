@@ -33,25 +33,38 @@ struct prog_data {
 	int data_fd;
 	bool do_ts;
 	bool quiet;
+	long etype;
 };
 
 int signal_received;
+
+static const char *ptp_message_type(__u8 tsmt)
+{
+	switch (tsmt) {
+	case SYNC:
+		return "sync";
+	case FOLLOW_UP:
+		return "follow-up";
+	default:
+		return "unknown";
+	}
+}
 
 static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		    const struct timestamp *tstamp)
 {
 	/* Header structures */
 	struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
-	struct app_header *app_hdr = (struct app_header *)(eth_hdr + 1);
+	struct ptp_header *ptp_hdr = (struct ptp_header *)(eth_hdr + 1);
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct prog_data *prog = app_data;
 	int i, rc;
 
-	rcv_pkt.tx_time = __be64_to_cpu(app_hdr->tx_time);
+	rcv_pkt.tx_time = __be64_to_cpu(ptp_hdr->correction);
 	rcv_pkt.etype = ntohs(eth_hdr->h_proto);
 	memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);
 	memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
-	rcv_pkt.seqid = ntohs(app_hdr->seqid);
+	rcv_pkt.seqid = ntohs(ptp_hdr->sequenceId);
 	rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	rcv_pkt.swts = timespec_to_ns(&tstamp->sw);
 
@@ -288,8 +301,11 @@ static int prog_init(struct prog_data *prog)
 		return -errno;
 	}
 
-	/* Open PF_PACKET socket, listening for EtherType ETH_P_TSN */
-	prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_TSN));
+	if (!prog->etype)
+		prog->etype = ETH_P_1588;
+
+	/* Open PF_PACKET socket, listening for the specified EtherType */
+	prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
 	if (prog->data_fd < 0) {
 		perror("listener: data socket");
 		return -errno;
@@ -357,6 +373,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->quiet,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-e",
+			.long_opt = "--etype",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+			        .ptr = &prog->etype,
 			},
 			.optional = true,
 		},

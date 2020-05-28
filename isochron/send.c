@@ -48,19 +48,20 @@ struct prog_data {
 	long vid;
 	bool do_ts;
 	bool quiet;
+	long etype;
 };
 
 static void process_txtstamp(struct prog_data *prog, const char *buf,
 			     struct timestamp *tstamp)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
-	struct app_header *app_hdr;
+	struct ptp_header *ptp_hdr;
 	__s64 hwts, swts;
 
-	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
+	ptp_hdr = (struct ptp_header *)(buf + sizeof(struct vlan_ethhdr));
 
-	send_pkt.tx_time = __be64_to_cpu(app_hdr->tx_time);
-	send_pkt.seqid = ntohs(app_hdr->seqid);
+	send_pkt.tx_time = __be64_to_cpu(ptp_hdr->correction);
+	send_pkt.seqid = ntohs(ptp_hdr->sequenceId);
 	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	send_pkt.swts = timespec_to_ns(&tstamp->sw);
 
@@ -72,12 +73,12 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 static void log_no_tstamp(struct prog_data *prog, const char *buf)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
-	struct app_header *app_hdr;
+	struct ptp_header *ptp_hdr;
 
-	app_hdr = (struct app_header *)(buf + sizeof(struct vlan_ethhdr));
+	ptp_hdr = (struct ptp_header *)(buf + sizeof(struct vlan_ethhdr));
 
-	send_pkt.tx_time = __be64_to_cpu(app_hdr->tx_time);
-	send_pkt.seqid = ntohs(app_hdr->seqid);
+	send_pkt.tx_time = __be64_to_cpu(ptp_hdr->correction);
+	send_pkt.seqid = ntohs(ptp_hdr->sequenceId);
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
@@ -87,15 +88,15 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 {
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp = {0};
-	struct app_header *app_hdr;
+	struct ptp_header *ptp_hdr;
 	struct timespec now_ts;
 	int rc;
 
 	clock_gettime(clkid, &now_ts);
-	app_hdr = (struct app_header *)(prog->sendbuf +
+	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
 					sizeof(struct vlan_ethhdr));
-	app_hdr->tx_time = __cpu_to_be64(scheduled);
-	app_hdr->seqid = htons(iteration);
+	ptp_hdr->correction = __cpu_to_be64(scheduled);
+	ptp_hdr->sequenceId = htons(iteration);
 
 	/* Send packet */
 	rc = sendto(prog->data_fd, prog->sendbuf, prog->tx_len, 0,
@@ -221,6 +222,7 @@ static int prog_init(struct prog_data *prog)
 {
 	int i = sizeof(struct vlan_ethhdr);
 	char now_buf[TIMESPEC_BUFSIZ];
+	struct ptp_header *ptp_hdr;
 	struct vlan_ethhdr *hdr;
 	struct timespec now_ts;
 	struct ifreq if_idx;
@@ -268,6 +270,9 @@ static int prog_init(struct prog_data *prog)
 	if (!ether_addr_to_u64(prog->src_mac))
 		memcpy(prog->src_mac, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
 
+	if (!prog->etype)
+		prog->etype = ETH_P_1588;
+
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
 	/* Ethernet header */
@@ -276,7 +281,7 @@ static int prog_init(struct prog_data *prog)
 	memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
 	hdr->h_vlan_proto = htons(ETH_P_8021Q);
 	/* Ethertype field */
-	hdr->h_vlan_encapsulated_proto = htons(ETH_P_TSN);
+	hdr->h_vlan_encapsulated_proto = htons(prog->etype);
 	hdr->h_vlan_TCI = htons((prog->priority << VLAN_PRIO_SHIFT) |
 				(prog->vid & VLAN_VID_MASK));
 
@@ -336,6 +341,14 @@ static int prog_init(struct prog_data *prog)
 		if (rc < 0)
 			return rc;
 	}
+
+	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
+					sizeof(struct vlan_ethhdr));
+	memset(ptp_hdr, 0, sizeof(struct ptp_header));
+	ptp_hdr->tsmt = CUSTOM;
+	ptp_hdr->ver = PTP_VERSION;
+
+	i = sizeof(struct vlan_ethhdr) + sizeof(struct ptp_header);
 
 	/* Packet data */
 	while (i < prog->tx_len) {
@@ -693,6 +706,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->quiet,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-e",
+			.long_opt = "--etype",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+			        .ptr = &prog->etype,
 			},
 			.optional = true,
 		},

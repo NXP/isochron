@@ -10,6 +10,47 @@
 
 #include <sys/queue.h>
 
+#define PTP_VERSION 2
+
+/* Values for the messageType field */
+#define SYNC			0x0
+#define DELAY_REQ		0x1
+#define PDELAY_REQ		0x2
+#define PDELAY_RESP		0x3
+#define CUSTOM			0x4
+#define FOLLOW_UP		0x8
+#define DELAY_RESP		0x9
+#define PDELAY_RESP_FOLLOW_UP	0xA
+#define ANNOUNCE		0xB
+#define SIGNALING		0xC
+#define MANAGEMENT		0xD
+
+#define PACKED __attribute__((packed))
+
+struct ClockIdentity {
+	__u8			id[8];
+};
+
+struct PortIdentity {
+	struct ClockIdentity	clockIdentity;
+	__u16			portNumber;
+} PACKED;
+
+struct ptp_header {
+	__u8			tsmt; /* transportSpecific | messageType */
+	__u8			ver;  /* reserved          | versionPTP  */
+	__u16			messageLength;
+	__u8			domainNumber;
+	__u8			reserved1;
+	__u8			flagField[2];
+	__s64			correction;
+	__u32			reserved2;
+	struct PortIdentity	sourcePortIdentity;
+	__u16			sequenceId;
+	__u8			control;
+	__s8			logMessageInterval;
+} PACKED;
+
 #define NSEC_PER_SEC	1000000000LL
 #define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
 
@@ -161,11 +202,6 @@ int prog_parse_np_args(int argc, char **argv,
 		       int prog_args_size);
 void prog_usage(char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
-
-struct app_header {
-	__s64			tx_time;
-	short			seqid;
-};
 
 struct timestamp {
 	struct timespec		hw;
