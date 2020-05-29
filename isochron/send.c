@@ -196,10 +196,6 @@ static int run_nanosleep(struct prog_data *prog)
 	return wait_for_txtimestamps(prog);
 }
 
-static void app_init(void *data)
-{
-}
-
 /* Calculate the first base_time in the future that satisfies this
  * relationship:
  *
