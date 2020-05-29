@@ -185,8 +185,8 @@ struct isochron_rcv_pkt_data {
 	__s64 tx_time;
 	__s64 hwts;
 	__s64 swts;
-	short etype;
-	short seqid;
+	__u16 etype;
+	__u16 seqid;
 };
 
 struct isochron_stat_entry {
