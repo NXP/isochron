@@ -525,7 +525,7 @@ void isochron_rcv_log_print(struct isochron_log *log)
 		/* Print packet */
 		ns_sprintf(scheduled_buf, rcv_pkt->tx_time);
 		mac_addr_sprintf(smac_buf, rcv_pkt->smac);
-		mac_addr_sprintf(dmac_buf, rcv_pkt->smac);
+		mac_addr_sprintf(dmac_buf, rcv_pkt->dmac);
 
 		if (rcv_pkt->hwts) {
 			char hwts_buf[TIMESPEC_BUFSIZ];
