@@ -1,8 +1,8 @@
-From b70bdc4832eb492fb6188cc06a8fc9b67d0fdf10 Mon Sep 17 00:00:00 2001
+From c7f0273b6d2fd0e7e8dcce37576f92f10e68f470 Mon Sep 17 00:00:00 2001
 From: Vladimir Oltean <vladimir.oltean@nxp.com>
 Date: Tue, 28 Jan 2020 23:55:17 +0200
-Subject: [PATCH 5/7] arm64: dts: fsl: ls1028a-rdb: Free up eno2/swp4 for
- 802.1CB by enabling eno3/swp5
+Subject: [PATCH] arm64: dts: fsl: ls1028a-rdb: Free up eno2/swp4 for 802.1CB
+ by enabling eno3/swp5
 
 This patch moves the CPU port from swp4 to swp5 on the Felix switch, and
 uses the 2.5 port pair which used to be for DSA tagging in plain
@@ -41,7 +41,7 @@ Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
  1 file changed, 13 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts b/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts
-index e9a44aafcbc8..21eb2fd3f071 100644
+index 2c92bcdb0d62..a298a16b3ee0 100644
 --- a/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts
 +++ b/arch/arm64/boot/dts/freescale/fsl-ls1028a-rdb.dts
 @@ -239,6 +239,10 @@
@@ -55,7 +55,7 @@ index e9a44aafcbc8..21eb2fd3f071 100644
  &enetc_mdio_pf3 {
  	qsgmii_phy1: ethernet-phy@10 {
  		reg = <0x10>;
-@@ -288,6 +292,15 @@
+@@ -292,6 +296,15 @@
  	};
  };
  
@@ -72,5 +72,5 @@ index e9a44aafcbc8..21eb2fd3f071 100644
  	status = "okay";
  };
 -- 
-2.17.1
+2.25.1
 
