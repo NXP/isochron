@@ -52,6 +52,82 @@ you are not running one, it must be done manually:
 [root@board2]# ./tsn-scripts/8021cb.sh 2
 [root@board3]# ./tsn-scripts/8021cb.sh 3
 
+Expected output from one board:
+
+[root@LS1028ARDB ~] # ./tsn-scripts/8021cb.sh 1
+[ 1019.200668] 000: device swp4 left promiscuous mode
+[ 1019.200751] 000: br0: port 5(swp4) entered disabled state
+[ 1019.241530] 000: device swp3 left promiscuous mode
+[ 1019.241716] 000: br0: port 4(swp3) entered disabled state
+[ 1019.273439] 001: device swp2 left promiscuous mode
+[ 1019.273619] 001: br0: port 3(swp2) entered disabled state
+[ 1019.305353] 001: device swp1 left promiscuous mode
+[ 1019.305513] 001: br0: port 2(swp1) entered disabled state
+[ 1019.337409] 001: device swp0 left promiscuous mode
+[ 1019.337422] 001: device eno3 left promiscuous mode
+[ 1019.337639] 001: br0: port 1(swp0) entered disabled state
+[ 1019.475234] 001: br0: port 1(swp0) entered blocking state
+[ 1019.475269] 001: br0: port 1(swp0) entered disabled state
+[ 1019.475534] 001: device swp0 entered promiscuous mode
+[ 1019.475538] 001: device eno3 entered promiscuous mode
+[ 1019.475657] 001: br0: port 1(swp0) entered blocking state
+[ 1019.475663] 001: br0: port 1(swp0) entered forwarding state
+[ 1019.481086] 001: br0: port 2(swp1) entered blocking state
+[ 1019.481120] 001: br0: port 2(swp1) entered disabled state
+[ 1019.481599] 001: device swp1 entered promiscuous mode
+[ 1019.481810] 001: br0: port 2(swp1) entered blocking state
+[ 1019.481817] 001: br0: port 2(swp1) entered forwarding state
+[ 1019.487008] 001: br0: port 3(swp2) entered blocking state
+[ 1019.487040] 001: br0: port 3(swp2) entered disabled state
+[ 1019.487250] 001: device swp2 entered promiscuous mode
+[ 1019.493268] 001: br0: port 4(swp3) entered blocking state
+[ 1019.493296] 001: br0: port 4(swp3) entered disabled state
+[ 1019.493516] 001: device swp3 entered promiscuous mode
+[ 1019.498647] 001: br0: port 5(swp4) entered blocking state
+[ 1019.498681] 001: br0: port 5(swp4) entered disabled state
+[ 1019.498901] 001: device swp4 entered promiscuous mode
+[ 1019.499044] 001: br0: port 5(swp4) entered blocking state
+[ 1019.499050] 001: br0: port 5(swp4) entered forwarding state
+Split action for rule 0: ingress ports:  swp4 split ports:  swp0 swp1
+Stream rule 0: match {DMAC 00:04:9f:63:35:eb, VID 101} towards port swp0
+Split action for rule 1: ingress ports:  swp4 split ports:  swp0 swp1
+Stream rule 1: match {DMAC 00:04:9f:63:35:ec, VID 101} towards port swp0
+Sequence recovery action for rule 2
+Stream rule 2: match {DMAC 00:04:9f:63:35:ea, VID 102} towards port swp4
+Sequence recovery action for rule 3
+Stream rule 3: match {DMAC 00:04:9f:63:35:ea, VID 103} towards port swp4
+tsntool cbstreamidset --device swp0 --nullstreamid --nulldmac 0x00049f6335eb --nullvid 101 --streamhandle 0 --index 0 --enable
+null stream identify, tagged is 0
+echo reply:swp0
+echo reply:0
+tsntool cbstreamidset --device swp0 --nullstreamid --nulldmac 0x00049f6335ec --nullvid 101 --streamhandle 1 --index 1 --enable
+null stream identify, tagged is 0
+echo reply:swp0
+echo reply:0
+tsntool cbstreamidset --device swp4 --nullstreamid --nulldmac 0x00049f6335ea --nullvid 102 --streamhandle 2 --index 2 --enable
+null stream identify, tagged is 0
+echo reply:swp4
+echo reply:0
+tsntool cbstreamidset --device swp4 --nullstreamid --nulldmac 0x00049f6335ea --nullvid 103 --streamhandle 3 --index 3 --enable
+null stream identify, tagged is 0
+echo reply:swp4
+echo reply:0
+tsntool cbgen --device swp0 --index 0 --seq_len 16 --seq_num 0 --iport_mask 16 --split_mask 3
+echo reply:swp0
+echo reply:0
+tsntool cbgen --device swp0 --index 1 --seq_len 16 --seq_num 0 --iport_mask 16 --split_mask 3
+echo reply:swp0
+echo reply:0
+tsntool cbrec --device swp0 --index 2 --seq_len 16 --his_len 31 --rtag_pop_en
+echo reply:swp0
+echo reply:0
+tsntool cbrec --device swp0 --index 3 --seq_len 16 --his_len 31 --rtag_pop_en
+echo reply:swp0
+echo reply:0
+Adding VLAN mangling rules (see with 'tc filter show dev eno2 egress && tc filter show dev eno2 ingress')
+Populating the ARP table...
+Ready to send/receive traffic. IP address of board is 172.15.0.1
+
 Then follow the commands printed by the scripts above. In the OpenIL rootfs,
 tcpdump and iperf3 are installed by default.
 
