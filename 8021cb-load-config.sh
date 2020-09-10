@@ -77,7 +77,7 @@ clear_stream_table() {
 		for ssid in $(seq 0 127); do
 			tsntool cbstreamidset --index $ssid --nullstreamid \
 				--streamhandle $ssid --device $eth \
-				--disable >/dev/null
+				--disable >/dev/null || :
 		done
 	done
 }
