@@ -1,0 +1,112 @@
+From 27e7e7d938a6481601dca3e352e52d2e5bfdfb08 Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Tue, 15 Sep 2020 03:14:00 +0300
+Subject: [PATCH 7/7] net: dsa: felix: implement port flushing on
+ .phylink_mac_link_down
+
+Especially with flow control enabled on both the user port and the CPU
+port, it may happen when a link goes down that Ethernet packets are in
+flight. In flow control mode, frames are held back and not dropped. When
+there is enough traffic in flight (example: iperf3 TCP), then the
+ingress port might enter congestion and never exit that state. This is a
+problem, because it is the egress port's link that went down, and that
+has caused the inability of the ingress port to send packets to any
+other port.
+
+The solution is to follow the port flushing procedure from the reference
+manual. This ensures that upon detection of link loss, the existing
+packets are thrown away and congestion on the ingress port is therefore
+avoided.
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+---
+ drivers/net/dsa/ocelot/felix.c     |  2 ++
+ drivers/net/ethernet/mscc/ocelot.c | 46 ++++++++++++++++++++++++++++++
+ include/soc/mscc/ocelot.h          |  1 +
+ 3 files changed, 49 insertions(+)
+
+diff --git a/drivers/net/dsa/ocelot/felix.c b/drivers/net/dsa/ocelot/felix.c
+index 48a347dca1e0..b587e7f2a3cf 100644
+--- a/drivers/net/dsa/ocelot/felix.c
++++ b/drivers/net/dsa/ocelot/felix.c
+@@ -288,6 +288,8 @@ static void felix_phylink_mac_link_down(struct dsa_switch *ds, int port,
+ 	ocelot_port_writel(ocelot_port, 0, DEV_MAC_ENA_CFG);
+ 	ocelot_rmw_rix(ocelot, 0, QSYS_SWITCH_PORT_MODE_PORT_ENA,
+ 		       QSYS_SWITCH_PORT_MODE, port);
++
++	ocelot_port_flush(ocelot, port);
+ }
+ 
+ static void felix_phylink_mac_link_up(struct dsa_switch *ds, int port,
+diff --git a/drivers/net/ethernet/mscc/ocelot.c b/drivers/net/ethernet/mscc/ocelot.c
+index 6a9ed082c389..16369d7c0999 100644
+--- a/drivers/net/ethernet/mscc/ocelot.c
++++ b/drivers/net/ethernet/mscc/ocelot.c
+@@ -476,6 +476,52 @@ static u16 ocelot_wm_enc(u16 value)
+ 	return value;
+ }
+ 
++
++static inline u32 ocelot_read_eq_avail(struct ocelot *ocelot, int port)
++{
++	return ocelot_read_rix(ocelot, QSYS_SW_STATUS, port);
++}
++
++int ocelot_port_flush(struct ocelot *ocelot, int port)
++{
++	int err, val;
++
++	/* Disable shaping to speed up flushing of frames */
++	ocelot_rmw_rix(ocelot, QSYS_PORT_MODE_DEQUEUE_DIS,
++		       QSYS_PORT_MODE_DEQUEUE_DIS,
++		       QSYS_PORT_MODE, port);
++
++	/* Wait at least the time it takes to receive a frame of maximum length
++	 * at the port.
++	 * Worst-case delays for 10 kilobyte jumbo frames are:
++	 * 8 ms on a 10M port
++	 * 800 μs on a 100M port
++	 * 80 μs on a 1G port
++	 * 32 μs on a 2.5G port
++	 */
++	usleep_range(8000, 10000);
++
++	/* Flush the queues associated with the port. */
++	ocelot_rmw_gix(ocelot, REW_PORT_CFG_FLUSH_ENA, REW_PORT_CFG_FLUSH_ENA,
++		       REW_PORT_CFG, port);
++
++	/* Enable dequeuing from the egress queues. */
++	ocelot_rmw_rix(ocelot, 0, QSYS_PORT_MODE_DEQUEUE_DIS, QSYS_PORT_MODE,
++		       port);
++
++	/* Wait until flushing is complete. */
++	err = read_poll_timeout(ocelot_read_eq_avail, val, !val,
++				10, 8000, false, ocelot, port);
++	if (err)
++		return err;
++
++	/* Clear flushing again. */
++	ocelot_rmw_gix(ocelot, 0, REW_PORT_CFG_FLUSH_ENA, REW_PORT_CFG, port);
++
++	return 0;
++}
++EXPORT_SYMBOL(ocelot_port_flush);
++
+ void ocelot_adjust_link(struct ocelot *ocelot, int port,
+ 			struct phy_device *phydev)
+ {
+diff --git a/include/soc/mscc/ocelot.h b/include/soc/mscc/ocelot.h
+index e6811d406e3c..c83c2204a6aa 100644
+--- a/include/soc/mscc/ocelot.h
++++ b/include/soc/mscc/ocelot.h
+@@ -672,6 +672,7 @@ void ocelot_init_port(struct ocelot *ocelot, int port);
+ void ocelot_port_enable(struct ocelot *ocelot, int port,
+ 			struct phy_device *phy);
+ void ocelot_port_disable(struct ocelot *ocelot, int port);
++int ocelot_port_flush(struct ocelot *ocelot, int port);
+ void ocelot_get_strings(struct ocelot *ocelot, int port, u32 sset, u8 *data);
+ void ocelot_get_ethtool_stats(struct ocelot *ocelot, int port, u64 *data);
+ int ocelot_get_sset_count(struct ocelot *ocelot, int port, int sset);
+-- 
+2.25.1
+

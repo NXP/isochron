@@ -1,0 +1,146 @@
+From da87e6e34dcdf6c831a9dbd17f82b00679c5b605 Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Tue, 15 Sep 2020 01:21:44 +0300
+Subject: [PATCH 3/7] net: mscc: ocelot: export MAC table learn and forget
+ operations
+
+Felix DSA needs to use these operations as well, for its 802.1CB stream
+ID manipulation functions. So export them in preparation of that.
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+---
+ drivers/net/ethernet/mscc/ocelot.c | 38 ++++++++----------------------
+ include/soc/mscc/ocelot.h          | 32 +++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+), 28 deletions(-)
+
+diff --git a/drivers/net/ethernet/mscc/ocelot.c b/drivers/net/ethernet/mscc/ocelot.c
+index 31253c43617f..e8391b68d4cc 100644
+--- a/drivers/net/ethernet/mscc/ocelot.c
++++ b/drivers/net/ethernet/mscc/ocelot.c
+@@ -28,25 +28,6 @@
+ #define TABLE_UPDATE_SLEEP_US 10
+ #define TABLE_UPDATE_TIMEOUT_US 100000
+ 
+-/* MAC table entry types.
+- * ENTRYTYPE_NORMAL is subject to aging.
+- * ENTRYTYPE_LOCKED is not subject to aging.
+- * ENTRYTYPE_MACv4 is not subject to aging. For IPv4 multicast.
+- * ENTRYTYPE_MACv6 is not subject to aging. For IPv6 multicast.
+- */
+-enum macaccess_entry_type {
+-	ENTRYTYPE_NORMAL = 0,
+-	ENTRYTYPE_LOCKED,
+-	ENTRYTYPE_MACv4,
+-	ENTRYTYPE_MACv6,
+-};
+-
+-struct ocelot_mact_entry {
+-	u8 mac[ETH_ALEN];
+-	u16 vid;
+-	enum macaccess_entry_type type;
+-};
+-
+ static inline u32 ocelot_mact_read_macaccess(struct ocelot *ocelot)
+ {
+ 	return ocelot_read(ocelot, ANA_TABLES_MACACCESS);
+@@ -85,10 +66,9 @@ static void ocelot_mact_select(struct ocelot *ocelot,
+ 
+ }
+ 
+-static int ocelot_mact_learn(struct ocelot *ocelot, int port,
+-			     const unsigned char mac[ETH_ALEN],
+-			     unsigned int vid,
+-			     enum macaccess_entry_type type)
++int ocelot_mact_learn(struct ocelot *ocelot, int port,
++		      const unsigned char mac[ETH_ALEN],
++		      unsigned int vid, enum macaccess_entry_type type)
+ {
+ 	ocelot_mact_select(ocelot, mac, vid);
+ 
+@@ -101,10 +81,10 @@ static int ocelot_mact_learn(struct ocelot *ocelot, int port,
+ 
+ 	return ocelot_mact_wait_for_completion(ocelot);
+ }
++EXPORT_SYMBOL(ocelot_mact_learn);
+ 
+-static int ocelot_mact_forget(struct ocelot *ocelot,
+-			      const unsigned char mac[ETH_ALEN],
+-			      unsigned int vid)
++int ocelot_mact_forget(struct ocelot *ocelot, const unsigned char mac[ETH_ALEN],
++		       unsigned int vid)
+ {
+ 	ocelot_mact_select(ocelot, mac, vid);
+ 
+@@ -115,6 +95,7 @@ static int ocelot_mact_forget(struct ocelot *ocelot,
+ 
+ 	return ocelot_mact_wait_for_completion(ocelot);
+ }
++EXPORT_SYMBOL(ocelot_mact_forget);
+ 
+ static void ocelot_mact_init(struct ocelot *ocelot)
+ {
+@@ -1018,8 +999,8 @@ static int ocelot_port_fdb_do_dump(const unsigned char *addr, u16 vid,
+ 	return -EMSGSIZE;
+ }
+ 
+-static int ocelot_mact_read(struct ocelot *ocelot, int row, int col, int *dst,
+-			    struct ocelot_mact_entry *entry)
++int ocelot_mact_read(struct ocelot *ocelot, int row, int col, int *dst,
++		     struct ocelot_mact_entry *entry)
+ {
+ 	u32 val, macl, mach;
+ 	char mac[ETH_ALEN];
+@@ -1060,6 +1041,7 @@ static int ocelot_mact_read(struct ocelot *ocelot, int row, int col, int *dst,
+ 
+ 	return 0;
+ }
++EXPORT_SYMBOL(ocelot_mact_read);
+ 
+ int ocelot_fdb_dump(struct ocelot *ocelot, int port,
+ 		    dsa_fdb_dump_cb_t *cb, void *data)
+diff --git a/include/soc/mscc/ocelot.h b/include/soc/mscc/ocelot.h
+index 51482bbc3320..e6811d406e3c 100644
+--- a/include/soc/mscc/ocelot.h
++++ b/include/soc/mscc/ocelot.h
+@@ -580,6 +580,38 @@ struct ocelot_policer {
+ 	u32 burst; /* bytes */
+ };
+ 
++/* MAC table entry types.
++ * ENTRYTYPE_NORMAL is subject to aging.
++ * ENTRYTYPE_LOCKED is not subject to aging.
++ * ENTRYTYPE_MACv4 is not subject to aging. For IPv4 multicast.
++ * ENTRYTYPE_MACv6 is not subject to aging. For IPv6 multicast.
++ */
++enum macaccess_entry_type {
++	ENTRYTYPE_NORMAL = 0,
++	ENTRYTYPE_LOCKED,
++	ENTRYTYPE_MACv4,
++	ENTRYTYPE_MACv6,
++};
++
++struct ocelot_mact_entry {
++	u8 mac[ETH_ALEN];
++	u16 vid;
++	enum macaccess_entry_type type;
++};
++
++int ocelot_mact_read(struct ocelot *ocelot, int row, int col, int *dst,
++		     struct ocelot_mact_entry *entry);
++int ocelot_mact_learn(struct ocelot *ocelot, int port,
++		      const unsigned char mac[ETH_ALEN],
++		      unsigned int vid, enum macaccess_entry_type type);
++int ocelot_mact_forget(struct ocelot *ocelot, const unsigned char mac[ETH_ALEN],
++		       unsigned int vid);
++int ocelot_mact_lookup(struct ocelot *ocelot, const unsigned char mac[ETH_ALEN],
++		       unsigned int vid, int *row, int *col);
++void ocelot_mact_write(struct ocelot *ocelot, int port,
++		       const struct ocelot_mact_entry *entry,
++		       int row, int col);
++
+ #define ocelot_read_ix(ocelot, reg, gi, ri) __ocelot_read_ix(ocelot, reg, reg##_GSZ * (gi) + reg##_RSZ * (ri))
+ #define ocelot_read_gix(ocelot, reg, gi) __ocelot_read_ix(ocelot, reg, reg##_GSZ * (gi))
+ #define ocelot_read_rix(ocelot, reg, ri) __ocelot_read_ix(ocelot, reg, reg##_RSZ * (ri))
+-- 
+2.25.1
+
