@@ -1,7 +1,7 @@
-From 1e6afd144e5df06e573936215724149d6407c14c Mon Sep 17 00:00:00 2001
+From 98c84aa1ccb274004a1a06af70cbcac4b55dbb21 Mon Sep 17 00:00:00 2001
 From: Vladimir Oltean <vladimir.oltean@nxp.com>
 Date: Tue, 28 Jan 2020 23:55:17 +0200
-Subject: [PATCH 1/7] arm64: dts: fsl: ls1028a-rdb: enable swp5 and move NPI
+Subject: [PATCH 1/2] arm64: dts: fsl: ls1028a-rdb: enable swp5 and move NPI
  port to it
 
 This patch moves the NPI port from swp4 to swp5 on the Felix switch, and

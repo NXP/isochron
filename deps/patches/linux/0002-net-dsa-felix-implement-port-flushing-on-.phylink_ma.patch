@@ -1,7 +1,7 @@
-From 27e7e7d938a6481601dca3e352e52d2e5bfdfb08 Mon Sep 17 00:00:00 2001
+From e45cf22fb3a645366d4332b942e45efa6bc045d7 Mon Sep 17 00:00:00 2001
 From: Vladimir Oltean <vladimir.oltean@nxp.com>
 Date: Tue, 15 Sep 2020 03:14:00 +0300
-Subject: [PATCH 7/7] net: dsa: felix: implement port flushing on
+Subject: [PATCH 2/2] net: dsa: felix: implement port flushing on
  .phylink_mac_link_down
 
 Especially with flow control enabled on both the user port and the CPU
@@ -39,7 +39,7 @@ index 48a347dca1e0..b587e7f2a3cf 100644
  
  static void felix_phylink_mac_link_up(struct dsa_switch *ds, int port,
 diff --git a/drivers/net/ethernet/mscc/ocelot.c b/drivers/net/ethernet/mscc/ocelot.c
-index 6a9ed082c389..16369d7c0999 100644
+index ad04d0eb4fa2..eb7e2bdb8cdb 100644
 --- a/drivers/net/ethernet/mscc/ocelot.c
 +++ b/drivers/net/ethernet/mscc/ocelot.c
 @@ -476,6 +476,52 @@ static u16 ocelot_wm_enc(u16 value)
