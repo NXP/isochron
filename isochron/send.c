@@ -107,8 +107,7 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
 
-static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
-		   clockid_t clkid)
+static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 {
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp = {0};
@@ -118,7 +117,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 
 	trace(prog, "%d\n", iteration);
 
-	clock_gettime(clkid, &now_ts);
+	clock_gettime(prog->clkid, &now_ts);
 	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
 					sizeof(struct vlan_ethhdr));
 	ptp_hdr->correction = __cpu_to_be64(scheduled);
@@ -205,7 +204,7 @@ static int run_nanosleep(struct prog_data *prog)
 		case 0:
 			scheduled = wakeup + prog->advance_time;
 
-			rc = do_work(prog, i, scheduled, prog->clkid);
+			rc = do_work(prog, i, scheduled);
 			if (rc < 0)
 				break;
 
