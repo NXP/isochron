@@ -13,6 +13,8 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+/* For va_start and va_end */
+#include <stdarg.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -50,7 +52,28 @@ struct prog_data {
 	bool quiet;
 	long etype;
 	bool omit_sync;
+	bool trace_mark;
+	int trace_mark_fd;
 };
+
+static void trace(struct prog_data *prog, const char *fmt, ...)
+{
+	char buf[BUF_SIZ];
+	va_list ap;
+	int len;
+
+	if (!prog->trace_mark)
+		return;
+
+	va_start(ap, fmt);
+	len = vsnprintf(buf, BUF_SIZ, fmt, ap);
+	va_end(ap);
+
+	if (write(prog->trace_mark_fd, buf, len) < 0) {
+		perror("trace");
+		exit(0);
+	}
+}
 
 static void process_txtstamp(struct prog_data *prog, const char *buf,
 			     struct timestamp *tstamp)
@@ -92,6 +115,8 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	struct ptp_header *ptp_hdr;
 	struct timespec now_ts;
 	int rc;
+
+	trace(prog, "%d\n", iteration);
 
 	clock_gettime(clkid, &now_ts);
 	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
@@ -273,6 +298,15 @@ static int prog_init(struct prog_data *prog)
 
 	if (!prog->etype)
 		prog->etype = ETH_P_1588;
+
+	if (prog->trace_mark) {
+		prog->trace_mark_fd = trace_mark_open();
+		if (prog->trace_mark_fd < 0) {
+			perror("trace_mark_open");
+			close(prog->data_fd);
+			return prog->trace_mark_fd;
+		}
+	}
 
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
@@ -594,6 +628,9 @@ static int prog_teardown(struct prog_data *prog)
 
 	isochron_log_teardown(&prog->log);
 
+	if (prog->trace_mark)
+		trace_mark_close(prog->trace_mark_fd);
+
 	return rc;
 }
 
@@ -725,6 +762,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->omit_sync,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-m",
+			.long_opt = "--tracemark",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->trace_mark,
 			},
 			.optional = true,
 		},

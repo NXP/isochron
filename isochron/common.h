@@ -270,4 +270,7 @@ static inline __u64 ether_addr_to_u64(const unsigned char *addr)
 	return u;
 }
 
+int trace_mark_open();
+void trace_mark_close(int fd);
+
 #endif

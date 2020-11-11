@@ -13,12 +13,15 @@
 #include <arpa/inet.h>
 #include <linux/if.h>
 #include <sys/poll.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <fcntl.h>
 /* For va_start and va_end */
 #include <stdarg.h>
 #include "common.h"
@@ -574,4 +577,35 @@ void isochron_log_remove(struct isochron_log *log, void *p, int len)
 __s64 utc_to_tai(__s64 utc)
 {
 	return utc + 37 * NSEC_PER_SEC;
+}
+
+static const char * const trace_marker_paths[] = {
+	"/sys/kernel/debug/tracing/trace_marker",
+	"/debug/tracing/trace_marker",
+	"/debugfs/tracing/trace_marker",
+};
+
+int trace_mark_open()
+{
+	struct stat st;
+	int rc, i, fd;
+
+	for (i = 0; i < ARRAY_SIZE(trace_marker_paths); i++) {
+		rc = stat(trace_marker_paths[i], &st);
+		if (rc < 0)
+			continue;
+
+		fd = open(trace_marker_paths[i], O_WRONLY);
+		if (fd < 0)
+			continue;
+
+		return fd;
+	}
+
+	return -1;
+}
+
+void trace_mark_close(int fd)
+{
+	close(fd);
 }
