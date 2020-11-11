@@ -12,6 +12,7 @@
 
 struct isochron_header {
 	__s64			tx_time;
+	__s64			wakeup;
 	__u32			seqid;
 }  __attribute__((packed));
 
@@ -186,6 +187,7 @@ struct timestamp {
 
 struct isochron_send_pkt_data {
 	__s64 tx_time;
+	__s64 wakeup;
 	__s64 hwts;
 	__s64 swts;
 	__u32 seqid;
@@ -208,6 +210,7 @@ struct isochron_stat_entry {
 	__s64 hw_rx_deadline_delta;
 	__s64 sw_rx_deadline_delta;
 	__s64 path_delay;
+	__s64 wakeup_latency;
 	__u32 seqid;
 };
 

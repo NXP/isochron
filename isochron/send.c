@@ -95,6 +95,7 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
+	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
 	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
 	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	send_pkt.swts = timespec_to_ns(&tstamp->sw);
@@ -112,6 +113,7 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
+	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
 	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
@@ -122,13 +124,19 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp = {0};
 	struct isochron_header *hdr;
+	struct timespec now_ts;
+	__s64 now;
 	int rc;
 
-	trace(prog, "%d\n", iteration);
+	clock_gettime(prog->clkid, &now_ts);
+	now = timespec_to_ns(&now_ts);
+
+	trace(prog, "send seqid %d start\n", iteration);
 
 	hdr = (struct isochron_header *)(prog->sendbuf +
 					 sizeof(struct vlan_ethhdr));
 	hdr->tx_time = __cpu_to_be64(scheduled);
+	hdr->wakeup = __cpu_to_be64(now);
 	hdr->seqid = __cpu_to_be32(iteration);
 
 	/* Send packet */
@@ -139,6 +147,9 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 		perror("send\n");
 		return rc;
 	}
+
+	trace(prog, "send seqid %d end\n", iteration);
+
 	if (prog->do_ts) {
 		rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp,
 				MSG_ERRQUEUE, 0);
@@ -468,16 +479,18 @@ static void isochron_process_stat(struct prog_data *prog,
 	char tx_swts_buf[TIMESPEC_BUFSIZ];
 	char rx_hwts_buf[TIMESPEC_BUFSIZ];
 	char rx_swts_buf[TIMESPEC_BUFSIZ];
+	char wakeup_buf[TIMESPEC_BUFSIZ];
 
 	ns_sprintf(scheduled_buf, send_pkt->tx_time);
 	ns_sprintf(tx_swts_buf, send_pkt->swts);
 	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
 	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
 	ns_sprintf(rx_swts_buf, rcv_pkt->swts);
+	ns_sprintf(wakeup_buf, send_pkt->wakeup);
 
 	if (!prog->quiet)
-		printf("seqid %d gate %s tx %s sw %s rx %s sw %s\n",
-		       send_pkt->seqid, scheduled_buf, tx_hwts_buf,
+		printf("seqid %d gate %s wakeup %s tx %s sw %s rx %s sw %s\n",
+		       send_pkt->seqid, scheduled_buf, wakeup_buf, tx_hwts_buf,
 		       tx_swts_buf, rx_hwts_buf, rx_swts_buf);
 
 	entry = calloc(1, sizeof(*entry));
@@ -492,6 +505,8 @@ static void isochron_process_stat(struct prog_data *prog,
 				      utc_to_tai(rcv_pkt->tx_time);
 	entry->sw_rx_deadline_delta = rcv_pkt->swts - rcv_pkt->tx_time;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
+	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
+						    prog->advance_time);
 
 	if (entry->hw_tx_deadline_delta > 0)
 		stats->hw_tx_deadline_misses++;
@@ -601,6 +616,8 @@ static void isochron_print_stats(struct prog_data *prog,
 				hw_rx_deadline_delta), "HW RX deadline delta");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				sw_rx_deadline_delta), "SW RX deadline delta");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				wakeup_latency), "Wakeup latency");
 	printf("HW TX deadline misses: %d (%.3lf%%)\n",
 	       stats.hw_tx_deadline_misses,
 	       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
