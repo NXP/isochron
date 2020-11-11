@@ -112,12 +112,10 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp = {0};
 	struct ptp_header *ptp_hdr;
-	struct timespec now_ts;
 	int rc;
 
 	trace(prog, "%d\n", iteration);
 
-	clock_gettime(prog->clkid, &now_ts);
 	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
 					sizeof(struct vlan_ethhdr));
 	ptp_hdr->correction = __cpu_to_be64(scheduled);
