@@ -49,6 +49,7 @@ struct prog_data {
 	bool do_ts;
 	bool quiet;
 	long etype;
+	bool omit_sync;
 };
 
 static void process_txtstamp(struct prog_data *prog, const char *buf,
@@ -529,13 +530,15 @@ static void isochron_print_stats(struct prog_data *prog,
 	stats.tx_sync_offset_mean /= stats.frame_count;
 	stats.rx_sync_offset_mean /= stats.frame_count;
 
-	if (llabs(stats.tx_sync_offset_mean) > NSEC_PER_SEC) {
+	if (llabs(stats.tx_sync_offset_mean) > NSEC_PER_SEC &&
+	    !prog->omit_sync) {
 		printf("Sender PHC not synchronized (mean PHC to system time "
 		       "diff %lld ns larger than 1 second)\n",
 		       stats.tx_sync_offset_mean);
 		goto out;
 	}
-	if (llabs(stats.rx_sync_offset_mean) > NSEC_PER_SEC) {
+	if (llabs(stats.rx_sync_offset_mean) > NSEC_PER_SEC &&
+	    !prog->omit_sync) {
 		printf("Receiver PHC not synchronized (mean PHC to system time "
 		       "diff %lld ns larger than 1 second)\n",
 		       stats.rx_sync_offset_mean);
@@ -714,6 +717,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
 			        .ptr = &prog->etype,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-o",
+			.long_opt = "--omit-sync",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->omit_sync,
 			},
 			.optional = true,
 		},
