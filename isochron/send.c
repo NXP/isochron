@@ -28,6 +28,7 @@
 #include "common.h"
 
 #define BUF_SIZ		1522
+#define TIME_FMT_LEN	27 /* "[%s] " */
 
 struct prog_data {
 	__u8 dest_mac[ETH_ALEN];
@@ -54,22 +55,31 @@ struct prog_data {
 	bool omit_sync;
 	bool trace_mark;
 	int trace_mark_fd;
+	char tracebuf[BUF_SIZ];
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
 {
-	char buf[BUF_SIZ];
+	char now_buf[TIMESPEC_BUFSIZ];
+	struct timespec now_ts;
+	int len = TIME_FMT_LEN;
 	va_list ap;
-	int len;
+	__s64 now;
 
 	if (!prog->trace_mark)
 		return;
 
+	clock_gettime(prog->clkid, &now_ts);
+	now = timespec_to_ns(&now_ts);
+	ns_sprintf(now_buf, now);
+	snprintf(prog->tracebuf, TIME_FMT_LEN + 1, "[%24s]  ", now_buf);
+
 	va_start(ap, fmt);
-	len = vsnprintf(buf, BUF_SIZ, fmt, ap);
+	len += vsnprintf(prog->tracebuf + TIME_FMT_LEN, BUF_SIZ - TIME_FMT_LEN,
+			 fmt, ap);
 	va_end(ap);
 
-	if (write(prog->trace_mark_fd, buf, len) < 0) {
+	if (write(prog->trace_mark_fd, prog->tracebuf, len) < 0) {
 		perror("trace");
 		exit(0);
 	}
@@ -303,6 +313,10 @@ static int prog_init(struct prog_data *prog)
 			close(prog->data_fd);
 			return prog->trace_mark_fd;
 		}
+
+		memset(prog->tracebuf, ' ', TIME_FMT_LEN + 1);
+		prog->tracebuf[0] = '[';
+		prog->tracebuf[TIME_FMT_LEN - 2] = ']';
 	}
 
 	/* Construct the Ethernet header */
