@@ -491,6 +491,7 @@ static void isochron_process_stat(struct prog_data *prog,
 	if (!entry)
 		return;
 
+	entry->seqid = send_pkt->seqid;
 	entry->hw_tx_deadline_delta = send_pkt->hwts -
 				      utc_to_tai(send_pkt->tx_time);
 	entry->sw_tx_deadline_delta = send_pkt->swts - send_pkt->tx_time;
@@ -517,6 +518,7 @@ static void isochron_print_one_stat(struct isochron_stats *stats,
 				    int stat_offset,
 				    const char *name)
 {
+	int seqid_of_max = 1, seqid_of_min = 1;
 	__s64 min = LONG_MAX, max = LONG_MIN;
 	double mean = 0, sumsqr = 0, stddev;
 	struct isochron_stat_entry *entry;
@@ -524,10 +526,14 @@ static void isochron_print_one_stat(struct isochron_stats *stats,
 	LIST_FOREACH(entry, &stats->entries, list) {
 		__s64 *stat = (__s64 *)((char *)entry + stat_offset);
 
-		if (*stat < min)
+		if (*stat < min) {
 			min = *stat;
-		if (*stat > max)
+			seqid_of_min = entry->seqid;
+		}
+		if (*stat > max) {
 			max = *stat;
+			seqid_of_max = entry->seqid;
+		}
 		mean += *stat;
 	}
 
@@ -542,8 +548,9 @@ static void isochron_print_one_stat(struct isochron_stats *stats,
 
 	stddev = sqrt(sumsqr / (double)stats->frame_count);
 
-	printf("%s: min %lld max %lld mean %.3lf stddev %.3lf\n",
-	       name, min, max, mean, stddev);
+	printf("%s: min %lld max %lld mean %.3lf stddev %.3lf, "
+	       "min at seqid %d, max at seqid %d\n",
+	       name, min, max, mean, stddev, seqid_of_min, seqid_of_max);
 }
 
 static void isochron_print_stats(struct prog_data *prog,

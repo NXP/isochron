@@ -232,6 +232,7 @@ struct isochron_stat_entry {
 	__s64 hw_rx_deadline_delta;
 	__s64 sw_rx_deadline_delta;
 	__s64 path_delay;
+	__u32 seqid;
 };
 
 struct isochron_stats {
