@@ -89,13 +89,13 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 			     struct timestamp *tstamp)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
-	struct ptp_header *ptp_hdr;
+	struct isochron_header *hdr;
 	__s64 hwts, swts;
 
-	ptp_hdr = (struct ptp_header *)(buf + sizeof(struct vlan_ethhdr));
+	hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
 
-	send_pkt.tx_time = __be64_to_cpu(ptp_hdr->correction);
-	send_pkt.seqid = ntohs(ptp_hdr->sequenceId);
+	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
+	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
 	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	send_pkt.swts = timespec_to_ns(&tstamp->sw);
 
@@ -107,12 +107,12 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 static void log_no_tstamp(struct prog_data *prog, const char *buf)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
-	struct ptp_header *ptp_hdr;
+	struct isochron_header *hdr;
 
-	ptp_hdr = (struct ptp_header *)(buf + sizeof(struct vlan_ethhdr));
+	hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
 
-	send_pkt.tx_time = __be64_to_cpu(ptp_hdr->correction);
-	send_pkt.seqid = ntohs(ptp_hdr->sequenceId);
+	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
+	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
@@ -121,15 +121,15 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 {
 	unsigned char err_pkt[BUF_SIZ];
 	struct timestamp tstamp = {0};
-	struct ptp_header *ptp_hdr;
+	struct isochron_header *hdr;
 	int rc;
 
 	trace(prog, "%d\n", iteration);
 
-	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
-					sizeof(struct vlan_ethhdr));
-	ptp_hdr->correction = __cpu_to_be64(scheduled);
-	ptp_hdr->sequenceId = htons(iteration);
+	hdr = (struct isochron_header *)(prog->sendbuf +
+					 sizeof(struct vlan_ethhdr));
+	hdr->tx_time = __cpu_to_be64(scheduled);
+	hdr->seqid = __cpu_to_be32(iteration);
 
 	/* Send packet */
 	rc = sendto(prog->data_fd, prog->sendbuf, prog->tx_len, 0,
@@ -255,7 +255,6 @@ static int prog_init(struct prog_data *prog)
 {
 	int i = sizeof(struct vlan_ethhdr);
 	char now_buf[TIMESPEC_BUFSIZ];
-	struct ptp_header *ptp_hdr;
 	struct vlan_ethhdr *hdr;
 	struct timespec now_ts;
 	struct ifreq if_idx;
@@ -388,13 +387,7 @@ static int prog_init(struct prog_data *prog)
 			return rc;
 	}
 
-	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
-					sizeof(struct vlan_ethhdr));
-	memset(ptp_hdr, 0, sizeof(struct ptp_header));
-	ptp_hdr->tsmt = CUSTOM;
-	ptp_hdr->ver = PTP_VERSION;
-
-	i = sizeof(struct vlan_ethhdr) + sizeof(struct ptp_header);
+	i = sizeof(struct vlan_ethhdr) + sizeof(struct isochron_header);
 
 	/* Packet data */
 	while (i < prog->tx_len) {

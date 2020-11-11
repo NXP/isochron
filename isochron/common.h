@@ -10,46 +10,10 @@
 
 #include <sys/queue.h>
 
-#define PTP_VERSION 2
-
-/* Values for the messageType field */
-#define SYNC			0x0
-#define DELAY_REQ		0x1
-#define PDELAY_REQ		0x2
-#define PDELAY_RESP		0x3
-#define CUSTOM			0x4
-#define FOLLOW_UP		0x8
-#define DELAY_RESP		0x9
-#define PDELAY_RESP_FOLLOW_UP	0xA
-#define ANNOUNCE		0xB
-#define SIGNALING		0xC
-#define MANAGEMENT		0xD
-
-#define PACKED __attribute__((packed))
-
-struct ClockIdentity {
-	__u8			id[8];
-};
-
-struct PortIdentity {
-	struct ClockIdentity	clockIdentity;
-	__u16			portNumber;
-} PACKED;
-
-struct ptp_header {
-	__u8			tsmt; /* transportSpecific | messageType */
-	__u8			ver;  /* reserved          | versionPTP  */
-	__u16			messageLength;
-	__u8			domainNumber;
-	__u8			reserved1;
-	__u8			flagField[2];
-	__s64			correction;
-	__u32			reserved2;
-	struct PortIdentity	sourcePortIdentity;
-	__u16			sequenceId;
-	__u8			control;
-	__s8			logMessageInterval;
-} PACKED;
+struct isochron_header {
+	__s64			tx_time;
+	__u32			seqid;
+}  __attribute__((packed));
 
 #define NSEC_PER_SEC	1000000000LL
 #define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
@@ -98,6 +62,12 @@ enum {
  */
 #include <byteswap.h>
 #if __BYTE_ORDER == __BIG_ENDIAN
+#  ifndef __be32_to_cpu
+#  define __be32_to_cpu(x)	(x)
+#  endif
+#  ifndef __cpu_to_be32
+#  define __cpu_to_be32(x)	(x)
+#  endif
 #  ifndef __be64_to_cpu
 #  define __be64_to_cpu(x)	(x)
 #  endif
@@ -106,6 +76,12 @@ enum {
 #  endif
 # else
 # if __BYTE_ORDER == __LITTLE_ENDIAN
+#  ifndef __be32_to_cpu
+#  define __be32_to_cpu(x)	__bswap_32(x)
+#  endif
+#  ifndef __cpu_to_be32
+#  define __cpu_to_be32(x)	__bswap_32(x)
+#  endif
 #  ifndef __be64_to_cpu
 #  define __be64_to_cpu(x)	__bswap_64(x)
 #  endif
@@ -212,7 +188,7 @@ struct isochron_send_pkt_data {
 	__s64 tx_time;
 	__s64 hwts;
 	__s64 swts;
-	short seqid;
+	__u32 seqid;
 };
 
 struct isochron_rcv_pkt_data {
@@ -222,7 +198,7 @@ struct isochron_rcv_pkt_data {
 	__s64 hwts;
 	__s64 swts;
 	__u16 etype;
-	__u16 seqid;
+	__u32 seqid;
 };
 
 struct isochron_stat_entry {

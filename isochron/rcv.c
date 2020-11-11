@@ -38,33 +38,21 @@ struct prog_data {
 
 int signal_received;
 
-static const char *ptp_message_type(__u8 tsmt)
-{
-	switch (tsmt) {
-	case SYNC:
-		return "sync";
-	case FOLLOW_UP:
-		return "follow-up";
-	default:
-		return "unknown";
-	}
-}
-
 static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		    const struct timestamp *tstamp)
 {
 	/* Header structures */
 	struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
-	struct ptp_header *ptp_hdr = (struct ptp_header *)(eth_hdr + 1);
+	struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct prog_data *prog = app_data;
 	int i, rc;
 
-	rcv_pkt.tx_time = __be64_to_cpu(ptp_hdr->correction);
+	rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	rcv_pkt.etype = ntohs(eth_hdr->h_proto);
 	memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);
 	memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
-	rcv_pkt.seqid = ntohs(ptp_hdr->sequenceId);
+	rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
 	rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	rcv_pkt.swts = timespec_to_ns(&tstamp->sw);
 
