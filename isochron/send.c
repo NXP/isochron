@@ -360,20 +360,8 @@ static int prog_init(struct prog_data *prog)
 	prog->base_time -= prog->advance_time;
 
 	/* Make sure we get enough sleep at the beginning */
-	now += NSEC_PER_SEC;
-
-	if (prog->base_time < now) {
-		char base_time_buf[TIMESPEC_BUFSIZ];
-
-		ns_sprintf(base_time_buf, prog->base_time);
-		fprintf(stderr,
-			"Base time %s is in the past, winding it into the future\n",
-			base_time_buf);
-
-		prog->base_time = future_base_time(prog->base_time,
-						   prog->cycle_time,
-						   now);
-	}
+	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
+					   now + NSEC_PER_SEC);
 
 	ns_sprintf(now_buf, now);
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
