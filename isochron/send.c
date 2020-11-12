@@ -521,6 +521,9 @@ static void isochron_print_one_stat(struct isochron_stats *stats,
 	LIST_FOREACH(entry, &stats->entries, list) {
 		__s64 *stat = (__s64 *)((char *)entry + stat_offset);
 
+		if (entry->seqid == 1)
+			continue;
+
 		if (*stat < min) {
 			min = *stat;
 			seqid_of_min = entry->seqid;
