@@ -205,8 +205,8 @@ struct isochron_rcv_pkt_data {
 
 struct isochron_stat_entry {
 	LIST_ENTRY(isochron_stat_entry) list;
-	__s64 hw_tx_deadline_delta;
-	__s64 sw_tx_deadline_delta;
+	__s64 wakeup_to_hw_ts;
+	__s64 wakeup_to_sw_ts;
 	__s64 hw_rx_deadline_delta;
 	__s64 sw_rx_deadline_delta;
 	__s64 path_delay;

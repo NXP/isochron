@@ -486,9 +486,8 @@ static void isochron_process_stat(struct prog_data *prog,
 		return;
 
 	entry->seqid = send_pkt->seqid;
-	entry->hw_tx_deadline_delta = send_pkt->hwts -
-				      utc_to_tai(send_pkt->tx_time);
-	entry->sw_tx_deadline_delta = send_pkt->swts - send_pkt->tx_time;
+	entry->wakeup_to_hw_ts = send_pkt->hwts - utc_to_tai(send_pkt->wakeup);
+	entry->wakeup_to_sw_ts = send_pkt->swts - send_pkt->wakeup;
 	entry->hw_rx_deadline_delta = rcv_pkt->hwts -
 				      utc_to_tai(rcv_pkt->tx_time);
 	entry->sw_rx_deadline_delta = rcv_pkt->swts - rcv_pkt->tx_time;
@@ -496,9 +495,9 @@ static void isochron_process_stat(struct prog_data *prog,
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
 						    prog->advance_time);
 
-	if (entry->hw_tx_deadline_delta > 0)
+	if (send_pkt->hwts > utc_to_tai(send_pkt->tx_time))
 		stats->hw_tx_deadline_misses++;
-	if (entry->sw_tx_deadline_delta > 0)
+	if (send_pkt->swts > send_pkt->tx_time)
 		stats->sw_tx_deadline_misses++;
 
 	stats->frame_count++;
@@ -597,9 +596,9 @@ static void isochron_print_stats(struct prog_data *prog,
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				path_delay), "Path delay");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				hw_tx_deadline_delta), "HW TX deadline delta");
+				wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				sw_tx_deadline_delta), "SW TX deadline delta");
+				wakeup_to_sw_ts), "Wakeup to SW TX timestamp");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				hw_rx_deadline_delta), "HW RX deadline delta");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
