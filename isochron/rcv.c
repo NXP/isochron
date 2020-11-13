@@ -47,8 +47,13 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct prog_data *prog = app_data;
+	struct timespec now_ts;
 	int i, rc;
+	__s64 now;
 
+	clock_gettime(prog->clkid, &now_ts);
+	now = timespec_to_ns(&now_ts);
+	rcv_pkt.arrival = now;
 	rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	rcv_pkt.etype = ntohs(eth_hdr->h_proto);
 	memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);

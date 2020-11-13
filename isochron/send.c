@@ -468,6 +468,7 @@ static void isochron_process_stat(struct prog_data *prog,
 	char tx_swts_buf[TIMESPEC_BUFSIZ];
 	char rx_hwts_buf[TIMESPEC_BUFSIZ];
 	char rx_swts_buf[TIMESPEC_BUFSIZ];
+	char arrival_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 
 	ns_sprintf(scheduled_buf, send_pkt->tx_time);
@@ -475,12 +476,13 @@ static void isochron_process_stat(struct prog_data *prog,
 	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
 	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
 	ns_sprintf(rx_swts_buf, rcv_pkt->swts);
+	ns_sprintf(arrival_buf, rcv_pkt->arrival);
 	ns_sprintf(wakeup_buf, send_pkt->wakeup);
 
 	if (!prog->quiet)
-		printf("seqid %d gate %s wakeup %s tx %s sw %s rx %s sw %s\n",
+		printf("seqid %d gate %s wakeup %s tx %s sw %s rx %s sw %s arrival %s\n",
 		       send_pkt->seqid, scheduled_buf, wakeup_buf, tx_hwts_buf,
-		       tx_swts_buf, rx_hwts_buf, rx_swts_buf);
+		       tx_swts_buf, rx_hwts_buf, rx_swts_buf, arrival_buf);
 
 	entry = calloc(1, sizeof(*entry));
 	if (!entry)
@@ -495,6 +497,7 @@ static void isochron_process_stat(struct prog_data *prog,
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
 						    prog->advance_time);
+	entry->arrival_latency = utc_to_tai(rcv_pkt->arrival) - rcv_pkt->hwts;
 
 	if (send_pkt->hwts > utc_to_tai(send_pkt->tx_time))
 		stats->hw_tx_deadline_misses++;
@@ -609,6 +612,8 @@ static void isochron_print_stats(struct prog_data *prog,
 				sw_rx_deadline_delta), "SW RX deadline delta");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_latency), "Wakeup latency");
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				arrival_latency), "Arrival latency (HW RX timestamp to application)");
 	printf("HW TX deadline misses: %d (%.3lf%%)\n",
 	       stats.hw_tx_deadline_misses,
 	       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);

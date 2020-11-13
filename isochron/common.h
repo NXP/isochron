@@ -197,6 +197,7 @@ struct isochron_rcv_pkt_data {
 	char smac[ETH_ALEN];
 	char dmac[ETH_ALEN];
 	__s64 tx_time;
+	__s64 arrival;
 	__s64 hwts;
 	__s64 swts;
 	__u16 etype;
@@ -211,6 +212,7 @@ struct isochron_stat_entry {
 	__s64 sw_rx_deadline_delta;
 	__s64 path_delay;
 	__s64 wakeup_latency;
+	__s64 arrival_latency;
 	__u32 seqid;
 };
 
