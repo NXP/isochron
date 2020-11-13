@@ -208,6 +208,7 @@ struct isochron_stat_entry {
 	LIST_ENTRY(isochron_stat_entry) list;
 	__s64 wakeup_to_hw_ts;
 	__s64 hw_rx_deadline_delta;
+	__s64 latency_budget;
 	__s64 path_delay;
 	__s64 wakeup_latency;
 	__s64 arrival_latency;

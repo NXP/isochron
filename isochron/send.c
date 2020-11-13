@@ -57,6 +57,7 @@ struct prog_data {
 	int trace_mark_fd;
 	char tracebuf[BUF_SIZ];
 	long port;
+	bool taprio;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -486,8 +487,27 @@ static void isochron_process_stat(struct prog_data *prog,
 
 	entry->seqid = send_pkt->seqid;
 	entry->wakeup_to_hw_ts = send_pkt->hwts - utc_to_tai(send_pkt->wakeup);
-	entry->hw_rx_deadline_delta = rcv_pkt->hwts -
-				      utc_to_tai(rcv_pkt->tx_time);
+	/* When IEEE 802.1Qbv (tc-taprio offload) is enabled, we know that the
+	 * MAC TX timestamp will be larger than the gate event, because the
+	 * application's schedule should be the same as the NIC's schedule.
+	 * The NIC will buffer that packet until the gate opens, something
+	 * which does not happen normally. So when we operate on a NIC without
+	 * tc-taprio offload, the reported deadline delta will be negative,
+	 * i.e. the packet will be received before the deadline expired,
+	 * precisely because isochron actually sends the packet in advance of
+	 * the deadline.
+	 * Avoid printing negative values and interpret this delta as either a
+	 * positive "deadline delta" when we have tc-taprio (this should give
+	 * us the latency of the hardware), or as a (still positive) latency
+	 * budget, i.e. "how much we could still reduce the cycle time without
+	 * losing deadlines".
+	 */
+	if (prog->taprio)
+		entry->hw_rx_deadline_delta = rcv_pkt->hwts -
+					      utc_to_tai(rcv_pkt->tx_time);
+	else
+		entry->latency_budget = utc_to_tai(send_pkt->tx_time) -
+					rcv_pkt->hwts;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
 						    prog->advance_time);
@@ -596,15 +616,20 @@ static void isochron_print_stats(struct prog_data *prog,
 				path_delay), "Path delay");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				hw_rx_deadline_delta), "HW RX deadline delta");
+	if (prog->taprio)
+		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+					hw_rx_deadline_delta), "HW RX deadline delta");
+	else
+		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+					latency_budget), "Latency budget");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_latency), "Wakeup latency");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				arrival_latency), "Arrival latency (HW RX timestamp to application)");
-	printf("HW TX deadline misses: %d (%.3lf%%)\n",
-	       stats.hw_tx_deadline_misses,
-	       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
+	if (!prog->taprio)
+		printf("HW TX deadline misses: %d (%.3lf%%)\n",
+		       stats.hw_tx_deadline_misses,
+		       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
 
 out:
 	LIST_FOREACH_SAFE(entry, &stats.entries, list, tmp) {
@@ -787,6 +812,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->trace_mark,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-Q",
+			.long_opt = "--taprio",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->taprio,
 			},
 			.optional = true,
 		},
