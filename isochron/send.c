@@ -56,6 +56,7 @@ struct prog_data {
 	bool trace_mark;
 	int trace_mark_fd;
 	char tracebuf[BUF_SIZ];
+	long port;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -404,7 +405,7 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 {
 	struct sockaddr_in serv_addr = {
 		.sin_family = AF_INET,
-		.sin_port = htons(ISOCHRON_STATS_PORT),
+		.sin_port = htons(prog->port),
 	};
 	int stats_fd;
 	int rc;
@@ -686,6 +687,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->priority,
 			},
 		}, {
+			.short_opt = "-P",
+			.long_opt = "--port",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->port,
+			},
+			.optional = true,
+		}, {
 			.short_opt = "-b",
 			.long_opt = "--base-time",
 			.type = PROG_ARG_TIME,
@@ -824,6 +833,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			"Shift time cannot be higher than cycle time\n");
 		return -EINVAL;
 	}
+
+	if (!prog->port)
+		prog->port = ISOCHRON_STATS_PORT;
 
 	return 0;
 }

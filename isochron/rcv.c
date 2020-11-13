@@ -34,6 +34,7 @@ struct prog_data {
 	bool do_ts;
 	bool quiet;
 	long etype;
+	long port;
 };
 
 int signal_received;
@@ -223,7 +224,7 @@ static int prog_init(struct prog_data *prog)
 	struct sockaddr_in serv_addr = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
-		.sin_port = htons(ISOCHRON_STATS_PORT),
+		.sin_port = htons(prog->port),
 	};
 	struct sigaction sa;
 	int sockopt = 1;
@@ -371,6 +372,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->etype,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-P",
+			.long_opt = "--port",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->port,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -388,6 +397,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		prog_usage("isochron-rcv", args, ARRAY_SIZE(args));
 		return -1;
 	}
+
+	if (!prog->port)
+		prog->port = ISOCHRON_STATS_PORT;
 
 	return 0;
 }
