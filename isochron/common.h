@@ -207,9 +207,7 @@ struct isochron_rcv_pkt_data {
 struct isochron_stat_entry {
 	LIST_ENTRY(isochron_stat_entry) list;
 	__s64 wakeup_to_hw_ts;
-	__s64 wakeup_to_sw_ts;
 	__s64 hw_rx_deadline_delta;
-	__s64 sw_rx_deadline_delta;
 	__s64 path_delay;
 	__s64 wakeup_latency;
 	__s64 arrival_latency;
@@ -220,7 +218,6 @@ struct isochron_stats {
 	LIST_HEAD(stats_head, isochron_stat_entry) entries;
 	int frame_count;
 	int hw_tx_deadline_misses;
-	int sw_tx_deadline_misses;
 	double tx_sync_offset_mean;
 	double rx_sync_offset_mean;
 };

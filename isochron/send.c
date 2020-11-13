@@ -465,24 +465,20 @@ static void isochron_process_stat(struct prog_data *prog,
 	struct isochron_stat_entry *entry;
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char tx_hwts_buf[TIMESPEC_BUFSIZ];
-	char tx_swts_buf[TIMESPEC_BUFSIZ];
 	char rx_hwts_buf[TIMESPEC_BUFSIZ];
-	char rx_swts_buf[TIMESPEC_BUFSIZ];
 	char arrival_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 
 	ns_sprintf(scheduled_buf, send_pkt->tx_time);
-	ns_sprintf(tx_swts_buf, send_pkt->swts);
 	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
 	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
-	ns_sprintf(rx_swts_buf, rcv_pkt->swts);
 	ns_sprintf(arrival_buf, rcv_pkt->arrival);
 	ns_sprintf(wakeup_buf, send_pkt->wakeup);
 
 	if (!prog->quiet)
-		printf("seqid %d gate %s wakeup %s tx %s sw %s rx %s sw %s arrival %s\n",
-		       send_pkt->seqid, scheduled_buf, wakeup_buf, tx_hwts_buf,
-		       tx_swts_buf, rx_hwts_buf, rx_swts_buf, arrival_buf);
+		printf("seqid %d gate %s wakeup %s tx %s rx %s arrival %s\n",
+		       send_pkt->seqid, scheduled_buf, wakeup_buf,
+		       tx_hwts_buf, rx_hwts_buf, arrival_buf);
 
 	entry = calloc(1, sizeof(*entry));
 	if (!entry)
@@ -490,10 +486,8 @@ static void isochron_process_stat(struct prog_data *prog,
 
 	entry->seqid = send_pkt->seqid;
 	entry->wakeup_to_hw_ts = send_pkt->hwts - utc_to_tai(send_pkt->wakeup);
-	entry->wakeup_to_sw_ts = send_pkt->swts - send_pkt->wakeup;
 	entry->hw_rx_deadline_delta = rcv_pkt->hwts -
 				      utc_to_tai(rcv_pkt->tx_time);
-	entry->sw_rx_deadline_delta = rcv_pkt->swts - rcv_pkt->tx_time;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
 						    prog->advance_time);
@@ -501,8 +495,6 @@ static void isochron_process_stat(struct prog_data *prog,
 
 	if (send_pkt->hwts > utc_to_tai(send_pkt->tx_time))
 		stats->hw_tx_deadline_misses++;
-	if (send_pkt->swts > send_pkt->tx_time)
-		stats->sw_tx_deadline_misses++;
 
 	stats->frame_count++;
 	stats->tx_sync_offset_mean += send_pkt->hwts -
@@ -605,11 +597,7 @@ static void isochron_print_stats(struct prog_data *prog,
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				wakeup_to_sw_ts), "Wakeup to SW TX timestamp");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				hw_rx_deadline_delta), "HW RX deadline delta");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				sw_rx_deadline_delta), "SW RX deadline delta");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_latency), "Wakeup latency");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
@@ -617,9 +605,6 @@ static void isochron_print_stats(struct prog_data *prog,
 	printf("HW TX deadline misses: %d (%.3lf%%)\n",
 	       stats.hw_tx_deadline_misses,
 	       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
-	printf("SW TX deadline misses: %d (%.3lf%%)\n",
-	       stats.sw_tx_deadline_misses,
-	       100.0f * stats.sw_tx_deadline_misses / stats.frame_count);
 
 out:
 	LIST_FOREACH_SAFE(entry, &stats.entries, list, tmp) {
