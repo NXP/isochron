@@ -58,6 +58,7 @@ struct prog_data {
 	char tracebuf[BUF_SIZ];
 	long port;
 	bool taprio;
+	bool do_vlan;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -94,7 +95,10 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	struct isochron_header *hdr;
 	__s64 hwts, swts;
 
-	hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
+	if (prog->do_vlan)
+		hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
+	else
+		hdr = (struct isochron_header *)(buf + sizeof(struct ethhdr));
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
@@ -112,7 +116,11 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
 
-	hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
+	if (prog->do_vlan)
+		hdr = (struct isochron_header *)(buf +
+						 sizeof(struct vlan_ethhdr));
+	else
+		hdr = (struct isochron_header *)(buf + sizeof(struct ethhdr));
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
@@ -135,8 +143,12 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 
 	trace(prog, "send seqid %d start\n", iteration);
 
-	hdr = (struct isochron_header *)(prog->sendbuf +
-					 sizeof(struct vlan_ethhdr));
+	if (prog->do_vlan)
+		hdr = (struct isochron_header *)(prog->sendbuf +
+						 sizeof(struct vlan_ethhdr));
+	else
+		hdr = (struct isochron_header *)(prog->sendbuf +
+						 sizeof(struct ethhdr));
 	hdr->tx_time = __cpu_to_be64(scheduled);
 	hdr->wakeup = __cpu_to_be64(now);
 	hdr->seqid = __cpu_to_be32(iteration);
@@ -266,14 +278,12 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 
 static int prog_init(struct prog_data *prog)
 {
-	int i = sizeof(struct vlan_ethhdr);
 	char now_buf[TIMESPEC_BUFSIZ];
-	struct vlan_ethhdr *hdr;
 	struct timespec now_ts;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
 	__s64 now;
-	int rc;
+	int i, rc;
 
 	prog->clkid = CLOCK_REALTIME;
 	/* Convert negative logic from cmdline to positive */
@@ -334,14 +344,23 @@ static int prog_init(struct prog_data *prog)
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
 	/* Ethernet header */
-	hdr = (struct vlan_ethhdr *)prog->sendbuf;
-	memcpy(hdr->h_source, prog->src_mac, ETH_ALEN);
-	memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
-	hdr->h_vlan_proto = htons(ETH_P_8021Q);
-	/* Ethertype field */
-	hdr->h_vlan_encapsulated_proto = htons(prog->etype);
-	hdr->h_vlan_TCI = htons((prog->priority << VLAN_PRIO_SHIFT) |
-				(prog->vid & VLAN_VID_MASK));
+	if (prog->do_vlan) {
+		struct vlan_ethhdr *hdr = (struct vlan_ethhdr *)prog->sendbuf;
+
+		memcpy(hdr->h_source, prog->src_mac, ETH_ALEN);
+		memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
+		hdr->h_vlan_proto = htons(ETH_P_8021Q);
+		/* Ethertype field */
+		hdr->h_vlan_encapsulated_proto = htons(prog->etype);
+		hdr->h_vlan_TCI = htons((prog->priority << VLAN_PRIO_SHIFT) |
+					(prog->vid & VLAN_VID_MASK));
+	} else {
+		struct ethhdr *hdr = (struct ethhdr *)prog->sendbuf;
+
+		memcpy(hdr->h_source, prog->src_mac, ETH_ALEN);
+		memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
+		hdr->h_proto = htons(prog->etype);
+	}
 
 	/* Index of the network device */
 	prog->socket_address.sll_ifindex = if_idx.ifr_ifindex;
@@ -388,7 +407,11 @@ static int prog_init(struct prog_data *prog)
 			return rc;
 	}
 
-	i = sizeof(struct vlan_ethhdr) + sizeof(struct isochron_header);
+	i = sizeof(struct isochron_header);
+	if (prog->do_vlan)
+		i += sizeof(struct vlan_ethhdr);
+	else
+		i += sizeof(struct ethhdr);
 
 	/* Packet data */
 	while (i < prog->tx_len) {
@@ -826,6 +849,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	};
 	int rc;
 
+	prog->vid = -1;
+
 	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
 
 	/* Non-positional arguments left unconsumed */
@@ -839,6 +864,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		prog_usage("isochron-send", args, ARRAY_SIZE(args));
 		return -1;
 	}
+
+	prog->do_vlan = (prog->vid != -1);
 
 	/* No point in leaving this one's default to zero, if we know that
 	 * means it will always be late for its gate event.
