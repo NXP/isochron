@@ -470,11 +470,11 @@ static void isochron_process_stat(struct prog_data *prog,
 	char arrival_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 
-	ns_sprintf(scheduled_buf, send_pkt->tx_time);
+	ns_sprintf(scheduled_buf, utc_to_tai(send_pkt->tx_time));
 	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
 	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
-	ns_sprintf(arrival_buf, rcv_pkt->arrival);
-	ns_sprintf(wakeup_buf, send_pkt->wakeup);
+	ns_sprintf(arrival_buf, utc_to_tai(rcv_pkt->arrival));
+	ns_sprintf(wakeup_buf, utc_to_tai(send_pkt->wakeup));
 
 	if (!prog->quiet)
 		printf("seqid %d gate %s wakeup %s tx %s rx %s arrival %s\n",
