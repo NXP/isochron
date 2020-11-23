@@ -75,7 +75,7 @@ static void trace(struct prog_data *prog, const char *fmt, ...)
 
 	clock_gettime(prog->clkid, &now_ts);
 	now = timespec_to_ns(&now_ts);
-	ns_sprintf(now_buf, now);
+	ns_sprintf(now_buf, utc_to_tai(now));
 	snprintf(prog->tracebuf, TIME_FMT_LEN + 1, "[%24s]  ", now_buf);
 
 	va_start(ap, fmt);
