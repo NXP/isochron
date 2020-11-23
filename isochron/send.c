@@ -377,7 +377,8 @@ static int prog_init(struct prog_data *prog)
 	ns_sprintf(now_buf, utc_to_tai(now));
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
-	rc = isochron_log_init(&prog->log);
+	rc = isochron_log_init(&prog->log, prog->iterations *
+			       sizeof(struct isochron_send_pkt_data));
 	if (rc < 0)
 		return rc;
 
@@ -665,7 +666,6 @@ static int prog_teardown(struct prog_data *prog)
 
 		printf("Collecting receiver stats\n");
 
-		isochron_log_init(&rcv_log);
 		rc = prog_collect_rcv_stats(prog, &rcv_log);
 		if (rc)
 			return rc;

@@ -26,8 +26,6 @@
 #include <stdarg.h>
 #include "common.h"
 
-#define LOGBUF_SIZ	(10 * 1024 * 1024) /* 10 MiB */
-
 int mac_addr_from_string(__u8 *to, char *from)
 {
 	unsigned long byte;
@@ -449,9 +447,9 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 	return len;
 }
 
-int isochron_log_init(struct isochron_log *log)
+int isochron_log_init(struct isochron_log *log, size_t size)
 {
-	log->buf = calloc(sizeof(char), LOGBUF_SIZ);
+	log->buf = calloc(sizeof(char), size);
 	if (!log->buf)
 		return -ENOMEM;
 
@@ -475,6 +473,13 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 	char *pos;
 	int rc;
 
+	rc = write(fd, &log->buf_len, sizeof(log->buf_len));
+	if (rc < 0) {
+		fprintf(stderr, "buf_len write returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
 	while ((rc = write(fd, p, cnt)) > 0) {
 		cnt -= rc;
 		p += rc;
@@ -491,22 +496,47 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 
 int isochron_log_recv(struct isochron_log *log, int fd)
 {
-	char *p = log->buf;
-	char *pos;
+	char *pos, *p;
+	int buf_len;
 	int rc;
 
-	while ((rc = read(fd, p, LOGBUF_SIZ)) > 0) {
+	rc = read(fd, &buf_len, sizeof(buf_len));
+	if (rc < 0) {
+		fprintf(stderr, "could not read buffer length: %d: %s\n",
+			-rc, strerror(-rc));
+		return rc;
+	}
+
+	if (buf_len <= 0) {
+		fprintf(stderr, "invalid buffer length: %d\n", buf_len);
+		return -ERANGE;
+	}
+
+	rc = isochron_log_init(log, buf_len);
+	if (rc)
+		return rc;
+
+	log->buf_len = buf_len;
+	p = log->buf;
+
+	while ((rc = read(fd, p, buf_len)) > 0 && buf_len) {
 		p += rc;
-		log->buf_len += rc;
+		buf_len -= rc;
 	}
 
 	if (rc < 0) {
 		fprintf(stderr, "read returned %d: %s\n",
 			errno, strerror(errno));
-		rc = -errno;
+		return -errno;
 	}
 
-	return rc;
+	if (buf_len) {
+		fprintf(stderr, "%d unread bytes from receive buffer\n",
+			buf_len);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 void isochron_log_teardown(struct isochron_log *log)

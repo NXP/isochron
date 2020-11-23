@@ -113,7 +113,7 @@ struct isochron_log {
 	char *buf;
 };
 
-int isochron_log_init(struct isochron_log *log);
+int isochron_log_init(struct isochron_log *log, size_t size);
 void isochron_log_data(struct isochron_log *log, void *data, int len);
 int isochron_log_xmit(struct isochron_log *log, int fd);
 int isochron_log_recv(struct isochron_log *log, int fd);

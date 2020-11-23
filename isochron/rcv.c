@@ -35,6 +35,7 @@ struct prog_data {
 	bool quiet;
 	long etype;
 	long port;
+	long iterations;
 };
 
 int signal_received;
@@ -61,6 +62,12 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
 	rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	rcv_pkt.swts = timespec_to_ns(&tstamp->sw);
+
+	if (rcv_pkt.seqid > prog->iterations) {
+		if (!prog->quiet)
+			printf("Discarding seqid %d\n", rcv_pkt.seqid);
+		return -1;
+	}
 
 	isochron_log_data(&prog->log, &rcv_pkt, sizeof(rcv_pkt));
 
@@ -199,7 +206,8 @@ static int server_loop(struct prog_data *prog, void *app_data)
 
 			isochron_log_xmit(&prog->log, stats_fd);
 			isochron_log_teardown(&prog->log);
-			rc = isochron_log_init(&prog->log);
+			rc = isochron_log_init(&prog->log, prog->iterations *
+					       sizeof(struct isochron_rcv_pkt_data));
 			if (rc < 0)
 				break;
 
@@ -235,7 +243,8 @@ static int prog_init(struct prog_data *prog)
 	int sockopt = 1;
 	int rc;
 
-	rc = isochron_log_init(&prog->log);
+	rc = isochron_log_init(&prog->log, prog->iterations *
+			       sizeof(struct isochron_rcv_pkt_data));
 	if (rc < 0)
 		return rc;
 
@@ -385,6 +394,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->port,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-n",
+			.long_opt = "--num-frames",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->iterations,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -405,6 +422,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->port)
 		prog->port = ISOCHRON_STATS_PORT;
+
+	/* Default to the old behavior, which was to allocate a 10 MiB
+	 * log buffer given a 56 byte size of struct isochron_rcv_pkt_data
+	 */
+	if (!prog->iterations)
+		prog->iterations = 187245;
 
 	return 0;
 }
