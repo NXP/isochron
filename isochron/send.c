@@ -222,7 +222,7 @@ static int run_nanosleep(struct prog_data *prog)
 	int rc;
 	long i;
 
-	ns_sprintf(base_time_buf, prog->base_time);
+	ns_sprintf(base_time_buf, utc_to_tai(prog->base_time));
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
 	fprintf(stderr, "%10s: %s\n", "Base time", base_time_buf);
 	fprintf(stderr, "%10s: %s\n", "Cycle time", cycle_time_buf);
@@ -379,12 +379,13 @@ static int prog_init(struct prog_data *prog)
 	now = timespec_to_ns(&now_ts);
 	prog->base_time += prog->shift_time;
 	prog->base_time -= prog->advance_time;
+	prog->base_time = tai_to_utc(prog->base_time);
 
 	/* Make sure we get enough sleep at the beginning */
 	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
 					   now + NSEC_PER_SEC);
 
-	ns_sprintf(now_buf, now);
+	ns_sprintf(now_buf, utc_to_tai(now));
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
 	rc = isochron_log_init(&prog->log);

@@ -574,11 +574,6 @@ void isochron_log_remove(struct isochron_log *log, void *p, int len)
 	log->buf_len -= len;
 }
 
-__s64 utc_to_tai(__s64 utc)
-{
-	return utc + 37 * NSEC_PER_SEC;
-}
-
 static const char * const trace_marker_paths[] = {
 	"/sys/kernel/debug/tracing/trace_marker",
 	"/debug/tracing/trace_marker",
