@@ -59,6 +59,7 @@ struct prog_data {
 	long port;
 	bool taprio;
 	bool do_vlan;
+	int l2_header_len;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -95,10 +96,7 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	struct isochron_header *hdr;
 	__s64 hwts, swts;
 
-	if (prog->do_vlan)
-		hdr = (struct isochron_header *)(buf + sizeof(struct vlan_ethhdr));
-	else
-		hdr = (struct isochron_header *)(buf + sizeof(struct ethhdr));
+	hdr = (struct isochron_header *)(buf + prog->l2_header_len);
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
@@ -116,11 +114,7 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
 
-	if (prog->do_vlan)
-		hdr = (struct isochron_header *)(buf +
-						 sizeof(struct vlan_ethhdr));
-	else
-		hdr = (struct isochron_header *)(buf + sizeof(struct ethhdr));
+	hdr = (struct isochron_header *)(buf + prog->l2_header_len);
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
@@ -143,12 +137,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 
 	trace(prog, "send seqid %d start\n", iteration);
 
-	if (prog->do_vlan)
-		hdr = (struct isochron_header *)(prog->sendbuf +
-						 sizeof(struct vlan_ethhdr));
-	else
-		hdr = (struct isochron_header *)(prog->sendbuf +
-						 sizeof(struct ethhdr));
+	hdr = (struct isochron_header *)(prog->sendbuf + prog->l2_header_len);
 	hdr->tx_time = __cpu_to_be64(scheduled);
 	hdr->wakeup = __cpu_to_be64(now);
 	hdr->seqid = __cpu_to_be32(iteration);
@@ -408,11 +397,7 @@ static int prog_init(struct prog_data *prog)
 			return rc;
 	}
 
-	i = sizeof(struct isochron_header);
-	if (prog->do_vlan)
-		i += sizeof(struct vlan_ethhdr);
-	else
-		i += sizeof(struct ethhdr);
+	i = sizeof(struct isochron_header) + prog->l2_header_len;
 
 	/* Packet data */
 	while (i < prog->tx_len) {
@@ -866,7 +851,13 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -1;
 	}
 
-	prog->do_vlan = (prog->vid != -1);
+	if (prog->vid == -1) {
+		prog->do_vlan = false;
+		prog->l2_header_len = sizeof(struct ethhdr);
+	} else {
+		prog->do_vlan = true;
+		prog->l2_header_len = sizeof(struct vlan_ethhdr);
+	}
 
 	/* No point in leaving this one's default to zero, if we know that
 	 * means it will always be late for its gate event.
