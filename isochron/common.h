@@ -221,6 +221,7 @@ struct isochron_stats {
 	int hw_tx_deadline_misses;
 	double tx_sync_offset_mean;
 	double rx_sync_offset_mean;
+	double path_delay_mean;
 };
 
 int mac_addr_from_string(__u8 *to, char *from);

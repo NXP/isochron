@@ -530,6 +530,7 @@ static void isochron_process_stat(struct prog_data *prog,
 				      utc_to_tai(send_pkt->swts);
 	stats->rx_sync_offset_mean += rcv_pkt->hwts -
 				      utc_to_tai(rcv_pkt->swts);
+	stats->path_delay_mean += entry->path_delay;
 
 	LIST_INSERT_HEAD(&stats->entries, entry, list);
 }
@@ -604,6 +605,7 @@ static void isochron_print_stats(struct prog_data *prog,
 
 	stats.tx_sync_offset_mean /= stats.frame_count;
 	stats.rx_sync_offset_mean /= stats.frame_count;
+	stats.path_delay_mean /= stats.frame_count;
 
 	if (llabs(stats.tx_sync_offset_mean) > NSEC_PER_SEC &&
 	    !prog->omit_sync) {
@@ -617,6 +619,13 @@ static void isochron_print_stats(struct prog_data *prog,
 		printf("Receiver PHC not synchronized (mean PHC to system time "
 		       "diff %lld ns larger than 1 second)\n",
 		       stats.rx_sync_offset_mean);
+		goto out;
+	}
+	if (llabs(stats.path_delay_mean) > NSEC_PER_SEC &&
+	    !prog->omit_sync) {
+		printf("Sender and receiver not synchronized (mean path delay "
+		       "%lld ns larger than 1 second)\n",
+		       stats.path_delay_mean);
 		goto out;
 	}
 
