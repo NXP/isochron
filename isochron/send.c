@@ -27,7 +27,7 @@
 #include <math.h>
 #include "common.h"
 
-#define BUF_SIZ		1522
+#define BUF_SIZ		10000
 #define TIME_FMT_LEN	27 /* "[%s] " */
 
 struct prog_data {
@@ -950,6 +950,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (prog->sched_fifo && prog->sched_rr) {
 		fprintf(stderr,
 			"cannot have SCHED_FIFO and SCHED_RR at the same time\n");
+		return -EINVAL;
+	}
+
+	if (prog->tx_len > BUF_SIZ) {
+		fprintf(stderr,
+			"Frame size cannot exceed %d octets\n", BUF_SIZ);
 		return -EINVAL;
 	}
 

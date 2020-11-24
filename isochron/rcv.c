@@ -20,7 +20,7 @@
 #include <poll.h>
 #include "common.h"
 
-#define BUF_SIZ		1522
+#define BUF_SIZ		10000
 
 struct prog_data {
 	char if_name[IFNAMSIZ];
