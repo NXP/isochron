@@ -77,7 +77,7 @@ clear_stream_table() {
 		for ssid in $(seq 0 127); do
 			tsntool cbstreamidset --index $ssid --nullstreamid \
 				--streamhandle $ssid --device $eth \
-				--disable >/dev/null
+				--disable >/dev/null || :
 		done
 	done
 }
@@ -208,16 +208,25 @@ add_split_action() {
 
 add_recover_action() {
 	local ssid="$1"
+	local passthrough="$2"
 	local seq_len=16
 	local his_len=31
+
+	if [ $passthrough = true ]; then
+		local opts=""
+		local label="Passthrough"
+	else
+		local opts="--rtag_pop_en"
+		local label="Sequence recovery"
+	fi
 
 	# The port does not matter
 	recover_actions+=("tsntool cbrec --device swp0 --index ${ssid} \
 		--seq_len ${seq_len} --his_len ${his_len} \
-		--rtag_pop_en")
+		${opts}")
 
-	printf 'Sequence recovery action for rule %d\n' \
-		"${ssid}"
+	printf '%s action for rule %d\n' \
+		"${label}" "${ssid}"
 }
 
 # The felix driver is very picky about the order of the tsntool commands. To be
@@ -264,9 +273,18 @@ add_passthrough_vlans() {
 limit_rogue_traffic() {
 	local iface="$1"
 
-	#iptables -o ${iface} -A OUTPUT -m pkttype --pkt-type broadcast -j DROP
-	iptables -o ${iface} -A OUTPUT -d 224.0.0.0/8 -j DROP
+	ip link set dev ${iface} multicast off
 	echo 1 > /proc/sys/net/ipv6/conf/${iface}/disable_ipv6
+}
+
+drop_looped_traffic() {
+	local iface="$1"
+	local this_host=$(ip link show dev eno2 | awk '/link\/ether/ {print $2; }')
+
+	if tc qdisc show dev ${iface} | grep clsact; then tc qdisc del dev ${iface} clsact; fi
+	tc qdisc add dev ${iface} clsact
+	tc filter add dev ${iface} ingress flower skip_sw dst_mac ff:ff:ff:ff:ff:ff action drop
+	tc filter add dev ${iface} ingress flower skip_sw src_mac ${this_host} action drop
 }
 
 install_vlans() {
@@ -278,17 +296,21 @@ install_vlans() {
 		for swp in ${total_port_list}; do
 			bridge vlan add dev ${swp} vid ${vid}
 		done
+	done
 
-		# FIXME: The VLAN sub-interfaces are not used ATM
-		[ -d "/sys/class/net/eno2.${vid}" ] && ip link del dev "eno2.${vid}"
-		ip link add link eno2 name "eno2.${vid}" type vlan id ${vid}
-		limit_rogue_traffic "eno2.${vid}"
-		ip link set dev "eno2.${vid}" up
+	for port in ${total_port_list}; do
+		# Don't drop traffic coming from the CPU port
+		if [ ${port} = swp4 ]; then
+			continue
+		fi
+		drop_looped_traffic "${port}"
 	done
 }
 
 do_bridging
 clear_stream_table
+
+limit_rogue_traffic eno2
 
 num_rules=$(jq '.rules|length' <<< "${json}")
 
@@ -314,7 +336,12 @@ for i in `seq 0 $((${num_rules}-1))`; do
 		egress_port=$(echo "${egress_port_mask}" | jq -r -c '.[0]')
 		;;
 	"recover")
-		add_recover_action "${i}"
+		add_recover_action "${i}" false
+
+		egress_port=$(echo "${match}" | jq -r '.["egress-port"]')
+		;;
+	"passthrough")
+		add_recover_action "${i}" true
 
 		egress_port=$(echo "${match}" | jq -r '.["egress-port"]')
 		;;
