@@ -60,6 +60,9 @@ struct prog_data {
 	bool taprio;
 	bool do_vlan;
 	int l2_header_len;
+	bool sched_fifo;
+	bool sched_rr;
+	long sched_priority;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -206,10 +209,30 @@ static int run_nanosleep(struct prog_data *prog)
 {
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
+	__u32 sched_policy = SCHED_OTHER;
 	__s64 wakeup = prog->base_time;
 	__s64 scheduled;
 	int rc;
 	long i;
+
+	if (prog->sched_fifo)
+		sched_policy = SCHED_FIFO;
+	if (prog->sched_rr)
+		sched_policy = SCHED_RR;
+
+	if (sched_policy != SCHED_OTHER) {
+		struct sched_attr attr = {
+			.size = sizeof(struct sched_attr),
+			.sched_policy = sched_policy,
+			.sched_priority = prog->sched_priority,
+		};
+
+		if (sched_setattr(getpid(), &attr, 0)) {
+			fprintf(stderr, "sched_setattr returned %d\n",
+				errno, strerror(errno));
+			return -errno;
+		}
+	}
 
 	ns_sprintf(base_time_buf, utc_to_tai(prog->base_time));
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
@@ -238,6 +261,21 @@ static int run_nanosleep(struct prog_data *prog)
 			fprintf(stderr, "clock_nanosleep returned %d: %s\n",
 				rc, strerror(rc));
 			break;
+		}
+	}
+
+	/* Restore scheduling policy */
+	if (sched_policy != SCHED_OTHER) {
+		struct sched_attr attr = {
+			.size = sizeof(struct sched_attr),
+			.sched_policy = SCHED_OTHER,
+			.sched_priority = 0,
+		};
+
+		if (sched_setattr(getpid(), &attr, 0)) {
+			fprintf(stderr, "sched_setattr returned %d\n",
+				errno, strerror(errno));
+			return -errno;
 		}
 	}
 
@@ -840,6 +878,30 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->taprio,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-H",
+			.long_opt = "--sched-priority",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+			        .ptr = &prog->sched_priority,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-f",
+			.long_opt = "--sched-fifo",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->sched_fifo,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-r",
+			.long_opt = "--sched-rr",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->sched_rr,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -882,6 +944,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (prog->shift_time > prog->cycle_time) {
 		fprintf(stderr,
 			"Shift time cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+
+	if (prog->sched_fifo && prog->sched_rr) {
+		fprintf(stderr,
+			"cannot have SCHED_FIFO and SCHED_RR at the same time\n");
 		return -EINVAL;
 	}
 

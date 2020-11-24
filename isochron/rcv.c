@@ -36,6 +36,9 @@ struct prog_data {
 	long etype;
 	long port;
 	long iterations;
+	bool sched_fifo;
+	bool sched_rr;
+	long sched_priority;
 };
 
 int signal_received;
@@ -136,9 +139,29 @@ static int server_loop(struct prog_data *prog, void *app_data)
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 	};
+	__u32 sched_policy = SCHED_OTHER;
 	ssize_t len;
 	int rc = 0;
 	int cnt;
+
+	if (prog->sched_fifo)
+		sched_policy = SCHED_FIFO;
+	if (prog->sched_rr)
+		sched_policy = SCHED_RR;
+
+	if (sched_policy != SCHED_OTHER) {
+		struct sched_attr attr = {
+			.size = sizeof(struct sched_attr),
+			.sched_policy = sched_policy,
+			.sched_priority = prog->sched_priority,
+		};
+
+		if (sched_setattr(getpid(), &attr, 0)) {
+			fprintf(stderr, "sched_setattr returned %d\n",
+				errno, strerror(errno));
+			return -errno;
+		}
+	}
 
 	do {
 		cnt = poll(pfd, ARRAY_SIZE(pfd), -1);
@@ -216,6 +239,21 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		if (signal_received)
 			break;
 	} while (1);
+
+	/* Restore scheduling policy */
+	if (sched_policy != SCHED_OTHER) {
+		struct sched_attr attr = {
+			.size = sizeof(struct sched_attr),
+			.sched_policy = SCHED_OTHER,
+			.sched_priority = 0,
+		};
+
+		if (sched_setattr(getpid(), &attr, 0)) {
+			fprintf(stderr, "sched_setattr returned %d\n",
+				errno, strerror(errno));
+			return -errno;
+		}
+	}
 
 	return rc;
 }
@@ -402,6 +440,30 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->iterations,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-H",
+			.long_opt = "--sched-priority",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+			        .ptr = &prog->sched_priority,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-f",
+			.long_opt = "--sched-fifo",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->sched_fifo,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-r",
+			.long_opt = "--sched-rr",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->sched_rr,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -418,6 +480,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			argc - rc, argv[rc]);
 		prog_usage("isochron-rcv", args, ARRAY_SIZE(args));
 		return -1;
+	}
+
+	if (prog->sched_fifo && prog->sched_rr) {
+		fprintf(stderr,
+			"cannot have SCHED_FIFO and SCHED_RR at the same time\n");
+		return -EINVAL;
 	}
 
 	if (!prog->port)
