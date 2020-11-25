@@ -116,6 +116,7 @@ static const char * const prog_arg_type_str[] = {
 	[PROG_ARG_TIME] = "Time in sec.nsec format",
 	[PROG_ARG_STRING] = "String",
 	[PROG_ARG_BOOL] = "Boolean",
+	[PROG_ARG_IP] = "IP address",
 };
 
 static int required_args[] = {
@@ -124,6 +125,7 @@ static int required_args[] = {
 	[PROG_ARG_TIME] = 1,
 	[PROG_ARG_STRING] = 1,
 	[PROG_ARG_BOOL] = 0,
+	[PROG_ARG_IP] = 1,
 };
 
 void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
@@ -147,6 +149,7 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 {
 	struct prog_arg_string string;
 	struct prog_arg_time time;
+	struct ip_address *ip_ptr;
 	int rc, i, parsed = 0;
 	bool *boolean_ptr;
 	long *long_ptr;
@@ -208,6 +211,26 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 						strerror(errno));
 					free(parsed_arr);
 					return -1;
+				}
+				break;
+			case PROG_ARG_IP:
+				ip_ptr = prog_args[i].ip_ptr.ptr;
+
+				rc = inet_pton(AF_INET6, argv[0],
+					       &ip_ptr->addr6);
+				if (rc > 0) {
+					ip_ptr->family = AF_INET6;
+				} else {
+					rc = inet_pton(AF_INET, argv[0],
+						       &ip_ptr->addr);
+					if (rc > 0) {
+						ip_ptr->family = AF_INET;
+					} else {
+						fprintf(stderr, "IP address %s not in known format: %d (%s)\n",
+							argv[0], errno,
+							strerror(errno));
+						return -1;
+					}
 				}
 				break;
 			case PROG_ARG_TIME:

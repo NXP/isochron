@@ -35,7 +35,7 @@ struct prog_data {
 	__u8 src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
-	char stats_srv_addr[INET6_ADDRSTRLEN];
+	struct ip_address stats_srv;
 	struct sockaddr_ll socket_address;
 	struct isochron_log log;
 	long timestamped;
@@ -452,34 +452,34 @@ static int prog_init(struct prog_data *prog)
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log)
 {
-	struct sockaddr_in serv_addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(prog->port),
-	};
-	int stats_fd;
+	struct sockaddr_in6 serv_addr6;
+	struct sockaddr_in serv_addr4;
+	struct sockaddr *serv_addr;
+	int stats_fd, size;
 	int rc;
 
-	rc = inet_pton(serv_addr.sin_family, prog->stats_srv_addr,
-		       &serv_addr.sin_addr);
-	if (rc <= 0) {
-		if (rc == 0)
-			fprintf(stderr, "%s not in presentation format",
-				prog->stats_srv_addr);
-		else
-			fprintf(stderr, "inet_pton returned %d: %s\n",
-				errno, strerror(errno));
-		return -EAFNOSUPPORT;
+	if (prog->stats_srv.family == AF_INET) {
+		serv_addr = (struct sockaddr *)&serv_addr4;
+		serv_addr4.sin_addr = prog->stats_srv.addr;
+		serv_addr4.sin_port = htons(prog->port);
+		serv_addr4.sin_family = AF_INET;
+		size = sizeof(struct sockaddr_in);
+	} else {
+		serv_addr = (struct sockaddr *)&serv_addr6;
+		serv_addr6.sin6_addr = prog->stats_srv.addr6;
+		serv_addr6.sin6_port = htons(prog->port);
+		serv_addr6.sin6_family = AF_INET6;
+		size = sizeof(struct sockaddr_in6);
 	}
 
-	stats_fd = socket(AF_INET, SOCK_STREAM, 0);
+	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
 	if (stats_fd < 0) {
 		fprintf(stderr, "socket returned %d: %s\n",
 			errno, strerror(errno));
 		return -errno;
 	}
 
-	rc = connect(stats_fd, (struct sockaddr *)&serv_addr,
-		     sizeof(serv_addr));
+	rc = connect(stats_fd, serv_addr, size);
 	if (rc < 0) {
 		fprintf(stderr, "connect returned %d: %s\n",
 			errno, strerror(errno));
@@ -699,7 +699,7 @@ static int prog_teardown(struct prog_data *prog)
 {
 	int rc;
 
-	if (strlen(prog->stats_srv_addr)) {
+	if (prog->stats_srv.family) {
 		struct isochron_log rcv_log;
 
 		printf("Collecting receiver stats\n");
@@ -832,10 +832,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-C",
 			.long_opt = "--client",
-			.type = PROG_ARG_STRING,
-			.string = {
-				.buf = prog->stats_srv_addr,
-				.size = INET6_ADDRSTRLEN,
+			.type = PROG_ARG_IP,
+			.ip_ptr = {
+				.ptr = &prog->stats_srv,
 			},
 			.optional = true,
 		}, {
