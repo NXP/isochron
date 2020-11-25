@@ -183,12 +183,21 @@ void isochron_log_remove(struct isochron_log *log, void *p, int len);
 #define VLAN_VID_MASK		0x0fff /* VLAN Identifier */
 #define VLAN_N_VID		4096
 
+struct ip_address {
+	int family;
+	union {
+		struct in_addr addr;
+		struct in6_addr addr6;
+	};
+};
+
 enum prog_arg_type {
 	PROG_ARG_MAC_ADDR,
 	PROG_ARG_LONG,
 	PROG_ARG_TIME,
 	PROG_ARG_STRING,
 	PROG_ARG_BOOL,
+	PROG_ARG_IP,
 };
 
 struct prog_arg_string {
@@ -213,6 +222,10 @@ struct prog_arg_boolean {
 	bool *ptr;
 };
 
+struct prog_arg_ip {
+	struct ip_address *ptr;
+};
+
 struct prog_arg {
 	const char *short_opt;
 	const char *long_opt;
@@ -224,6 +237,7 @@ struct prog_arg {
 		struct prog_arg_long long_ptr;
 		struct prog_arg_mac_addr mac;
 		struct prog_arg_boolean boolean_ptr;
+		struct prog_arg_ip ip_ptr;
 	};
 };
 
