@@ -40,16 +40,16 @@ struct prog_data {
 	bool sched_rr;
 	long sched_priority;
 	long utc_tai_offset;
+	bool l2;
+	bool l4;
+	long data_port;
 };
 
 int signal_received;
 
 static int app_loop(void *app_data, char *rcvbuf, size_t len,
-		    const struct timestamp *tstamp)
+		    const struct isochron_timestamp *tstamp)
 {
-	/* Header structures */
-	struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
-	struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct prog_data *prog = app_data;
 	struct timespec now_ts;
@@ -59,14 +59,27 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	clock_gettime(prog->clkid, &now_ts);
 	now = timespec_to_ns(&now_ts);
 	rcv_pkt.arrival = now;
-	rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
-	rcv_pkt.etype = ntohs(eth_hdr->h_proto);
-	memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);
-	memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
-	rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
-	rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
-	rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
-				  prog->utc_tai_offset);
+	if (prog->l2) {
+		struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
+		struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
+
+		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
+		rcv_pkt.etype = ntohs(eth_hdr->h_proto);
+		memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);
+		memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
+		rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
+		rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
+		rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
+					  prog->utc_tai_offset);
+	} else {
+		struct isochron_header *hdr = (struct isochron_header *)rcvbuf;
+
+		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
+		rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
+		rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
+		rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
+					  prog->utc_tai_offset);
+	}
 
 	if (rcv_pkt.seqid > prog->iterations) {
 		if (!prog->quiet)
@@ -130,7 +143,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 
 static int server_loop(struct prog_data *prog, void *app_data)
 {
-	struct timestamp tstamp = {0};
+	struct isochron_timestamp tstamp = {0};
 	struct pollfd pfd[2] = {
 		[0] = {
 			.fd = prog->data_fd,
@@ -193,10 +206,12 @@ static int server_loop(struct prog_data *prog, void *app_data)
 				rc = -errno;
 				break;
 			}
-			if (ether_addr_to_u64(prog->dest_mac) &&
-			    ether_addr_to_u64(prog->dest_mac) !=
-			    ether_addr_to_u64(eth_hdr->h_dest))
-				continue;
+			if (prog->l2)
+				if (ether_addr_to_u64(prog->dest_mac) &&
+				    ether_addr_to_u64(prog->dest_mac) !=
+				    ether_addr_to_u64(eth_hdr->h_dest))
+					continue;
+
 			rc = app_loop(app_data, prog->rcvbuf, len, &tstamp);
 			if (rc < 0)
 				break;
@@ -279,6 +294,11 @@ static int prog_init(struct prog_data *prog)
 		.sin_addr.s_addr = htonl(INADDR_ANY),
 		.sin_port = htons(prog->stats_port),
 	};
+	struct sockaddr_in serv_data_addr = {
+		.sin_family = AF_INET,
+		.sin_addr.s_addr = htonl(INADDR_ANY),
+		.sin_port = htons(prog->data_port),
+	};
 	struct sigaction sa;
 	int sockopt = 1;
 	int rc;
@@ -335,22 +355,30 @@ static int prog_init(struct prog_data *prog)
 		  sizeof(serv_addr));
 	if (rc < 0) {
 		perror("listener: bind");
+		close(prog->stats_listenfd);
 		return -errno;
 	}
 
 	rc = listen(prog->stats_listenfd, 1);
 	if (rc < 0) {
 		perror("listener: listen");
+		close(prog->stats_listenfd);
 		return -errno;
 	}
 
 	if (!prog->etype)
 		prog->etype = ETH_P_ISOCHRON;
 
-	/* Open PF_PACKET socket, listening for the specified EtherType */
-	prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
+	if (prog->l2)
+		/* Open PF_PACKET socket, listening for the specified EtherType */
+		prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
+	else
+		prog->data_fd = socket(AF_INET, SOCK_DGRAM,
+				       IPPROTO_UDP);
+
 	if (prog->data_fd < 0) {
 		perror("listener: data socket");
+		close(prog->stats_listenfd);
 		return -errno;
 	}
 
@@ -361,21 +389,42 @@ static int prog_init(struct prog_data *prog)
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
+		close(prog->stats_listenfd);
 		close(prog->data_fd);
 		return -errno;
 	}
-	/* Bind to device */
-	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_BINDTODEVICE,
-			prog->if_name, IFNAMSIZ - 1);
-	if (rc < 0) {
-		perror("SO_BINDTODEVICE");
-		close(prog->data_fd);
-		exit(EXIT_FAILURE);
+
+	if (prog->l2) {
+		/* Bind to device */
+		rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_BINDTODEVICE,
+				prog->if_name, IFNAMSIZ - 1);
+		if (rc < 0) {
+			perror("SO_BINDTODEVICE");
+			close(prog->stats_listenfd);
+			close(prog->data_fd);
+			exit(EXIT_FAILURE);
+		}
+	} else {
+		rc = bind(prog->data_fd, (struct sockaddr *)&serv_data_addr,
+			  sizeof(serv_data_addr));
+		if (rc < 0) {
+			perror("bind");
+			close(prog->stats_listenfd);
+			close(prog->data_fd);
+			return -errno;
+		}
 	}
 
-	if (ether_addr_to_u64(prog->dest_mac))
+	if (ether_addr_to_u64(prog->dest_mac)) {
 		rc = multicast_listen(prog->data_fd, prog->if_index,
 				      prog->dest_mac, true);
+		if (rc) {
+			perror("multicast_listen");
+			close(prog->stats_listenfd);
+			close(prog->data_fd);
+			return rc;
+		}
+	}
 
 	if (prog->do_ts)
 		return sk_timestamping_init(prog->data_fd, prog->if_name, 1);
@@ -474,6 +523,22 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->utc_tai_offset,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-2",
+			.long_opt = "--l2",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+				.ptr = &prog->l2,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-4",
+			.long_opt = "--l4",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+				.ptr = &prog->l4,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -502,6 +567,17 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->stats_port)
 		prog->stats_port = ISOCHRON_STATS_PORT;
+
+	if (prog->l2 && prog->l4) {
+		fprintf(stderr, "Choose transport as either L2 or L4!\n");
+		return -EINVAL;
+	}
+
+	if (!prog->l2 && !prog->l4)
+		prog->l2 = true;
+
+	if (!prog->data_port)
+		prog->data_port = ISOCHRON_DATA_PORT;
 
 	/* Default to the old behavior, which was to allocate a 10 MiB
 	 * log buffer given a 56 byte size of struct isochron_rcv_pkt_data

@@ -407,7 +407,7 @@ int sk_timestamping_init(int fd, const char *if_name, int on)
 	return 0;
 }
 
-int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
+int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout)
 {
 	struct iovec iov = { buf, buflen };
