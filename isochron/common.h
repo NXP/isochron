@@ -144,7 +144,8 @@ void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);
 void isochron_log_remove(struct isochron_log *log, void *p, int len);
 
-#define ISOCHRON_STATS_PORT	5000
+#define ISOCHRON_STATS_PORT	5000 /* TCP */
+#define ISOCHRON_DATA_PORT	6000 /* UDP */
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
 #define VLAN_PRIO_SHIFT		13
@@ -216,7 +217,7 @@ int prog_parse_np_args(int argc, char **argv,
 void prog_usage(char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
-struct timestamp {
+struct isochron_timestamp {
 	struct timespec		hw;
 	struct timespec		sw;
 };
@@ -262,7 +263,7 @@ struct isochron_stats {
 
 int mac_addr_from_string(__u8 *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, int on);
-int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
+int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout);
 __s64 timespec_to_ns(const struct timespec *ts);
 struct timespec ns_to_timespec(__s64 ns);
@@ -296,6 +297,32 @@ static inline __u64 ether_addr_to_u64(const unsigned char *addr)
 		u = u << 8 | addr[i];
 
 	return u;
+}
+
+/**
+ * ether_addr_copy - Copy an Ethernet address
+ * @dst: Pointer to a six-byte array Ethernet address destination
+ * @src: Pointer to a six-byte array Ethernet address source
+ *
+ * Please note: dst & src must both be aligned to u16.
+ */
+static inline void ether_addr_copy(__u8 *dst, const __u8 *src)
+{
+	*(__u32 *)dst = *(const __u32 *)src;
+	*(__u16 *)(dst + 4) = *(const __u16 *)(src + 4);
+}
+
+/**
+ * is_zero_ether_addr - Determine if give Ethernet address is all zeros.
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is all zeroes.
+ *
+ * Please note: addr must be aligned to u16.
+ */
+static inline bool is_zero_ether_addr(const __u8 *addr)
+{
+	return ((*(const __u32 *)addr) | (*(const __u16 *)(addr + 4))) == 0;
 }
 
 int trace_mark_open();

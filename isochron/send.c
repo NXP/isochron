@@ -20,6 +20,9 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <netinet/ether.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -36,7 +39,12 @@ struct prog_data {
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct ip_address stats_srv;
-	struct sockaddr_ll socket_address;
+	union {
+		struct sockaddr_ll l2;
+		struct sockaddr_in udp4;
+		struct sockaddr_in6 udp6;
+	} sockaddr;
+	size_t sockaddr_size;
 	struct isochron_log log;
 	long timestamped;
 	long iterations;
@@ -63,6 +71,11 @@ struct prog_data {
 	bool sched_fifo;
 	bool sched_rr;
 	long sched_priority;
+	struct ip_address ip_source;
+	struct ip_address ip_destination;
+	bool l2;
+	bool l4;
+	long data_port;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -93,13 +106,30 @@ static void trace(struct prog_data *prog, const char *fmt, ...)
 }
 
 static void process_txtstamp(struct prog_data *prog, const char *buf,
-			     struct timestamp *tstamp)
+			     struct isochron_timestamp *tstamp)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
 	__s64 hwts, swts;
 
-	hdr = (struct isochron_header *)(buf + prog->l2_header_len);
+	if (prog->l2)
+		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
+	else
+		hdr = (struct isochron_header *)(buf + sizeof(struct ethhdr) +
+			sizeof(struct iphdr) + sizeof(struct udphdr));
+
+#if 0
+	char *byte;
+	printf("txtstamp pkt: \n");
+	for (byte = hdr; byte < (char*)hdr + sizeof(*hdr); byte++)
+		printf("%02x ", *byte);
+	printf("\n");
+
+	printf("txtstamp full pkt: \n");
+	for (byte = buf; byte < (char*)buf + sizeof(*hdr) + 42; byte++)
+		printf("%02x ", *byte);
+	printf("\n");
+#endif
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
@@ -107,6 +137,7 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
 	send_pkt.swts = timespec_to_ns(&tstamp->sw);
 
+	printf("%s: send_pkt.seqid = %d \n", __func__, send_pkt.seqid);
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 
 	prog->timestamped++;
@@ -117,19 +148,23 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
 
-	hdr = (struct isochron_header *)(buf + prog->l2_header_len);
+	if (prog->l2)
+		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
+	else
+		hdr = (struct isochron_header *)buf;
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
 	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
 
+	printf("%s: send_pkt.seqid = %d\n", __func__, send_pkt.seqid);
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
 
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 {
 	unsigned char err_pkt[BUF_SIZ];
-	struct timestamp tstamp = {0};
+	struct isochron_timestamp tstamp = {0};
 	struct isochron_header *hdr;
 	struct timespec now_ts;
 	__s64 now;
@@ -140,15 +175,28 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 
 	trace(prog, "send seqid %d start\n", iteration);
 
-	hdr = (struct isochron_header *)(prog->sendbuf + prog->l2_header_len);
+	if (prog->l2) {
+		hdr = (struct isochron_header *)(prog->sendbuf +
+						 prog->l2_header_len);
+	} else {
+		hdr = (struct isochron_header *)prog->sendbuf;
+	}
+
 	hdr->tx_time = __cpu_to_be64(scheduled);
 	hdr->wakeup = __cpu_to_be64(now);
 	hdr->seqid = __cpu_to_be32(iteration);
 
+	printf("%s: hdr->seqid = %d\n", __func__, __be32_to_cpu(hdr->seqid));
+	char *byte;
+	printf("sent pkt: \n");
+	for (byte = prog->sendbuf; byte < prog->sendbuf + sizeof(*hdr); byte++)
+		printf("%02x ", *byte);
+	printf("\n");
+
 	/* Send packet */
 	rc = sendto(prog->data_fd, prog->sendbuf, prog->tx_len, 0,
-		    (const struct sockaddr *)&prog->socket_address,
-		    sizeof(struct sockaddr_ll));
+		    (const struct sockaddr *)&prog->sockaddr,
+		    prog->sockaddr_size);
 	if (rc < 0) {
 		perror("send\n");
 		return rc;
@@ -178,7 +226,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 static int wait_for_txtimestamps(struct prog_data *prog)
 {
 	unsigned char err_pkt[BUF_SIZ];
-	struct timestamp tstamp;
+	struct isochron_timestamp tstamp;
 	int rc;
 
 	if (!prog->do_ts)
@@ -316,8 +364,12 @@ static int prog_init(struct prog_data *prog)
 	/* Convert negative logic from cmdline to positive */
 	prog->do_ts = !prog->do_ts;
 
-	/* Open RAW socket to send on */
-	prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
+	/* Open socket to send on */
+	if (prog->l2)
+		prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
+	else
+		prog->data_fd = socket(prog->ip_destination.family, SOCK_DGRAM,
+				       IPPROTO_UDP);
 	if (prog->data_fd < 0) {
 		perror("socket");
 		return -EINVAL;
@@ -389,12 +441,26 @@ static int prog_init(struct prog_data *prog)
 		hdr->h_proto = htons(prog->etype);
 	}
 
-	/* Index of the network device */
-	prog->socket_address.sll_ifindex = if_idx.ifr_ifindex;
-	/* Address length*/
-	prog->socket_address.sll_halen = ETH_ALEN;
-	/* Destination MAC */
-	memcpy(prog->socket_address.sll_addr, prog->dest_mac, ETH_ALEN);
+	if (prog->l2) {
+		/* Index of the network device */
+		prog->sockaddr.l2.sll_ifindex = if_idx.ifr_ifindex;
+		/* Address length */
+		prog->sockaddr.l2.sll_halen = ETH_ALEN;
+		/* Destination MAC */
+		ether_addr_copy(prog->sockaddr.l2.sll_addr, prog->dest_mac);
+		prog->sockaddr_size = sizeof(struct sockaddr_ll);
+	} else if (prog->ip_source.family == AF_INET) {
+		prog->sockaddr.udp4.sin_addr = prog->ip_destination.addr;
+		prog->sockaddr.udp4.sin_port = htons(prog->data_port);
+		prog->sockaddr.udp4.sin_family = AF_INET;
+		prog->sockaddr_size = sizeof(struct sockaddr_in);
+		printf("%s: sin_addr %x sin_port %d\n", __func__, prog->sockaddr.udp4.sin_addr, ntohs(prog->sockaddr.udp4.sin_port));
+	} else {
+		prog->sockaddr.udp6.sin6_addr = prog->ip_destination.addr6;
+		prog->sockaddr.udp6.sin6_port = htons(prog->data_port);
+		prog->sockaddr.udp6.sin6_family = AF_INET6;
+		prog->sockaddr_size = sizeof(struct sockaddr_in6);
+	}
 
 	rc = clock_gettime(prog->clkid, &now_ts);
 	if (rc < 0) {
@@ -742,6 +808,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.mac = {
 				.buf = prog->dest_mac,
 			},
+			.optional = true,
 		}, {
 			.short_opt = "-A",
 			.long_opt = "--smac",
@@ -901,6 +968,46 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->sched_rr,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-I",
+			.long_opt = "--ip-source",
+			.type = PROG_ARG_IP,
+			.ip_ptr = {
+			        .ptr = &prog->ip_source,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-J",
+			.long_opt = "--ip-destination",
+			.type = PROG_ARG_IP,
+			.ip_ptr = {
+			        .ptr = &prog->ip_destination,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-2",
+			.long_opt = "--l2",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+				.ptr = &prog->l2,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-4",
+			.long_opt = "--l4",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+				.ptr = &prog->l4,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-P",
+			.long_opt = "--data-port",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->data_port,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -921,12 +1028,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -1;
 	}
 
-	if (prog->vid == -1) {
-		prog->do_vlan = false;
-		prog->l2_header_len = sizeof(struct ethhdr);
-	} else {
-		prog->do_vlan = true;
-		prog->l2_header_len = sizeof(struct vlan_ethhdr);
+	if (prog->l2) {
+		if (prog->vid == -1) {
+			prog->do_vlan = false;
+			prog->l2_header_len = sizeof(struct ethhdr);
+		} else {
+			prog->do_vlan = true;
+			prog->l2_header_len = sizeof(struct vlan_ethhdr);
+		}
 	}
 
 	/* No point in leaving this one's default to zero, if we know that
@@ -960,6 +1069,34 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->stats_port)
 		prog->stats_port = ISOCHRON_STATS_PORT;
+
+	if (prog->l2 && prog->l4) {
+		fprintf(stderr, "Choose transport as either L2 or L4!\n");
+		return -EINVAL;
+	}
+
+	if (!prog->l2 && !prog->l4)
+		prog->l2 = true;
+
+	if (prog->l2 && is_zero_ether_addr(prog->dest_mac)) {
+		fprintf(stderr, "Please specify destination MAC address\n");
+		return -EINVAL;
+	}
+
+	if (prog->l4) {
+		if (prog->ip_source.family == AF_INET &&
+		    prog->ip_source.family == AF_INET)
+			goto ok;
+		if (prog->ip_source.family == AF_INET6 &&
+		    prog->ip_source.family == AF_INET6)
+			goto ok;
+		fprintf(stderr, "IP source and destination addresses must be both IPv4, or both IPv6\n");
+		return -EINVAL;
+	}
+
+ok:
+	if (!prog->data_port)
+		prog->data_port = ISOCHRON_DATA_PORT;
 
 	return 0;
 }
