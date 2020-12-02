@@ -56,7 +56,7 @@ struct prog_data {
 	bool trace_mark;
 	int trace_mark_fd;
 	char tracebuf[BUF_SIZ];
-	long port;
+	long stats_port;
 	bool taprio;
 	bool do_vlan;
 	int l2_header_len;
@@ -461,13 +461,13 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	if (prog->stats_srv.family == AF_INET) {
 		serv_addr = (struct sockaddr *)&serv_addr4;
 		serv_addr4.sin_addr = prog->stats_srv.addr;
-		serv_addr4.sin_port = htons(prog->port);
+		serv_addr4.sin_port = htons(prog->stats_port);
 		serv_addr4.sin_family = AF_INET;
 		size = sizeof(struct sockaddr_in);
 	} else {
 		serv_addr = (struct sockaddr *)&serv_addr6;
 		serv_addr6.sin6_addr = prog->stats_srv.addr6;
-		serv_addr6.sin6_port = htons(prog->port);
+		serv_addr6.sin6_port = htons(prog->stats_port);
 		serv_addr6.sin6_family = AF_INET6;
 		size = sizeof(struct sockaddr_in6);
 	}
@@ -759,10 +759,10 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			},
 		}, {
 			.short_opt = "-P",
-			.long_opt = "--port",
+			.long_opt = "--stats-port",
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
-				.ptr = &prog->port,
+				.ptr = &prog->stats_port,
 			},
 			.optional = true,
 		}, {
@@ -958,8 +958,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -EINVAL;
 	}
 
-	if (!prog->port)
-		prog->port = ISOCHRON_STATS_PORT;
+	if (!prog->stats_port)
+		prog->stats_port = ISOCHRON_STATS_PORT;
 
 	return 0;
 }

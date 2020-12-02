@@ -34,7 +34,7 @@ struct prog_data {
 	bool do_ts;
 	bool quiet;
 	long etype;
-	long port;
+	long stats_port;
 	long iterations;
 	bool sched_fifo;
 	bool sched_rr;
@@ -275,7 +275,7 @@ static int prog_init(struct prog_data *prog)
 	struct sockaddr_in serv_addr = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
-		.sin_port = htons(prog->port),
+		.sin_port = htons(prog->stats_port),
 	};
 	struct sigaction sa;
 	int sockopt = 1;
@@ -426,10 +426,10 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.optional = true,
 		}, {
 			.short_opt = "-P",
-			.long_opt = "--port",
+			.long_opt = "--stats-port",
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
-				.ptr = &prog->port,
+				.ptr = &prog->stats_port,
 			},
 			.optional = true,
 		}, {
@@ -488,8 +488,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -EINVAL;
 	}
 
-	if (!prog->port)
-		prog->port = ISOCHRON_STATS_PORT;
+	if (!prog->stats_port)
+		prog->stats_port = ISOCHRON_STATS_PORT;
 
 	/* Default to the old behavior, which was to allocate a 10 MiB
 	 * log buffer given a 56 byte size of struct isochron_rcv_pkt_data
