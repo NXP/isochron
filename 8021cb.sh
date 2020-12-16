@@ -77,12 +77,13 @@ eval $(echo my_vid=\$board${num}_vid)
 ip link set dev eno2 address ${my_mac}
 ip addr flush dev eno2 && ip addr add ${my_ip}/24 dev eno2
 
-sed -i -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
+sed -e "s|%BOARD1_MAC_ADDRESS%|${board1_mac_address}|g" \
 	-e "s|%BOARD2_MAC_ADDRESS%|${board2_mac_address}|g" \
 	-e "s|%BOARD3_MAC_ADDRESS%|${board3_mac_address}|g" \
 	-e "s|%BOARD1_VID%|${board1_vid}|g" \
 	-e "s|%BOARD2_VID%|${board2_vid}|g" \
 	-e "s|%BOARD3_VID%|${board3_vid}|g" \
+	${TOPDIR}/8021cb-board${num}.json.template > \
 	${TOPDIR}/8021cb-board${num}.json
 
 ${TOPDIR}/8021cb-load-config.sh -f ${TOPDIR}/8021cb-board${num}.json
