@@ -1,8 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
 #
-# This scripts adds local version information from the version
-# control systems git, mercurial (hg) and subversion (svn).
+# This scripts adds local version information from git.
 #
 # If something goes wrong, send a mail the kernel build mailinglist
 # (see MAINTAINERS) and CC Nico Schottelius
@@ -82,11 +81,6 @@ scm_version()
 			printf '%s' $exact_match
 		fi
 
-		# Is this git on svn?
-		if git config --get svn-remote.svn.url >/dev/null; then
-			printf -- '-svn%s' "$(git svn find-rev $head)"
-		fi
-
 		# Check for uncommitted changes.
 		# First, with git-status, but --no-optional-locks is only
 		# supported in git >= 2.14, so fall back to git-diff-index if
@@ -101,39 +95,6 @@ scm_version()
 		fi
 
 		# All done with git
-		return
-	fi
-
-	# Check for mercurial and a mercurial repo.
-	if test -d .hg && hgid=$(hg id 2>/dev/null); then
-		# Do we have an tagged version?  If so, latesttagdistance == 1
-		if [ "$(hg log -r . --template '{latesttagdistance}')" = "1" ]; then
-			id=$(hg log -r . --template '{latesttag}')
-			printf '%s%s' -hg "$id"
-		else
-			tag=$(printf '%s' "$hgid" | cut -d' ' -f2)
-			if [ -z "$tag" -o "$tag" = tip ]; then
-				id=$(printf '%s' "$hgid" | sed 's/[+ ].*//')
-				printf '%s%s' -hg "$id"
-			fi
-		fi
-
-		# Are there uncommitted changes?
-		# These are represented by + after the changeset id.
-		case "$hgid" in
-			*+|*+\ *) printf '%s' -dirty ;;
-		esac
-
-		# All done with mercurial
-		return
-	fi
-
-	# Check for svn and a svn repo.
-	if rev=$(LANG= LC_ALL= LC_MESSAGES=C svn info 2>/dev/null | grep '^Last Changed Rev'); then
-		rev=$(echo $rev | awk '{print $NF}')
-		printf -- '-svn%s' "$rev"
-
-		# All done with svn
 		return
 	fi
 }
