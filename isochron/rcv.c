@@ -343,7 +343,7 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (!prog->etype)
-		prog->etype = ETH_P_1588;
+		prog->etype = ETH_P_ISOCHRON;
 
 	/* Open PF_PACKET socket, listening for the specified EtherType */
 	prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));

@@ -353,7 +353,7 @@ static int prog_init(struct prog_data *prog)
 		memcpy(prog->src_mac, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
 
 	if (!prog->etype)
-		prog->etype = ETH_P_1588;
+		prog->etype = ETH_P_ISOCHRON;
 
 	if (prog->trace_mark) {
 		prog->trace_mark_fd = trace_mark_open();

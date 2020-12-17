@@ -39,7 +39,7 @@ struct isochron_header {
 }  __attribute__((packed));
 
 #define NSEC_PER_SEC	1000000000LL
-#define ETH_P_TSN	0x22F0		/* TSN (IEEE 1722) packet	*/
+#define ETH_P_ISOCHRON	0xdead
 
 #define TIMESPEC_BUFSIZ	32
 #define MACADDR_BUFSIZ	32
