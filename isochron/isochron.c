@@ -28,8 +28,10 @@ static int isochron_parse_args(int *argc, char ***argv,
 	char *prog_name;
 	char *prog_func;
 
-	if (*argc < 2)
+	if (*argc < 2) {
+		isochron_usage();
 		return -EINVAL;
+	}
 
 	prog_name = *argv[0];
 	(*argv)++;
@@ -45,6 +47,16 @@ static int isochron_parse_args(int *argc, char ***argv,
 	prog_func = (*argv)[0];
 	(*argv)++;
 	(*argc)--;
+
+	if (!strcmp(prog_func, "-V") || !strcmp(prog_func, "--version")) {
+		fprintf(stderr, "%s version %s\n", prog_name, VERSION);
+		return -EINVAL;
+	}
+
+	if (!strcmp(prog_func, "-h") || !strcmp(prog_func, "--help")) {
+		isochron_usage();
+		return -EINVAL;
+	}
 
 	if (strcmp(prog_func, "send") == 0) {
 		*func = ISOCHRON_SEND;
@@ -66,10 +78,8 @@ int main(int argc, char *argv[])
 	int rc;
 
 	rc = isochron_parse_args(&argc, &argv, &func);
-	if (rc) {
-		isochron_usage();
+	if (rc)
 		return -rc;
-	}
 
 	switch (func) {
 	case ISOCHRON_SEND:

@@ -1,3 +1,4 @@
 isochron/isochron
 trace.dat
 *.o
+.scmversion
