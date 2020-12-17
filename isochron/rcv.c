@@ -157,7 +157,7 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d\n",
+			fprintf(stderr, "sched_setattr returned %d: %s\n",
 				errno, strerror(errno));
 			return -errno;
 		}
@@ -249,7 +249,7 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d\n",
+			fprintf(stderr, "sched_setattr returned %d: %s\n",
 				errno, strerror(errno));
 			return -errno;
 		}

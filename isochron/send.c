@@ -228,7 +228,7 @@ static int run_nanosleep(struct prog_data *prog)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d\n",
+			fprintf(stderr, "sched_setattr returned %d: %s\n",
 				errno, strerror(errno));
 			return -errno;
 		}
@@ -273,7 +273,7 @@ static int run_nanosleep(struct prog_data *prog)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d\n",
+			fprintf(stderr, "sched_setattr returned %d: %s\n",
 				errno, strerror(errno));
 			return -errno;
 		}
