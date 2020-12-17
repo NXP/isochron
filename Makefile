@@ -1,4 +1,4 @@
-VERSION := $(shell ./setlocalversion --save-scmversion && cat .scmversion)
+VERSION := $(shell ./setlocalversion)
 CFLAGS := $(CFLAGS) -DVERSION=\"${VERSION}\"
 
 include isochron/Makefile
