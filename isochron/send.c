@@ -117,6 +117,10 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
 
+	/* Don't log if we're running indefinitely, there's no point */
+	if (!prog->iterations)
+		return;
+
 	hdr = (struct isochron_header *)(buf + prog->l2_header_len);
 
 	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
@@ -240,7 +244,7 @@ static int run_nanosleep(struct prog_data *prog)
 	fprintf(stderr, "%10s: %s\n", "Cycle time", cycle_time_buf);
 
 	/* Play nice with awk's array indexing */
-	for (i = 1; i <= prog->iterations; i++) {
+	for (i = 1; !prog->iterations || i <= prog->iterations; i++) {
 		struct timespec wakeup_ts = ns_to_timespec(wakeup);
 
 		rc = clock_nanosleep(prog->clkid, TIMER_ABSTIME,
@@ -313,8 +317,6 @@ static int prog_init(struct prog_data *prog)
 	int i, rc;
 
 	prog->clkid = CLOCK_REALTIME;
-	/* Convert negative logic from cmdline to positive */
-	prog->do_ts = !prog->do_ts;
 
 	/* Open RAW socket to send on */
 	prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
@@ -803,6 +805,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_ptr = {
 				.ptr = &prog->iterations,
 			},
+			.optional = true,
 		}, {
 			.short_opt = "-s",
 			.long_opt = "--frame-size",
@@ -958,6 +961,15 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->port)
 		prog->port = ISOCHRON_STATS_PORT;
+
+	/* Convert negative logic from cmdline to positive */
+	prog->do_ts = !prog->do_ts;
+
+	if (prog->do_ts && !prog->iterations) {
+		fprintf(stderr,
+			"cannot take timestamps if running indefinitely\n");
+		return -EINVAL;
+	}
 
 	return 0;
 }
