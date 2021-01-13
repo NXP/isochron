@@ -322,15 +322,15 @@ static int prog_init(struct prog_data *prog)
 	prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
 	if (prog->data_fd < 0) {
 		perror("socket");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto out;
 	}
 
 	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
-		close(prog->data_fd);
-		return rc;
+		goto out_close_data_fd;
 	}
 
 	/* Get the index of the interface to send on */
@@ -338,8 +338,8 @@ static int prog_init(struct prog_data *prog)
 	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
 	if (ioctl(prog->data_fd, SIOCGIFINDEX, &if_idx) < 0) {
 		perror("SIOCGIFINDEX");
-		close(prog->data_fd);
-		return rc;
+		rc = -errno;
+		goto out_close_data_fd;
 	}
 
 	/* Get the MAC address of the interface to send on */
@@ -347,8 +347,8 @@ static int prog_init(struct prog_data *prog)
 	strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
 	if (ioctl(prog->data_fd, SIOCGIFHWADDR, &if_mac) < 0) {
 		perror("SIOCGIFHWADDR");
-		close(prog->data_fd);
-		return rc;
+		rc = -errno;
+		goto out_close_data_fd;
 	}
 
 	if (!ether_addr_to_u64(prog->src_mac))
@@ -361,8 +361,8 @@ static int prog_init(struct prog_data *prog)
 		prog->trace_mark_fd = trace_mark_open();
 		if (prog->trace_mark_fd < 0) {
 			perror("trace_mark_open");
-			close(prog->data_fd);
-			return prog->trace_mark_fd;
+			rc = prog->trace_mark_fd;
+			goto out_close_data_fd;
 		}
 
 		memset(prog->tracebuf, ' ', TIME_FMT_LEN + 1);
@@ -401,8 +401,7 @@ static int prog_init(struct prog_data *prog)
 	rc = clock_gettime(prog->clkid, &now_ts);
 	if (rc < 0) {
 		perror("clock_gettime");
-		close(prog->data_fd);
-		return rc;
+		goto out_close_trace_mark_fd;
 	}
 
 	now = timespec_to_ns(&now_ts);
@@ -420,7 +419,7 @@ static int prog_init(struct prog_data *prog)
 	rc = isochron_log_init(&prog->log, prog->iterations *
 			       sizeof(struct isochron_send_pkt_data));
 	if (rc < 0)
-		return rc;
+		goto out_close_trace_mark_fd;
 
 	/* Prevent the process's virtual memory from being swapped out, by
 	 * locking all current and future pages
@@ -429,13 +428,13 @@ static int prog_init(struct prog_data *prog)
 	if (rc < 0) {
 		fprintf(stderr, "mlockall returned %d: %s\n",
 			errno, strerror(errno));
-		return rc;
+		goto out_log_teardown;
 	}
 
 	if (prog->do_ts) {
 		rc = sk_timestamping_init(prog->data_fd, prog->if_name, 1);
 		if (rc < 0)
-			return rc;
+			goto out_munlock;
 	}
 
 	i = sizeof(struct isochron_header) + prog->l2_header_len;
@@ -449,6 +448,17 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	return 0;
+out_munlock:
+	munlockall();
+out_log_teardown:
+	isochron_log_teardown(&prog->log);
+out_close_trace_mark_fd:
+	if (prog->trace_mark_fd)
+		close(prog->trace_mark_fd);
+out_close_data_fd:
+	close(prog->data_fd);
+out:
+	return rc;
 }
 
 static int prog_collect_rcv_stats(struct prog_data *prog,
@@ -715,10 +725,14 @@ static int prog_teardown(struct prog_data *prog)
 			isochron_send_log_print(&prog->log);
 	}
 
+	munlockall();
+
 	isochron_log_teardown(&prog->log);
 
 	if (prog->trace_mark)
 		trace_mark_close(prog->trace_mark_fd);
+
+	close(prog->data_fd);
 
 	return rc;
 }
