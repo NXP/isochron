@@ -260,6 +260,8 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 		}
 	}
 
+	free(parsed_arr);
+
 	return parsed;
 }
 
