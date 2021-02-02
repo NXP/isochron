@@ -45,6 +45,7 @@ struct prog_data {
 	__s64 shift_time;
 	__s64 cycle_time;
 	__s64 base_time;
+	__s64 window_size;
 	long priority;
 	long tx_len;
 	int data_fd;
@@ -846,6 +847,15 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ns = &prog->cycle_time,
 			},
 		}, {
+			.short_opt = "-w",
+			.long_opt = "--window-size",
+			.type = PROG_ARG_TIME,
+			.time = {
+				.clkid = CLOCK_REALTIME,
+				.ns = &prog->window_size,
+			},
+			.optional = true,
+		}, {
 			.short_opt = "-n",
 			.long_opt = "--num-frames",
 			.type = PROG_ARG_LONG,
@@ -978,10 +988,29 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	}
 
 	/* No point in leaving this one's default to zero, if we know that
-	 * means it will always be late for its gate event.
+	 * means it will always be late for its gate event. So set the implicit
+	 * advance time to be one full cycle early, but make sure to avoid
+	 * premature transmission by delaying with the window size. I.e.
+	 * don't send here:
+	 *
+	 *  base-time - cycle-time            base-time
+	 * |------|--------------------------|------|--------------------------|
+	 * ^<-------------------------------> window-size
+	 * | advance-time                     <---->
+	 * |
+	 * here
+	 *
+	 * but here:
+	 *
+	 *  base-time - cycle-time            base-time
+	 * |------|--------------------------|------|--------------------------|
+	 *        ^<------------------------> window-size
+	 *        | advance-time              <---->
+	 *        |
+	 *        here
 	 */
 	if (!prog->advance_time)
-		prog->advance_time = prog->cycle_time;
+		prog->advance_time = prog->cycle_time - prog->window_size;
 
 	if (prog->advance_time > prog->cycle_time) {
 		fprintf(stderr,
@@ -991,6 +1020,11 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (prog->shift_time > prog->cycle_time) {
 		fprintf(stderr,
 			"Shift time cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+	if (prog->window_size > prog->cycle_time) {
+		fprintf(stderr,
+			"Window size cannot be higher than cycle time\n");
 		return -EINVAL;
 	}
 
