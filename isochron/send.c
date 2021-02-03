@@ -461,6 +461,23 @@ out:
 	return rc;
 }
 
+/* With long cycle times, it is possible that the receiver might get the packet
+ * later than when we connect to it to retrieve logs (that's especially true
+ * when we have an out-of-band connection to the receiver, like through
+ * localhost). So let's wait for one full cycle-time for the receiver.
+ */
+static int wait_for_rcv_last_pkt(struct prog_data *prog)
+{
+	struct timespec interval_ts = ns_to_timespec(prog->cycle_time);
+	int rc;
+
+	do {
+		rc = clock_nanosleep(prog->clkid, 0, &interval_ts, NULL);
+	} while (rc == -EINTR);
+
+	return rc;
+}
+
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log)
 {
@@ -470,6 +487,10 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	};
 	int stats_fd;
 	int rc;
+
+	rc = wait_for_rcv_last_pkt(prog);
+	if (rc)
+		return rc;
 
 	rc = inet_pton(serv_addr.sin_family, prog->stats_srv_addr,
 		       &serv_addr.sin_addr);
