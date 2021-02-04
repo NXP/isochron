@@ -307,6 +307,9 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 	return base_time + (n + 1) * cycle_time;
 }
 
+static int prog_collect_rcv_stats(struct prog_data *prog,
+				  struct isochron_log *rcv_log);
+
 static int prog_init(struct prog_data *prog)
 {
 	char now_buf[TIMESPEC_BUFSIZ];
@@ -445,6 +448,15 @@ static int prog_init(struct prog_data *prog)
 		prog->sendbuf[i++] = 0xad;
 		prog->sendbuf[i++] = 0xbe;
 		prog->sendbuf[i++] = 0xef;
+	}
+
+	/* Drain potentially old packets from the isochron receiver */
+	if (strlen(prog->stats_srv_addr)) {
+		struct isochron_log rcv_log;
+
+		rc = prog_collect_rcv_stats(prog, &rcv_log);
+		if (!rc)
+			isochron_log_teardown(&rcv_log);
 	}
 
 	return 0;

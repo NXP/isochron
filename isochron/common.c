@@ -509,10 +509,12 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 		return rc;
 	}
 
-	if (buf_len <= 0) {
+	if (buf_len < 0) {
 		fprintf(stderr, "invalid buffer length: %d\n", buf_len);
 		return -ERANGE;
 	}
+	if (buf_len == 0)
+		return -ERANGE;
 
 	rc = isochron_log_init(log, buf_len);
 	if (rc)
