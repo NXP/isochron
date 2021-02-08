@@ -1,0 +1,212 @@
+From 02ec5ad4c558fc5a0b7046027566a698f5e6f2b5 Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Tue, 15 Sep 2020 03:14:00 +0300
+Subject: [PATCH 7/7] net: dsa: felix: implement port flushing on
+ .phylink_mac_link_down
+
+There are several issues which may be seen when the link goes down while
+forwarding traffic, all of which can be attributed to the fact that the
+port flushing procedure from the reference manual was not closely
+followed.
+
+With flow control enabled on both the ingress port and the egress port,
+it may happen when a link goes down that Ethernet packets are in flight.
+In flow control mode, frames are held back and not dropped. When there
+is enough traffic in flight (example: iperf3 TCP), then the ingress port
+might enter congestion and never exit that state. This is a problem,
+because it is the egress port's link that went down, and that has caused
+the inability of the ingress port to send packets to any other port.
+This is solved by flushing the egress port's queues when it goes down.
+
+There is also a problem when performing stream splitting for
+IEEE 802.1CB traffic (not yet upstream, but a sort of multicast,
+basically). There, if one port from the destination ports mask goes
+down, splitting the stream towards the other destinations will no longer
+be performed. This can be traced down to this line:
+
+	ocelot_port_writel(ocelot_port, 0, DEV_MAC_ENA_CFG);
+
+which should have been instead, as per the reference manual:
+
+	ocelot_port_rmwl(ocelot_port, 0, DEV_MAC_ENA_CFG_RX_ENA,
+			 DEV_MAC_ENA_CFG);
+
+Basically only DEV_MAC_ENA_CFG_RX_ENA should be disabled, but not
+DEV_MAC_ENA_CFG_TX_ENA - I don't have further insight into why that is
+the case, but apparently multicasting to several ports will cause issues
+if at least one of them doesn't have DEV_MAC_ENA_CFG_TX_ENA set.
+
+I am not sure what the state of the Ocelot VSC7514 driver is, but
+probably not as bad as Felix/Seville, since VSC7514 uses phylib and has
+the following in ocelot_adjust_link:
+
+	if (!phydev->link)
+		return;
+
+therefore the port is not really put down when the link is lost, unlike
+the DSA drivers which use .phylink_mac_link_down for that.
+
+Nonetheless, I put ocelot_port_flush() in the common ocelot.c because it
+needs to access some registers from drivers/net/ethernet/mscc/ocelot_rew.h
+which are not exported in include/soc/mscc/ and a bugfix patch should
+probably not move headers around.
+
+Fixes: bdeced75b13f ("net: dsa: felix: Add PCS operations for PHYLINK")
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+---
+ drivers/net/dsa/ocelot/felix.c     | 40 +++++++++++++++-------
+ drivers/net/ethernet/mscc/ocelot.c | 54 ++++++++++++++++++++++++++++++
+ include/soc/mscc/ocelot.h          |  1 +
+ 3 files changed, 82 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/net/dsa/ocelot/felix.c b/drivers/net/dsa/ocelot/felix.c
+index 32c5b4f663fe..7a1fc794b047 100644
+--- a/drivers/net/dsa/ocelot/felix.c
++++ b/drivers/net/dsa/ocelot/felix.c
+@@ -234,21 +234,9 @@ static void felix_phylink_mac_config(struct dsa_switch *ds, int port,
+ 				     const struct phylink_link_state *state)
+ {
+ 	struct ocelot *ocelot = ds->priv;
+-	struct ocelot_port *ocelot_port = ocelot->ports[port];
+ 	struct felix *felix = ocelot_to_felix(ocelot);
+ 	u32 mac_fc_cfg;
+ 
+-	/* Take port out of reset by clearing the MAC_TX_RST, MAC_RX_RST and
+-	 * PORT_RST bits in DEV_CLOCK_CFG. Note that the way this system is
+-	 * integrated is that the MAC speed is fixed and it's the PCS who is
+-	 * performing the rate adaptation, so we have to write "1000Mbps" into
+-	 * the LINK_SPEED field of DEV_CLOCK_CFG (which is also its default
+-	 * value).
+-	 */
+-	ocelot_port_writel(ocelot_port,
+-			   DEV_CLOCK_CFG_LINK_SPEED(OCELOT_SPEED_1000),
+-			   DEV_CLOCK_CFG);
+-
+ 	switch (state->speed) {
+ 	case SPEED_10:
+ 		mac_fc_cfg = SYS_MAC_FC_CFG_FC_LINK_SPEED(3);
+@@ -301,10 +289,25 @@ static void felix_phylink_mac_link_down(struct dsa_switch *ds, int port,
+ {
+ 	struct ocelot *ocelot = ds->priv;
+ 	struct ocelot_port *ocelot_port = ocelot->ports[port];
++	int err;
++
++	ocelot_port_rmwl(ocelot_port, 0, DEV_MAC_ENA_CFG_RX_ENA,
++			 DEV_MAC_ENA_CFG);
+ 
+-	ocelot_port_writel(ocelot_port, 0, DEV_MAC_ENA_CFG);
+ 	ocelot_rmw_rix(ocelot, 0, QSYS_SWITCH_PORT_MODE_PORT_ENA,
+ 		       QSYS_SWITCH_PORT_MODE, port);
++
++	err = ocelot_port_flush(ocelot, port);
++	if (err)
++		dev_err(ocelot->dev, "failed to flush port %d: %d\n",
++			port, err);
++
++	/* Put the port in reset. */
++	ocelot_port_writel(ocelot_port,
++			   DEV_CLOCK_CFG_MAC_TX_RST |
++			   DEV_CLOCK_CFG_MAC_RX_RST |
++			   DEV_CLOCK_CFG_LINK_SPEED(OCELOT_SPEED_1000),
++			   DEV_CLOCK_CFG);
+ }
+ 
+ static void felix_phylink_mac_link_up(struct dsa_switch *ds, int port,
+@@ -332,6 +335,17 @@ static void felix_phylink_mac_link_up(struct dsa_switch *ds, int port,
+ 			 QSYS_SWITCH_PORT_MODE_SCH_NEXT_CFG(1) |
+ 			 QSYS_SWITCH_PORT_MODE_PORT_ENA,
+ 			 QSYS_SWITCH_PORT_MODE, port);
++
++	/* Take port out of reset by clearing the MAC_TX_RST, MAC_RX_RST and
++	 * PORT_RST bits in DEV_CLOCK_CFG. Note that the way this system is
++	 * integrated is that the MAC speed is fixed and it's the PCS who is
++	 * performing the rate adaptation, so we have to write "1000Mbps" into
++	 * the LINK_SPEED field of DEV_CLOCK_CFG (which is also its default
++	 * value).
++	 */
++	ocelot_port_writel(ocelot_port,
++			   DEV_CLOCK_CFG_LINK_SPEED(OCELOT_SPEED_1000),
++			   DEV_CLOCK_CFG);
+ }
+ 
+ static void felix_port_qos_map_init(struct ocelot *ocelot, int port, int num_tc)
+diff --git a/drivers/net/ethernet/mscc/ocelot.c b/drivers/net/ethernet/mscc/ocelot.c
+index f75c8d56f0a2..5476565b1c25 100644
+--- a/drivers/net/ethernet/mscc/ocelot.c
++++ b/drivers/net/ethernet/mscc/ocelot.c
+@@ -478,6 +478,60 @@ static u16 ocelot_wm_enc(u16 value)
+ 	return value;
+ }
+ 
++static inline u32 ocelot_read_eq_avail(struct ocelot *ocelot, int port)
++{
++	return ocelot_read_rix(ocelot, QSYS_SW_STATUS, port);
++}
++
++int ocelot_port_flush(struct ocelot *ocelot, int port)
++{
++	int err, val;
++
++	/* Disable dequeuing from the egress queues */
++	ocelot_rmw_rix(ocelot, QSYS_PORT_MODE_DEQUEUE_DIS,
++		       QSYS_PORT_MODE_DEQUEUE_DIS,
++		       QSYS_PORT_MODE, port);
++
++	/* Disable flow control */
++	ocelot_rmw_rix(ocelot, 0, SYS_PAUSE_CFG_PAUSE_ENA, SYS_PAUSE_CFG, port);
++
++	/* Disable priority flow control */
++	ocelot_rmw_rix(ocelot, 0, QSYS_SWITCH_PORT_MODE_TX_PFC_ENA_M,
++		       QSYS_SWITCH_PORT_MODE, port);
++
++	/* Wait at least the time it takes to receive a frame of maximum length
++	 * at the port.
++	 * Worst-case delays for 10 kilobyte jumbo frames are:
++	 * 8 ms on a 10M port
++	 * 800 μs on a 100M port
++	 * 80 μs on a 1G port
++	 * 32 μs on a 2.5G port
++	 */
++	usleep_range(8000, 10000);
++
++	/* Disable half duplex backpressure. */
++	ocelot_rmw_rix(ocelot, 0, SYS_FRONT_PORT_MODE_HDX_MODE,
++		       SYS_FRONT_PORT_MODE, port);
++
++	/* Flush the queues associated with the port. */
++	ocelot_rmw_gix(ocelot, REW_PORT_CFG_FLUSH_ENA, REW_PORT_CFG_FLUSH_ENA,
++		       REW_PORT_CFG, port);
++
++	/* Enable dequeuing from the egress queues. */
++	ocelot_rmw_rix(ocelot, 0, QSYS_PORT_MODE_DEQUEUE_DIS, QSYS_PORT_MODE,
++		       port);
++
++	/* Wait until flushing is complete. */
++	err = read_poll_timeout(ocelot_read_eq_avail, val, !val,
++				100, 2000000, false, ocelot, port);
++
++	/* Clear flushing again. */
++	ocelot_rmw_gix(ocelot, 0, REW_PORT_CFG_FLUSH_ENA, REW_PORT_CFG, port);
++
++	return err;
++}
++EXPORT_SYMBOL(ocelot_port_flush);
++
+ void ocelot_adjust_link(struct ocelot *ocelot, int port,
+ 			struct phy_device *phydev)
+ {
+diff --git a/include/soc/mscc/ocelot.h b/include/soc/mscc/ocelot.h
+index 1e2a10117e3e..1df1ef2be3fa 100644
+--- a/include/soc/mscc/ocelot.h
++++ b/include/soc/mscc/ocelot.h
+@@ -692,6 +692,7 @@ int ocelot_get_sset_count(struct ocelot *ocelot, int port, int sset);
+ int ocelot_get_ts_info(struct ocelot *ocelot, int port,
+ 		       struct ethtool_ts_info *info);
+ void ocelot_set_ageing_time(struct ocelot *ocelot, unsigned int msecs);
++int ocelot_port_flush(struct ocelot *ocelot, int port);
+ void ocelot_adjust_link(struct ocelot *ocelot, int port,
+ 			struct phy_device *phydev);
+ void ocelot_port_vlan_filtering(struct ocelot *ocelot, int port,
+-- 
+2.25.1
+

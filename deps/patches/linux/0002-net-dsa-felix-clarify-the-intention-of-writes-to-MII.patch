@@ -1,0 +1,74 @@
+From d6c04213d4ec843c5d676729872b908d1b2d7d6d Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Sun, 5 Jul 2020 19:16:21 +0300
+Subject: [PATCH 2/7] net: dsa: felix: clarify the intention of writes to
+ MII_BMCR
+
+The driver appears to write to BMCR_SPEED and BMCR_DUPLEX, fields which
+are read-only, since they are actually configured through the
+vendor-specific IF_MODE (0x14) register.
+
+But the reason we're writing back the read-only values of MII_BMCR is to
+alter these writable fields:
+
+BMCR_RESET
+BMCR_LOOPBACK
+BMCR_ANENABLE
+BMCR_PDOWN
+BMCR_ISOLATE
+BMCR_ANRESTART
+
+In particular, the only field which is really relevant to this driver is
+BMCR_ANENABLE. Clarify that intention by spelling it out, using
+phy_set_bits and phy_clear_bits.
+
+The driver also made a few writes to BMCR_RESET and BMCR_ANRESTART which
+are unnecessary and may temporarily disrupt the link to the PHY. Remove
+them.
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+Reviewed-by: Florian Fainelli <f.fainelli@gmail.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+ drivers/net/dsa/ocelot/felix_vsc9959.c | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/dsa/ocelot/felix_vsc9959.c b/drivers/net/dsa/ocelot/felix_vsc9959.c
+index bc929d2e044c..7e59c88ee2f1 100644
+--- a/drivers/net/dsa/ocelot/felix_vsc9959.c
++++ b/drivers/net/dsa/ocelot/felix_vsc9959.c
+@@ -1024,7 +1024,7 @@ static void vsc9959_pcs_init_sgmii(struct phy_device *pcs,
+ 		phy_write(pcs, ENETC_PCS_LINK_TIMER2,
+ 			  ENETC_PCS_LINK_TIMER2_VAL);
+ 
+-		phy_write(pcs, MII_BMCR, BMCR_ANRESTART | BMCR_ANENABLE);
++		phy_set_bits(pcs, MII_BMCR, BMCR_ANENABLE);
+ 	} else {
+ 		int speed;
+ 
+@@ -1054,10 +1054,7 @@ static void vsc9959_pcs_init_sgmii(struct phy_device *pcs,
+ 			  ENETC_PCS_IF_MODE_SGMII_EN |
+ 			  ENETC_PCS_IF_MODE_SGMII_SPEED(speed));
+ 
+-		/* Yes, not a mistake: speed is given by IF_MODE. */
+-		phy_write(pcs, MII_BMCR, BMCR_RESET |
+-					 BMCR_SPEED1000 |
+-					 BMCR_FULLDPLX);
++		phy_clear_bits(pcs, MII_BMCR, BMCR_ANENABLE);
+ 	}
+ }
+ 
+@@ -1091,9 +1088,7 @@ static void vsc9959_pcs_init_2500basex(struct phy_device *pcs,
+ 		  ENETC_PCS_IF_MODE_SGMII_EN |
+ 		  ENETC_PCS_IF_MODE_SGMII_SPEED(ENETC_PCS_SPEED_2500));
+ 
+-	phy_write(pcs, MII_BMCR, BMCR_SPEED1000 |
+-				 BMCR_FULLDPLX |
+-				 BMCR_RESET);
++	phy_clear_bits(pcs, MII_BMCR, BMCR_ANENABLE);
+ }
+ 
+ static void vsc9959_pcs_init_usxgmii(struct phy_device *pcs,
+-- 
+2.25.1
+

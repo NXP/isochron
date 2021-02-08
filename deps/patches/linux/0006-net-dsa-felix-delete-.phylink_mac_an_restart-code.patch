@@ -1,0 +1,149 @@
+From 0100ec975f8bc2668a6b51448c601a98b01069ab Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Sun, 5 Jul 2020 19:16:25 +0300
+Subject: [PATCH 6/7] net: dsa: felix: delete .phylink_mac_an_restart code
+
+Phylink uses the .mac_an_restart method to offer the user an
+implementation of the "ethtool -r" behavior, when the media-side auto
+negotiation can be restarted by the local MAC PCS. This is the case for
+fiber modes 1000Base-X and 2500Base-X (IEEE clause 37) that don't have
+an Ethernet PHY connected locally, and the media is connected to the MAC
+PCS directly.
+
+On the other hand, the Cisco SGMII and USXGMII standards also have an
+auto negotiation mechanism based on IEEE 802.3 clause 37 (their
+respective specs require a MAC PCS and a PHY PCS to implement the same
+state machine, which is described in IEEE 802.3 "Auto-Negotiation Figure
+37-6"), so the ability to restart auto-negotiation is intrinsically
+symmetrical (the MAC PCS can do it too).
+
+However, it appears that not all SGMII/USXGMII PHYs have logic to
+restart the MDI-side auto-negotiation process when they detect a
+transition of the SGMII link from data mode to configuration mode.
+Some do (VSC8234) and some don't (AR8033, MV88E1111). IEEE and/or Cisco
+specification wordings to not help to prove whether propagating the "AN
+restart" event from MII side ("mr_restart_an") to MDI side
+("mr_restart_negotiation") is required behavior - neither of them
+specifies any mandatory interaction between the clause 37 AN state
+machine from Figure 37-6 and the clause 28 AN state machine from Figure
+28-18.
+
+Therefore, even if a certain behavior could be proven as being required,
+real-life SGMII/USXGMII PHYs are inconsistent enough that a clause 37 AN
+restart cannot be used by phylink to reliably trigger a media-side
+renegotiation, when the user requests it via ethtool.
+
+The only remaining use that the .mac_an_restart callback might possibly
+have, given what we know now, is to implement some silicon quirks, but
+so far that has proven to not be necessary.
+
+So remove this code for now, since it never gets called and we don't
+foresee any circumstance in which it might be, either.
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+Reviewed-by: Florian Fainelli <f.fainelli@gmail.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+ drivers/net/dsa/ocelot/felix.c         | 10 -------
+ drivers/net/dsa/ocelot/felix.h         |  1 -
+ drivers/net/dsa/ocelot/felix_vsc9959.c | 37 --------------------------
+ 3 files changed, 48 deletions(-)
+
+diff --git a/drivers/net/dsa/ocelot/felix.c b/drivers/net/dsa/ocelot/felix.c
+index 4ffc398cbb7c..32c5b4f663fe 100644
+--- a/drivers/net/dsa/ocelot/felix.c
++++ b/drivers/net/dsa/ocelot/felix.c
+@@ -295,15 +295,6 @@ static void felix_phylink_mac_config(struct dsa_switch *ds, int port,
+ 						  state->speed);
+ }
+ 
+-static void felix_phylink_mac_an_restart(struct dsa_switch *ds, int port)
+-{
+-	struct ocelot *ocelot = ds->priv;
+-	struct felix *felix = ocelot_to_felix(ocelot);
+-
+-	if (felix->info->pcs_an_restart)
+-		felix->info->pcs_an_restart(ocelot, port);
+-}
+-
+ static void felix_phylink_mac_link_down(struct dsa_switch *ds, int port,
+ 					unsigned int link_an_mode,
+ 					phy_interface_t interface)
+@@ -939,7 +930,6 @@ static struct dsa_switch_ops felix_switch_ops = {
+ 	.phylink_validate	= felix_phylink_validate,
+ 	.phylink_mac_link_state	= felix_phylink_mac_pcs_get_state,
+ 	.phylink_mac_config	= felix_phylink_mac_config,
+-	.phylink_mac_an_restart	= felix_phylink_mac_an_restart,
+ 	.phylink_mac_link_down	= felix_phylink_mac_link_down,
+ 	.phylink_mac_link_up	= felix_phylink_mac_link_up,
+ 	.port_enable		= felix_port_enable,
+diff --git a/drivers/net/dsa/ocelot/felix.h b/drivers/net/dsa/ocelot/felix.h
+index 848d09d0a442..4e1eb078a0dd 100644
+--- a/drivers/net/dsa/ocelot/felix.h
++++ b/drivers/net/dsa/ocelot/felix.h
+@@ -29,7 +29,6 @@ struct felix_info {
+ 	void	(*pcs_init)(struct ocelot *ocelot, int port,
+ 			    unsigned int link_an_mode,
+ 			    const struct phylink_link_state *state);
+-	void	(*pcs_an_restart)(struct ocelot *ocelot, int port);
+ 	void	(*pcs_link_state)(struct ocelot *ocelot, int port,
+ 				  struct phylink_link_state *state);
+ 	int	(*prevalidate_phy_mode)(struct ocelot *ocelot, int port,
+diff --git a/drivers/net/dsa/ocelot/felix_vsc9959.c b/drivers/net/dsa/ocelot/felix_vsc9959.c
+index e1ca33177d93..0c8bb846bbcf 100644
+--- a/drivers/net/dsa/ocelot/felix_vsc9959.c
++++ b/drivers/net/dsa/ocelot/felix_vsc9959.c
+@@ -943,42 +943,6 @@ static int vsc9959_reset(struct ocelot *ocelot)
+ 	return 0;
+ }
+ 
+-static void vsc9959_pcs_an_restart_sgmii(struct phy_device *pcs)
+-{
+-	phy_set_bits(pcs, MII_BMCR, BMCR_ANRESTART);
+-}
+-
+-static void vsc9959_pcs_an_restart_usxgmii(struct phy_device *pcs)
+-{
+-	phy_write_mmd(pcs, MDIO_MMD_VEND2, MII_BMCR,
+-		      USXGMII_BMCR_RESET |
+-		      USXGMII_BMCR_AN_EN |
+-		      USXGMII_BMCR_RST_AN);
+-}
+-
+-static void vsc9959_pcs_an_restart(struct ocelot *ocelot, int port)
+-{
+-	struct felix *felix = ocelot_to_felix(ocelot);
+-	struct phy_device *pcs = felix->pcs[port];
+-
+-	if (!pcs)
+-		return;
+-
+-	switch (pcs->interface) {
+-	case PHY_INTERFACE_MODE_SGMII:
+-	case PHY_INTERFACE_MODE_QSGMII:
+-		vsc9959_pcs_an_restart_sgmii(pcs);
+-		break;
+-	case PHY_INTERFACE_MODE_USXGMII:
+-		vsc9959_pcs_an_restart_usxgmii(pcs);
+-		break;
+-	default:
+-		dev_err(ocelot->dev, "Invalid PCS interface type %s\n",
+-			phy_modes(pcs->interface));
+-		break;
+-	}
+-}
+-
+ /* We enable SGMII AN only when the PHY has managed = "in-band-status" in the
+  * device tree. If we are in MLO_AN_PHY mode, we program directly state->speed
+  * into the PCS, which is retrieved out-of-band over MDIO. This also has the
+@@ -1701,7 +1665,6 @@ struct felix_info felix_info_vsc9959 = {
+ 	.mdio_bus_alloc		= vsc9959_mdio_bus_alloc,
+ 	.mdio_bus_free		= vsc9959_mdio_bus_free,
+ 	.pcs_init		= vsc9959_pcs_init,
+-	.pcs_an_restart		= vsc9959_pcs_an_restart,
+ 	.pcs_link_state		= vsc9959_pcs_link_state,
+ 	.prevalidate_phy_mode	= vsc9959_prevalidate_phy_mode,
+ 	.port_setup_tc          = vsc9959_port_setup_tc,
+-- 
+2.25.1
+

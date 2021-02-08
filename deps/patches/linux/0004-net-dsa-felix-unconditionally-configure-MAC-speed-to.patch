@@ -1,0 +1,50 @@
+From c8ebb74675c8d2fc9bec8a35420a1cdac90b400f Mon Sep 17 00:00:00 2001
+From: Vladimir Oltean <vladimir.oltean@nxp.com>
+Date: Sun, 5 Jul 2020 19:16:23 +0300
+Subject: [PATCH 4/7] net: dsa: felix: unconditionally configure MAC speed to
+ 1000Mbps
+
+In VSC9959, the PCS is the one who performs rate adaptation (symbol
+duplication) to the speed negotiated by the PHY. The MAC is unaware of
+that and must remain configured for gigabit. If it is configured at
+OCELOT_SPEED_10 or OCELOT_SPEED_100, it'll start transmitting PAUSE
+frames out of control and never recover, _even if_ we then reconfigure
+it at OCELOT_SPEED_1000 afterwards.
+
+This patch fixes a bug that luckily did not have any functional impact.
+We were writing 10, 100, 1000 etc into this 2-bit field in
+DEV_CLOCK_CFG, but the hardware expects values in the range 0, 1, 2, 3.
+So all speed values were getting truncated to 0, which is
+OCELOT_SPEED_2500, and which also appears to be fine.
+
+Signed-off-by: Vladimir Oltean <vladimir.oltean@nxp.com>
+Reviewed-by: Florian Fainelli <f.fainelli@gmail.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+ drivers/net/dsa/ocelot/felix.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/dsa/ocelot/felix.c b/drivers/net/dsa/ocelot/felix.c
+index 25ff585fb6e1..8a6df22b891d 100644
+--- a/drivers/net/dsa/ocelot/felix.c
++++ b/drivers/net/dsa/ocelot/felix.c
+@@ -239,9 +239,14 @@ static void felix_phylink_mac_config(struct dsa_switch *ds, int port,
+ 	u32 mac_fc_cfg;
+ 
+ 	/* Take port out of reset by clearing the MAC_TX_RST, MAC_RX_RST and
+-	 * PORT_RST bits in CLOCK_CFG
++	 * PORT_RST bits in DEV_CLOCK_CFG. Note that the way this system is
++	 * integrated is that the MAC speed is fixed and it's the PCS who is
++	 * performing the rate adaptation, so we have to write "1000Mbps" into
++	 * the LINK_SPEED field of DEV_CLOCK_CFG (which is also its default
++	 * value).
+ 	 */
+-	ocelot_port_writel(ocelot_port, DEV_CLOCK_CFG_LINK_SPEED(state->speed),
++	ocelot_port_writel(ocelot_port,
++			   DEV_CLOCK_CFG_LINK_SPEED(OCELOT_SPEED_1000),
+ 			   DEV_CLOCK_CFG);
+ 
+ 	/* Flow control. Link speed is only used here to evaluate the time
+-- 
+2.25.1
+
