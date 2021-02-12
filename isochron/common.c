@@ -247,8 +247,11 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 			/* Success, stop searching */
 			break;
 		}
-		if (i == prog_args_size)
-			break;
+		if (i == prog_args_size) {
+			fprintf(stderr, "Unrecognized option %s\n", arg);
+			free(parsed_arr);
+			return -EINVAL;
+		}
 	}
 
 	for (i = 0; i < prog_args_size; i++) {
