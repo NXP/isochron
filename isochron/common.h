@@ -32,6 +32,35 @@ static inline int sched_setattr(pid_t pid, const struct sched_attr *attr,
 	return syscall(SYS_sched_setattr, pid, attr, flags);
 }
 
+#ifndef SO_TXTIME
+#define SO_TXTIME		61
+#define SCM_TXTIME		SO_TXTIME
+
+#ifndef PACKET_TX_TIMESTAMP
+#define PACKET_TX_TIMESTAMP		16
+#endif
+
+struct sock_txtime {
+	clockid_t clockid;
+	uint16_t flags;
+};
+
+enum txtime_flags {
+	SOF_TXTIME_DEADLINE_MODE = (1 << 0),
+	SOF_TXTIME_REPORT_ERRORS = (1 << 1),
+
+	SOF_TXTIME_FLAGS_LAST = SOF_TXTIME_REPORT_ERRORS,
+	SOF_TXTIME_FLAGS_MASK = (SOF_TXTIME_FLAGS_LAST - 1) |
+				 SOF_TXTIME_FLAGS_LAST
+};
+#endif
+
+#ifndef SO_EE_ORIGIN_TXTIME
+#define SO_EE_ORIGIN_TXTIME		6
+#define SO_EE_CODE_TXTIME_INVALID_PARAM	1
+#define SO_EE_CODE_TXTIME_MISSED	2
+#endif
+
 struct isochron_header {
 	__s64			tx_time;
 	__s64			wakeup;

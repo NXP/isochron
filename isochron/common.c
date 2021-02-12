@@ -8,6 +8,7 @@
 #include <linux/net_tstamp.h>
 #include <netinet/ether.h>
 #include <linux/sockios.h>
+#include <linux/errqueue.h>
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
@@ -439,14 +440,57 @@ int sk_receive(int fd, void *buf, int buflen, struct timestamp *tstamp,
 			}
 			ts = (struct timespec *) CMSG_DATA(cm);
 			tstamp->hw = ts[2];
-		}
-		if (level == SOL_SOCKET && type == SO_TIMESTAMPNS) {
+		} else if (level == SOL_SOCKET && type == SO_TIMESTAMPNS) {
 			if (cm->cmsg_len < sizeof(*ts)) {
 				fprintf(stderr, "short SO_TIMESTAMPNS message\n");
 				return -1;
 			}
 			ts = (struct timespec *) CMSG_DATA(cm);
 			tstamp->sw = ts[0];
+		} else if (level == SOL_PACKET && type == PACKET_TX_TIMESTAMP) {
+			struct sock_extended_err *sock_err;
+			char txtime_buf[TIMESPEC_BUFSIZ];
+			__u64 txtime;
+
+			sock_err = (struct sock_extended_err *)CMSG_DATA(cm);
+			if (!sock_err)
+				continue;
+
+			switch (sock_err->ee_origin) {
+			case SO_EE_ORIGIN_TIMESTAMPING:
+				/* Normal cmsg received for TX timestamping */
+				break;
+			case SO_EE_ORIGIN_TXTIME:
+				txtime = ((__u64)sock_err->ee_data << 32) +
+					 sock_err->ee_info;
+				ns_sprintf(txtime_buf, txtime);
+
+				switch (sock_err->ee_code) {
+				case SO_EE_CODE_TXTIME_INVALID_PARAM:
+					fprintf(stderr,
+						"packet with txtime %s dropped due to invalid params\n",
+						txtime_buf);
+					return -1;
+				case SO_EE_CODE_TXTIME_MISSED:
+					fprintf(stderr,
+						"packet with txtime %s dropped due to missed deadline\n",
+						txtime_buf);
+					return -1;
+				default:
+					return -1;
+				}
+				break;
+			default:
+				fprintf(stderr,
+					"unknown socket error %d, origin %d code %d: %s\n",
+					sock_err->ee_errno, sock_err->ee_origin,
+					sock_err->ee_code,
+					strerror(sock_err->ee_errno));
+				break;
+			}
+		} else {
+			fprintf(stderr, "unknown cmsg level %d type %d\n",
+				level, type);
 		}
 	}
 

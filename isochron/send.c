@@ -26,6 +26,7 @@
 #include <time.h>
 #include <math.h>
 #include "common.h"
+#include <linux/net_tstamp.h>
 
 #define BUF_SIZ		10000
 #define TIME_FMT_LEN	27 /* "[%s] " */
@@ -35,6 +36,10 @@ struct prog_data {
 	__u8 src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
+	struct cmsghdr *cmsg;
+	struct iovec iov;
+	struct msghdr msg;
+	char msg_control[CMSG_SPACE(sizeof(__s64))];
 	char stats_srv_addr[INET6_ADDRSTRLEN];
 	struct sockaddr_ll socket_address;
 	struct isochron_log log;
@@ -59,6 +64,8 @@ struct prog_data {
 	char tracebuf[BUF_SIZ];
 	long port;
 	bool taprio;
+	bool txtime;
+	bool deadline;
 	bool do_vlan;
 	int l2_header_len;
 	bool sched_fifo;
@@ -152,12 +159,15 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 	hdr->wakeup = __cpu_to_be64(now);
 	hdr->seqid = __cpu_to_be32(iteration);
 
+	if (prog->txtime)
+		*((__u64 *)CMSG_DATA(prog->cmsg)) = (__u64)(scheduled);
+
 	/* Send packet */
-	rc = sendto(prog->data_fd, prog->sendbuf, prog->tx_len, 0,
-		    (const struct sockaddr *)&prog->socket_address,
-		    sizeof(struct sockaddr_ll));
+	rc = sendmsg(prog->data_fd, &prog->msg, 0);
 	if (rc < 0) {
-		perror("send\n");
+		perror("sendmsg");
+		sk_receive(prog->data_fd, err_pkt, BUF_SIZ, NULL,
+			   MSG_ERRQUEUE, 0);
 		return rc;
 	}
 
@@ -342,6 +352,23 @@ static int prog_init(struct prog_data *prog)
 		goto out_close_data_fd;
 	}
 
+	if (prog->txtime) {
+		static struct sock_txtime sk_txtime = {
+			.clockid = CLOCK_TAI,
+			.flags = SOF_TXTIME_REPORT_ERRORS,
+		};
+
+		if (prog->deadline)
+			sk_txtime.flags |= SOF_TXTIME_DEADLINE_MODE;
+
+		rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_TXTIME,
+				&sk_txtime, sizeof(sk_txtime));
+		if (rc) {
+			perror("setsockopt");
+			goto out_close_data_fd;
+		}
+	}
+
 	/* Get the index of the interface to send on */
 	memset(&if_idx, 0, sizeof(struct ifreq));
 	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
@@ -453,6 +480,25 @@ static int prog_init(struct prog_data *prog)
 		prog->sendbuf[i++] = 0xad;
 		prog->sendbuf[i++] = 0xbe;
 		prog->sendbuf[i++] = 0xef;
+	}
+
+	prog->iov.iov_base = prog->sendbuf;
+	prog->iov.iov_len = prog->tx_len;
+
+	memset(&prog->msg, 0, sizeof(prog->msg));
+	prog->msg.msg_name = (struct sockaddr *)&prog->socket_address;
+	prog->msg.msg_namelen = sizeof(struct sockaddr_ll);
+	prog->msg.msg_iov = &prog->iov;
+	prog->msg.msg_iovlen = 1;
+
+	if (prog->txtime) {
+		prog->msg.msg_control = prog->msg_control;
+		prog->msg.msg_controllen = sizeof(prog->msg_control);
+
+		prog->cmsg = CMSG_FIRSTHDR(&prog->msg);
+		prog->cmsg->cmsg_level = SOL_SOCKET;
+		prog->cmsg->cmsg_type = SCM_TXTIME;
+		prog->cmsg->cmsg_len = CMSG_LEN(sizeof(__u64));
 	}
 
 	/* Drain potentially old packets from the isochron receiver */
@@ -585,7 +631,8 @@ static void isochron_process_stat(struct prog_data *prog,
 
 	entry->seqid = send_pkt->seqid;
 	entry->wakeup_to_hw_ts = send_pkt->hwts - send_pkt->wakeup;
-	/* When IEEE 802.1Qbv (tc-taprio offload) is enabled, we know that the
+	entry->hw_rx_deadline_delta = rcv_pkt->hwts - rcv_pkt->tx_time;
+	/* When tc-taprio or tc-etf offload is enabled, we know that the
 	 * MAC TX timestamp will be larger than the gate event, because the
 	 * application's schedule should be the same as the NIC's schedule.
 	 * The NIC will buffer that packet until the gate opens, something
@@ -600,10 +647,10 @@ static void isochron_process_stat(struct prog_data *prog,
 	 * budget, i.e. "how much we could still reduce the cycle time without
 	 * losing deadlines".
 	 */
-	if (prog->taprio)
-		entry->hw_rx_deadline_delta = rcv_pkt->hwts - rcv_pkt->tx_time;
+	if (prog->taprio || prog->txtime)
+		entry->latency_budget = send_pkt->hwts - send_pkt->tx_time;
 	else
-		entry->latency_budget = send_pkt->tx_time - rcv_pkt->hwts;
+		entry->latency_budget = send_pkt->tx_time - send_pkt->hwts;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
 						    prog->advance_time);
@@ -716,17 +763,20 @@ static void isochron_print_stats(struct prog_data *prog,
 				path_delay), "Path delay");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
-	if (prog->taprio)
+	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
+				hw_rx_deadline_delta), "HW RX deadline delta (TX time to HW RX timestamp)");
+	if (prog->taprio || prog->txtime)
 		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-					hw_rx_deadline_delta), "HW RX deadline delta");
+					latency_budget), "MAC latency (TX time to HW TX timestamp)");
 	else
 		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-					latency_budget), "Latency budget");
+					latency_budget), "Application latency budget (HW TX timestamp to TX time)");
+
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				wakeup_latency), "Wakeup latency");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				arrival_latency), "Arrival latency (HW RX timestamp to application)");
-	if (!prog->taprio)
+	if (!prog->taprio && !prog->txtime)
 		printf("HW TX deadline misses: %d (%.3lf%%)\n",
 		       stats.hw_tx_deadline_misses,
 		       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
@@ -936,6 +986,22 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			},
 			.optional = true,
 		}, {
+			.short_opt = "-x",
+			.long_opt = "--txtime",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->txtime,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-D",
+			.long_opt = "--deadline",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->deadline,
+			},
+			.optional = true,
+		}, {
 			.short_opt = "-H",
 			.long_opt = "--sched-priority",
 			.type = PROG_ARG_LONG,
@@ -994,6 +1060,17 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	} else {
 		prog->do_vlan = true;
 		prog->l2_header_len = sizeof(struct vlan_ethhdr);
+	}
+
+	if (prog->txtime && prog->taprio) {
+		fprintf(stderr,
+			"Cannot enable txtime and taprio mode at the same time\n");
+		return -EINVAL;
+	}
+
+	if (prog->deadline && !prog->txtime) {
+		fprintf(stderr, "Deadline mode supported only with txtime\n");
+		return -EINVAL;
 	}
 
 	/* No point in leaving this one's default to zero, if we know that
