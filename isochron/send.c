@@ -64,6 +64,7 @@ struct prog_data {
 	bool sched_fifo;
 	bool sched_rr;
 	long sched_priority;
+	long utc_tai_offset;
 };
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -79,7 +80,7 @@ static void trace(struct prog_data *prog, const char *fmt, ...)
 
 	clock_gettime(prog->clkid, &now_ts);
 	now = timespec_to_ns(&now_ts);
-	ns_sprintf(now_buf, utc_to_tai(now));
+	ns_sprintf(now_buf, now);
 	snprintf(prog->tracebuf, TIME_FMT_LEN + 1, "[%24s]  ", now_buf);
 
 	va_start(ap, fmt);
@@ -106,7 +107,8 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
 	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
 	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
-	send_pkt.swts = timespec_to_ns(&tstamp->sw);
+	send_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
+				   prog->utc_tai_offset);
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 
@@ -239,7 +241,7 @@ static int run_nanosleep(struct prog_data *prog)
 		}
 	}
 
-	ns_sprintf(base_time_buf, utc_to_tai(prog->base_time));
+	ns_sprintf(base_time_buf, prog->base_time);
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
 	fprintf(stderr, "%10s: %s\n", "Base time", base_time_buf);
 	fprintf(stderr, "%10s: %s\n", "Cycle time", cycle_time_buf);
@@ -323,7 +325,7 @@ static int prog_init(struct prog_data *prog)
 	__s64 now;
 	int i, rc;
 
-	prog->clkid = CLOCK_REALTIME;
+	prog->clkid = CLOCK_TAI;
 
 	/* Open RAW socket to send on */
 	prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
@@ -414,13 +416,12 @@ static int prog_init(struct prog_data *prog)
 	now = timespec_to_ns(&now_ts);
 	prog->base_time += prog->shift_time;
 	prog->base_time -= prog->advance_time;
-	prog->base_time = tai_to_utc(prog->base_time);
 
 	/* Make sure we get enough sleep at the beginning */
 	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
 					   now + NSEC_PER_SEC);
 
-	ns_sprintf(now_buf, utc_to_tai(now));
+	ns_sprintf(now_buf, now);
 	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
 	rc = isochron_log_init(&prog->log, prog->iterations *
@@ -558,8 +559,8 @@ static void isochron_process_stat(struct prog_data *prog,
 				  struct isochron_rcv_pkt_data *rcv_pkt,
 				  struct isochron_stats *stats)
 {
-	__s64 tx_ts_diff = send_pkt->hwts - utc_to_tai(send_pkt->swts);
-	__s64 rx_ts_diff = utc_to_tai(rcv_pkt->swts) - rcv_pkt->hwts;
+	__s64 tx_ts_diff = send_pkt->hwts - send_pkt->swts;
+	__s64 rx_ts_diff = rcv_pkt->swts - rcv_pkt->hwts;
 	struct isochron_stat_entry *entry;
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char tx_hwts_buf[TIMESPEC_BUFSIZ];
@@ -567,11 +568,11 @@ static void isochron_process_stat(struct prog_data *prog,
 	char arrival_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 
-	ns_sprintf(scheduled_buf, utc_to_tai(send_pkt->tx_time));
+	ns_sprintf(scheduled_buf, send_pkt->tx_time);
 	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
 	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
-	ns_sprintf(arrival_buf, utc_to_tai(rcv_pkt->arrival));
-	ns_sprintf(wakeup_buf, utc_to_tai(send_pkt->wakeup));
+	ns_sprintf(arrival_buf, rcv_pkt->arrival);
+	ns_sprintf(wakeup_buf, send_pkt->wakeup);
 
 	if (!prog->quiet)
 		printf("seqid %d gate %s wakeup %s tx %s rx %s arrival %s\n",
@@ -583,7 +584,7 @@ static void isochron_process_stat(struct prog_data *prog,
 		return;
 
 	entry->seqid = send_pkt->seqid;
-	entry->wakeup_to_hw_ts = send_pkt->hwts - utc_to_tai(send_pkt->wakeup);
+	entry->wakeup_to_hw_ts = send_pkt->hwts - send_pkt->wakeup;
 	/* When IEEE 802.1Qbv (tc-taprio offload) is enabled, we know that the
 	 * MAC TX timestamp will be larger than the gate event, because the
 	 * application's schedule should be the same as the NIC's schedule.
@@ -600,24 +601,20 @@ static void isochron_process_stat(struct prog_data *prog,
 	 * losing deadlines".
 	 */
 	if (prog->taprio)
-		entry->hw_rx_deadline_delta = rcv_pkt->hwts -
-					      utc_to_tai(rcv_pkt->tx_time);
+		entry->hw_rx_deadline_delta = rcv_pkt->hwts - rcv_pkt->tx_time;
 	else
-		entry->latency_budget = utc_to_tai(send_pkt->tx_time) -
-					rcv_pkt->hwts;
+		entry->latency_budget = send_pkt->tx_time - rcv_pkt->hwts;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
 						    prog->advance_time);
-	entry->arrival_latency = utc_to_tai(rcv_pkt->arrival) - rcv_pkt->hwts;
+	entry->arrival_latency = rcv_pkt->arrival - rcv_pkt->hwts;
 
-	if (send_pkt->hwts > utc_to_tai(send_pkt->tx_time))
+	if (send_pkt->hwts > send_pkt->tx_time)
 		stats->hw_tx_deadline_misses++;
 
 	stats->frame_count++;
-	stats->tx_sync_offset_mean += send_pkt->hwts -
-				      utc_to_tai(send_pkt->swts);
-	stats->rx_sync_offset_mean += rcv_pkt->hwts -
-				      utc_to_tai(rcv_pkt->swts);
+	stats->tx_sync_offset_mean += send_pkt->hwts - send_pkt->swts;
+	stats->rx_sync_offset_mean += rcv_pkt->hwts - rcv_pkt->swts;
 	stats->path_delay_mean += entry->path_delay;
 
 	LIST_INSERT_HEAD(&stats->entries, entry, list);
@@ -820,7 +817,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_opt = "--base-time",
 			.type = PROG_ARG_TIME,
 			.time = {
-				.clkid = CLOCK_REALTIME,
+				.clkid = CLOCK_TAI,
 				.ns = &prog->base_time,
 			},
 		}, {
@@ -828,7 +825,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_opt = "--advance-time",
 			.type = PROG_ARG_TIME,
 			.time = {
-				.clkid = CLOCK_REALTIME,
+				.clkid = CLOCK_TAI,
 				.ns = &prog->advance_time,
 			},
 			.optional = true,
@@ -837,7 +834,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_opt = "--shift-time",
 			.type = PROG_ARG_TIME,
 			.time = {
-				.clkid = CLOCK_REALTIME,
+				.clkid = CLOCK_TAI,
 				.ns = &prog->shift_time,
 			},
 			.optional = true,
@@ -846,7 +843,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_opt = "--cycle-time",
 			.type = PROG_ARG_TIME,
 			.time = {
-				.clkid = CLOCK_REALTIME,
+				.clkid = CLOCK_TAI,
 				.ns = &prog->cycle_time,
 			},
 		}, {
@@ -854,7 +851,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_opt = "--window-size",
 			.type = PROG_ARG_TIME,
 			.time = {
-				.clkid = CLOCK_REALTIME,
+				.clkid = CLOCK_TAI,
 				.ns = &prog->window_size,
 			},
 			.optional = true,
@@ -962,11 +959,20 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->sched_rr,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-O",
+			.long_opt = "--utc-tai-offset",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+			        .ptr = &prog->utc_tai_offset,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
 
 	prog->vid = -1;
+	prog->utc_tai_offset = -1;
 
 	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
 
@@ -1053,6 +1059,17 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		fprintf(stderr,
 			"cannot take timestamps if running indefinitely\n");
 		return -EINVAL;
+	}
+
+	if (prog->utc_tai_offset == -1) {
+		prog->utc_tai_offset = get_utc_tai_offset();
+		fprintf(stderr, "UTC-TAI offset is %d\n", prog->utc_tai_offset);
+	} else {
+		rc = set_utc_tai_offset(prog->utc_tai_offset);
+		if (rc == -1) {
+			perror("set_utc_tai_offset");
+			return -errno;
+		}
 	}
 
 	return 0;

@@ -39,6 +39,7 @@ struct prog_data {
 	bool sched_fifo;
 	bool sched_rr;
 	long sched_priority;
+	long utc_tai_offset;
 };
 
 int signal_received;
@@ -64,7 +65,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
 	rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
 	rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
-	rcv_pkt.swts = timespec_to_ns(&tstamp->sw);
+	rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
+				  prog->utc_tai_offset);
 
 	if (rcv_pkt.seqid > prog->iterations) {
 		if (!prog->quiet)
@@ -286,7 +288,7 @@ static int prog_init(struct prog_data *prog)
 	if (rc < 0)
 		return rc;
 
-	prog->clkid = CLOCK_REALTIME;
+	prog->clkid = CLOCK_TAI;
 	/* Convert negative logic from cmdline to positive */
 	prog->do_ts = !prog->do_ts;
 
@@ -464,9 +466,19 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			        .ptr = &prog->sched_rr,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-O",
+			.long_opt = "--utc-tai-offset",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+			        .ptr = &prog->utc_tai_offset,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
+
+	prog->utc_tai_offset = -1;
 
 	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
 
@@ -496,6 +508,17 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	 */
 	if (!prog->iterations)
 		prog->iterations = 187245;
+
+	if (prog->utc_tai_offset == -1) {
+		prog->utc_tai_offset = get_utc_tai_offset();
+		fprintf(stderr, "UTC-TAI offset is %d\n", prog->utc_tai_offset);
+	} else {
+		rc = set_utc_tai_offset(prog->utc_tai_offset);
+		if (rc == -1) {
+			perror("set_utc_tai_offset");
+			return -errno;
+		}
+	}
 
 	return 0;
 }

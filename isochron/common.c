@@ -14,6 +14,7 @@
 #include <linux/if.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
+#include <sys/timex.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -640,4 +641,26 @@ int trace_mark_open()
 void trace_mark_close(int fd)
 {
 	close(fd);
+}
+
+int set_utc_tai_offset(int offset)
+{
+	struct timex tx;
+
+	memset(&tx, 0, sizeof(tx));
+
+	tx.modes = ADJ_TAI;
+	tx.constant = offset;
+
+	return adjtimex(&tx);
+}
+
+int get_utc_tai_offset()
+{
+	struct timex tx;
+
+	memset(&tx, 0, sizeof(tx));
+
+	adjtimex(&tx);
+	return tx.tai;
 }

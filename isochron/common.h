@@ -255,18 +255,6 @@ struct timespec ns_to_timespec(__s64 ns);
 void mac_addr_sprintf(char *buf, __u8 *addr);
 void ns_sprintf(char *buf, __s64 ns);
 
-#define UTC_OFFSET 37
-
-static inline __s64 utc_to_tai(__s64 utc)
-{
-	return utc + UTC_OFFSET * NSEC_PER_SEC;
-}
-
-static inline __s64 tai_to_utc(__s64 tai)
-{
-	return tai - UTC_OFFSET * NSEC_PER_SEC;
-}
-
 /**
  * ether_addr_to_u64 - Convert an Ethernet address into a u64 value.
  * @addr: Pointer to a six-byte array containing the Ethernet address
@@ -286,5 +274,13 @@ static inline __u64 ether_addr_to_u64(const unsigned char *addr)
 
 int trace_mark_open();
 void trace_mark_close(int fd);
+
+int set_utc_tai_offset(int offset);
+int get_utc_tai_offset();
+
+static inline __s64 utc_to_tai(__s64 utc, __s64 offset)
+{
+	return utc + offset * NSEC_PER_SEC;
+}
 
 #endif
