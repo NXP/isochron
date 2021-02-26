@@ -284,6 +284,9 @@ static int run_nanosleep(struct prog_data *prog)
 		}
 	}
 
+	if (rc)
+		return rc;
+
 	return wait_for_txtimestamps(prog);
 }
 
