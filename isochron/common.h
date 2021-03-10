@@ -36,10 +36,6 @@ static inline int sched_setattr(pid_t pid, const struct sched_attr *attr,
 #define SO_TXTIME		61
 #define SCM_TXTIME		SO_TXTIME
 
-#ifndef PACKET_TX_TIMESTAMP
-#define PACKET_TX_TIMESTAMP		16
-#endif
-
 struct sock_txtime {
 	clockid_t clockid;
 	uint16_t flags;
@@ -53,6 +49,10 @@ enum txtime_flags {
 	SOF_TXTIME_FLAGS_MASK = (SOF_TXTIME_FLAGS_LAST - 1) |
 				 SOF_TXTIME_FLAGS_LAST
 };
+#endif
+
+#ifndef PACKET_TX_TIMESTAMP
+#define PACKET_TX_TIMESTAMP		16
 #endif
 
 #ifndef SO_EE_ORIGIN_TXTIME
