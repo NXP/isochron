@@ -76,8 +76,10 @@ struct isochron_header {
 #define TXTSTAMP_TIMEOUT_MS	10
 
 /* From include/uapi/linux/net_tstamp.h */
-#ifndef SOF_TIMESTAMPING_OPT_TX_SWHW
-#define SOF_TIMESTAMPING_OPT_TX_SWHW	(1<<14)
+#ifndef HAVE_TX_SWHW
+enum {
+	SOF_TIMESTAMPING_OPT_TX_SWHW = (1<<14),
+};
 #endif
 
 typedef _Bool		bool;
