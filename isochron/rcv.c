@@ -65,8 +65,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 
 		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 		rcv_pkt.etype = ntohs(eth_hdr->h_proto);
-		memcpy(rcv_pkt.smac, eth_hdr->h_source, ETH_ALEN);
-		memcpy(rcv_pkt.dmac, eth_hdr->h_dest, ETH_ALEN);
+		ether_addr_copy(rcv_pkt.smac, eth_hdr->h_source);
+		ether_addr_copy(rcv_pkt.dmac, eth_hdr->h_dest);
 		rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
 		rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
 		rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
@@ -108,7 +108,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 	mreq.mr_ifindex = if_index;
 	mreq.mr_type = PACKET_MR_MULTICAST;
 	mreq.mr_alen = ETH_ALEN;
-	memcpy(mreq.mr_address, macaddr, ETH_ALEN);
+	ether_addr_copy(mreq.mr_address, macaddr);
 
 	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
 	if (!rc)

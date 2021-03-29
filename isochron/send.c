@@ -455,7 +455,7 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (!ether_addr_to_u64(prog->src_mac))
-		memcpy(prog->src_mac, &if_mac.ifr_hwaddr.sa_data, ETH_ALEN);
+		ether_addr_copy(prog->src_mac, if_mac.ifr_hwaddr.sa_data);
 
 	if (!prog->etype)
 		prog->etype = ETH_P_ISOCHRON;
@@ -479,8 +479,8 @@ static int prog_init(struct prog_data *prog)
 	if (prog->do_vlan) {
 		struct vlan_ethhdr *hdr = (struct vlan_ethhdr *)prog->sendbuf;
 
-		memcpy(hdr->h_source, prog->src_mac, ETH_ALEN);
-		memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
+		ether_addr_copy(hdr->h_source, prog->src_mac);
+		ether_addr_copy(hdr->h_dest, prog->dest_mac);
 		hdr->h_vlan_proto = htons(ETH_P_8021Q);
 		/* Ethertype field */
 		hdr->h_vlan_encapsulated_proto = htons(prog->etype);
@@ -489,8 +489,8 @@ static int prog_init(struct prog_data *prog)
 	} else {
 		struct ethhdr *hdr = (struct ethhdr *)prog->sendbuf;
 
-		memcpy(hdr->h_source, prog->src_mac, ETH_ALEN);
-		memcpy(hdr->h_dest, prog->dest_mac, ETH_ALEN);
+		ether_addr_copy(hdr->h_source, prog->src_mac);
+		ether_addr_copy(hdr->h_dest, prog->dest_mac);
 		hdr->h_proto = htons(prog->etype);
 	}
 
