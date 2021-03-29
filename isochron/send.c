@@ -26,6 +26,7 @@
 #include <netinet/udp.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <signal.h>
 #include <unistd.h>
 #include <time.h>
 #include <math.h>
@@ -54,6 +55,7 @@ struct prog_data {
 	struct isochron_log log;
 	long timestamped;
 	long iterations;
+	long sent;
 	clockid_t clkid;
 	__s64 advance_time;
 	__s64 shift_time;
@@ -87,6 +89,8 @@ struct prog_data {
 	bool l4;
 	long data_port;
 };
+
+int signal_received;
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
 {
@@ -227,7 +231,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 	if (!prog->do_ts)
 		return 0;
 
-	while (prog->timestamped < prog->iterations) {
+	while (prog->timestamped < prog->sent) {
 		rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp,
 				MSG_ERRQUEUE, TXTSTAMP_TIMEOUT_MS);
 		if (rc < 0) {
@@ -235,7 +239,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 				"Timed out waiting for TX timestamp: %d (%s)\n",
 				rc, strerror(-rc));
 			fprintf(stderr, "%ld timestamps unacknowledged\n",
-				prog->iterations - prog->timestamped);
+				prog->sent - prog->timestamped);
 			return rc;
 		}
 
@@ -305,7 +309,12 @@ static int run_nanosleep(struct prog_data *prog)
 				rc, strerror(rc));
 			break;
 		}
+
+		if (signal_received)
+			break;
 	}
+
+	prog->sent = i - 1;
 
 	/* Restore scheduling policy */
 	if (sched_policy != SCHED_OTHER) {
@@ -352,14 +361,42 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log);
 
+static void sig_handler(int signo)
+{
+	switch (signo) {
+	case SIGTERM:
+	case SIGINT:
+		signal_received = 1;
+		break;
+	default:
+		break;
+	}
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct timespec now_ts;
+	struct sigaction sa;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
 	__s64 now;
 	int i, rc;
+
+	sa.sa_handler = sig_handler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+
+	rc = sigaction(SIGTERM, &sa, NULL);
+	if (rc < 0) {
+		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
+		return -errno;
+	}
+	rc = sigaction(SIGINT, &sa, NULL);
+	if (rc < 0) {
+		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
+		return -errno;
+	}
 
 	prog->clkid = CLOCK_TAI;
 
