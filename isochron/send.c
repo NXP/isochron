@@ -886,8 +886,11 @@ static int prog_teardown(struct prog_data *prog)
 		printf("Collecting receiver stats\n");
 
 		rc = prog_collect_rcv_stats(prog, &rcv_log);
-		if (rc)
+		if (rc) {
+			fprintf(stderr, "Failed to collect receiver stats: %s\n",
+				strerror(-rc));
 			return rc;
+		}
 
 		isochron_print_stats(prog, &prog->log, &rcv_log);
 
