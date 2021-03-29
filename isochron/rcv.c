@@ -275,7 +275,7 @@ static int server_loop(struct prog_data *prog, void *app_data)
 	return rc;
 }
 
-void sig_handler(int signo)
+static void sig_handler(int signo)
 {
 	switch (signo) {
 	case SIGTERM:
