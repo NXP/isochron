@@ -45,7 +45,7 @@ struct prog_data {
 	long data_port;
 };
 
-int signal_received;
+static int signal_received;
 
 static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		    const struct isochron_timestamp *tstamp)
