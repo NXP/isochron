@@ -90,7 +90,7 @@ struct prog_data {
 	long data_port;
 };
 
-int signal_received;
+static int signal_received;
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
 {
