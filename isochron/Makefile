@@ -2,7 +2,8 @@ src := \
 	isochron.o \
 	common.o \
 	rcv.o \
-	send.o
+	send.o \
+	stats.o
 
 objs := $(addprefix isochron/, $(src))
 
