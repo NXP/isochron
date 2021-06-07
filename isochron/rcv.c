@@ -587,6 +587,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (prog->utc_tai_offset == -1) {
 		prog->utc_tai_offset = get_utc_tai_offset();
+		fprintf(stderr, "Using the kernel UTC-TAI offset which is %ld\n",
+			prog->utc_tai_offset);
 	} else {
 		rc = set_utc_tai_offset(prog->utc_tai_offset);
 		if (rc == -1) {
