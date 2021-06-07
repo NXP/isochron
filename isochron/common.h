@@ -361,4 +361,6 @@ static inline __s64 utc_to_tai(__s64 utc, __s64 offset)
 	return utc + offset * NSEC_PER_SEC;
 }
 
+int get_time_from_string(clockid_t clkid, __s64 *to, char *from);
+
 #endif

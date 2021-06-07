@@ -47,7 +47,7 @@ int mac_addr_from_string(__u8 *to, char *from)
 	return 0;
 }
 
-static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
+int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 {
 	struct timespec now_ts = {0};
 	__kernel_time_t sec;
