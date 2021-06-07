@@ -684,10 +684,11 @@ static struct isochron_rcv_pkt_data
 	return NULL;
 }
 
-static void isochron_process_stat(struct prog_data *prog,
-				  struct isochron_send_pkt_data *send_pkt,
+static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 				  struct isochron_rcv_pkt_data *rcv_pkt,
-				  struct isochron_stats *stats)
+				  struct isochron_stats *stats,
+				  bool quiet, bool taprio, bool txtime,
+				  __s64 advance_time)
 {
 	__s64 tx_ts_diff = send_pkt->hwts - send_pkt->swts;
 	__s64 rx_ts_diff = rcv_pkt->swts - rcv_pkt->hwts;
@@ -704,7 +705,7 @@ static void isochron_process_stat(struct prog_data *prog,
 	ns_sprintf(arrival_buf, rcv_pkt->arrival);
 	ns_sprintf(wakeup_buf, send_pkt->wakeup);
 
-	if (!prog->quiet)
+	if (!quiet)
 		printf("seqid %d gate %s wakeup %s tx %s rx %s arrival %s\n",
 		       send_pkt->seqid, scheduled_buf, wakeup_buf,
 		       tx_hwts_buf, rx_hwts_buf, arrival_buf);
@@ -731,13 +732,13 @@ static void isochron_process_stat(struct prog_data *prog,
 	 * budget, i.e. "how much we could still reduce the cycle time without
 	 * losing deadlines".
 	 */
-	if (prog->taprio || prog->txtime)
+	if (taprio || txtime)
 		entry->latency_budget = send_pkt->hwts - send_pkt->tx_time;
 	else
 		entry->latency_budget = send_pkt->tx_time - send_pkt->hwts;
 	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
 	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
-						    prog->advance_time);
+						    advance_time);
 	entry->arrival_latency = rcv_pkt->arrival - rcv_pkt->hwts;
 
 	if (send_pkt->hwts > send_pkt->tx_time)
@@ -790,9 +791,10 @@ static void isochron_print_one_stat(struct isochron_stats *stats,
 	       name, min, max, mean, stddev, seqid_of_min, seqid_of_max);
 }
 
-static void isochron_print_stats(struct prog_data *prog,
-				 struct isochron_log *send_log,
-				 struct isochron_log *rcv_log)
+void isochron_print_stats(struct isochron_log *send_log,
+			  struct isochron_log *rcv_log,
+			  bool omit_sync, bool quiet, bool taprio, bool txtime,
+			  __s64 advance_time)
 {
 	char *log_buf_end = send_log->buf + send_log->buf_len;
 	struct isochron_send_pkt_data *send_pkt;
@@ -812,7 +814,8 @@ static void isochron_print_stats(struct prog_data *prog,
 			continue;
 		}
 
-		isochron_process_stat(prog, send_pkt, rcv_pkt, &stats);
+		isochron_process_stat(send_pkt, rcv_pkt, &stats,
+				      quiet, taprio, txtime, advance_time);
 		isochron_log_remove(rcv_log, rcv_pkt, sizeof(*rcv_pkt));
 	}
 
@@ -821,21 +824,21 @@ static void isochron_print_stats(struct prog_data *prog,
 	stats.path_delay_mean /= stats.frame_count;
 
 	if (llabs(stats.tx_sync_offset_mean) > NSEC_PER_SEC &&
-	    !prog->omit_sync) {
+	    !omit_sync) {
 		printf("Sender PHC not synchronized (mean PHC to system time "
 		       "diff %.3lf ns larger than 1 second)\n",
 		       stats.tx_sync_offset_mean);
 		goto out;
 	}
 	if (llabs(stats.rx_sync_offset_mean) > NSEC_PER_SEC &&
-	    !prog->omit_sync) {
+	    !omit_sync) {
 		printf("Receiver PHC not synchronized (mean PHC to system time "
 		       "diff %.3lf ns larger than 1 second)\n",
 		       stats.rx_sync_offset_mean);
 		goto out;
 	}
 	if (llabs(stats.path_delay_mean) > NSEC_PER_SEC &&
-	    !prog->omit_sync) {
+	    !omit_sync) {
 		printf("Sender and receiver not synchronized (mean path delay "
 		       "%.3lf ns larger than 1 second)\n",
 		       stats.path_delay_mean);
@@ -849,7 +852,7 @@ static void isochron_print_stats(struct prog_data *prog,
 				wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				hw_rx_deadline_delta), "HW RX deadline delta (TX time to HW RX timestamp)");
-	if (prog->taprio || prog->txtime)
+	if (taprio || txtime)
 		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 					latency_budget), "MAC latency (TX time to HW TX timestamp)");
 	else
@@ -860,7 +863,7 @@ static void isochron_print_stats(struct prog_data *prog,
 				wakeup_latency), "Wakeup latency");
 	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
 				arrival_latency), "Arrival latency (HW RX timestamp to application)");
-	if (!prog->taprio && !prog->txtime)
+	if (!taprio && !txtime)
 		printf("HW TX deadline misses: %d (%.3lf%%)\n",
 		       stats.hw_tx_deadline_misses,
 		       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
@@ -888,7 +891,9 @@ static int prog_teardown(struct prog_data *prog)
 			return rc;
 		}
 
-		isochron_print_stats(prog, &prog->log, &rcv_log);
+		isochron_print_stats(&prog->log, &rcv_log, prog->omit_sync,
+				     prog->quiet, prog->taprio, prog->txtime,
+				     prog->advance_time);
 
 		isochron_log_teardown(&rcv_log);
 	} else {
