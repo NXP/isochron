@@ -7,7 +7,6 @@
  * https://gist.github.com/austinmarton/1922600
  * https://sourceforge.net/p/linuxptp/mailman/message/31998404/
  */
-#include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <linux/ipv6.h>
 #include <limits.h>
@@ -20,15 +19,12 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <net/if.h>
-#include <netinet/ether.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <signal.h>
-#include <unistd.h>
-#include <time.h>
 #include <math.h>
 #include "common.h"
 #include <linux/net_tstamp.h>

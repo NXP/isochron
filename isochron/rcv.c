@@ -6,17 +6,13 @@
  * Initial prototype based on:
  * - https://gist.github.com/austinmarton/2862515
  */
-#include <arpa/inet.h>
 #include <linux/if_packet.h>
-#include <netinet/ether.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <net/if.h>
-#include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-#include <time.h>
 #include <poll.h>
 #include "common.h"
 

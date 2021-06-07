@@ -8,9 +8,15 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
+#include <arpa/inet.h>
+#include <linux/types.h>
+#include <netinet/ether.h>
+#include <sched.h>
+#include <stdint.h>
 #include <sys/queue.h>
 #include <sys/syscall.h>
-#include <sched.h>
+#include <time.h>
+#include <unistd.h>
 
 struct sched_attr {
 	__u32 size;		/* Size of this structure */
