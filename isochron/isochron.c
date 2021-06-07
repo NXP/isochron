@@ -5,8 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
-#include "send.h"
-#include "rcv.h"
+#include "isochron.h"
 
 enum isochron_func {
 	ISOCHRON_SEND,
