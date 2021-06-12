@@ -3,6 +3,11 @@
 #ifndef _ISOCHRON_H
 #define _ISOCHRON_H
 
+#include <stdbool.h>
+#include <linux/types.h>
+
+struct isochron_log;
+
 int isochron_send_main(int argc, char *argv[]);
 int isochron_rcv_main(int argc, char *argv[]);
 int isochron_stats_main(int argc, char *argv[]);
