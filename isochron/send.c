@@ -8,7 +8,6 @@
  * https://sourceforge.net/p/linuxptp/mailman/message/31998404/
  */
 #include <linux/if_packet.h>
-#include <linux/ipv6.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -21,6 +20,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/udp.h>
 #include <errno.h>
 #include <sys/mman.h>
@@ -513,7 +513,7 @@ static int prog_init(struct prog_data *prog)
 	if (prog->ip_destination.family == AF_INET)
 		prog->l4_header_len = sizeof(struct iphdr) + sizeof(struct udphdr);
 	else if (prog->ip_destination.family == AF_INET6)
-		prog->l4_header_len = sizeof(struct ipv6hdr) + sizeof(struct udphdr);
+		prog->l4_header_len = sizeof(struct ip6_hdr) + sizeof(struct udphdr);
 
 	if (prog->l4)
 		prog->tx_len -= sizeof(struct ethhdr) + prog->l4_header_len;
