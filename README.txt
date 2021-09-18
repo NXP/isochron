@@ -197,7 +197,7 @@ On each board, make sure that all Ethernet ports are up first. Typically this
 is the task of a network manager (and for OpenIL it is already done), but if
 you are not running one, it must be done manually:
 
-[root@OpenIL]# for eth in eno2 eno3 swp0 swp1; do ip link set dev $eth up; done
+[root@OpenIL]# for eth in eno2 eno3 swp0 swp1 swp4; do ip link set dev $eth up; done
 
 [root@board1]# ./tsn-scripts/8021cb.sh 1
 [root@board2]# ./tsn-scripts/8021cb.sh 2
