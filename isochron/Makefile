@@ -1,3 +1,7 @@
+prefix ?= /usr/local
+exec_prefix ?= ${prefix}
+bindir ?= ${exec_prefix}/bin
+
 src := \
 	isochron.o \
 	common.o \
@@ -15,3 +19,6 @@ isochron/isochron: $(objs)
 
 clean:
 	rm -f $(objs)
+
+install: isochron/isochron
+	install -m 0755 -D isochron/isochron $(DESTDIR)${bindir}/isochron
