@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright 2019 NXP Semiconductors */
+/* Copyright 2019 NXP */
 /* This file contains code snippets from:
  * - libnfnetlink.h
  * - The Linux kernel

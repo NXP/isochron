@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: GPL-2.0
-# Copyright 2019 NXP Semiconductors
+# Copyright 2019 NXP
 
 from statistics import mean, stdev
 import argparse

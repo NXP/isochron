@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0
-# Copyright 2019 NXP Semiconductors
+# Copyright 2019 NXP
 
 set -e -u -o pipefail
 

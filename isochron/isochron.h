@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright 2020-2021 NXP Semiconductors */
+/* Copyright 2020-2021 NXP */
 #ifndef _ISOCHRON_H
 #define _ISOCHRON_H
 

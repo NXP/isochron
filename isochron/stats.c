@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright 2021 NXP Semiconductors */
+/* Copyright 2021 NXP */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
