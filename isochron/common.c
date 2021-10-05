@@ -462,14 +462,16 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 				return -1;
 			}
 			ts = (struct timespec *) CMSG_DATA(cm);
-			tstamp->hw = ts[2];
+			if (tstamp)
+				tstamp->hw = ts[2];
 		} else if (level == SOL_SOCKET && type == SO_TIMESTAMPNS) {
 			if (cm->cmsg_len < sizeof(*ts)) {
 				fprintf(stderr, "short SO_TIMESTAMPNS message\n");
 				return -1;
 			}
 			ts = (struct timespec *) CMSG_DATA(cm);
-			tstamp->sw = ts[0];
+			if (tstamp)
+				tstamp->sw = ts[0];
 		} else if (level == SOL_PACKET && type == PACKET_TX_TIMESTAMP) {
 			struct sock_extended_err *sock_err;
 			char txtime_buf[TIMESPEC_BUFSIZ];
