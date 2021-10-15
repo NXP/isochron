@@ -533,6 +533,11 @@ int isochron_log_init(struct isochron_log *log, size_t size)
 	return 0;
 }
 
+void isochron_log_teardown(struct isochron_log *log)
+{
+	free(log->buf);
+}
+
 void isochron_log_data(struct isochron_log *log, void *data, int len)
 {
 	char *p = log->buf + log->buf_len;
@@ -602,21 +607,18 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 	if (rc < 0) {
 		fprintf(stderr, "read returned %d: %s\n",
 			errno, strerror(errno));
+		isochron_log_teardown(log);
 		return -errno;
 	}
 
 	if (buf_len) {
 		fprintf(stderr, "%d unread bytes from receive buffer\n",
 			buf_len);
+		isochron_log_teardown(log);
 		return -EIO;
 	}
 
 	return 0;
-}
-
-void isochron_log_teardown(struct isochron_log *log)
-{
-	free(log->buf);
 }
 
 void isochron_rcv_log_print(struct isochron_log *log)
