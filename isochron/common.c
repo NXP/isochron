@@ -360,7 +360,7 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 	return 0;
 }
 
-int sk_timestamping_init(int fd, const char *if_name, int on)
+int sk_timestamping_init(int fd, const char *if_name, bool on)
 {
 	int rc, filter, flags, tx_type;
 

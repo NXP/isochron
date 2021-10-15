@@ -299,7 +299,7 @@ struct isochron_stats {
 };
 
 int mac_addr_from_string(__u8 *to, char *from);
-int sk_timestamping_init(int fd, const char *if_name, int on);
+int sk_timestamping_init(int fd, const char *if_name, bool on);
 int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout);
 __s64 timespec_to_ns(const struct timespec *ts);

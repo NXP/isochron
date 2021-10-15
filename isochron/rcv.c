@@ -423,7 +423,7 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (prog->do_ts)
-		return sk_timestamping_init(prog->data_fd, prog->if_name, 1);
+		return sk_timestamping_init(prog->data_fd, prog->if_name, true);
 
 	return 0;
 }

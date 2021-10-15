@@ -551,7 +551,7 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (prog->do_ts) {
-		rc = sk_timestamping_init(prog->data_fd, prog->if_name, 1);
+		rc = sk_timestamping_init(prog->data_fd, prog->if_name, true);
 		if (rc < 0)
 			goto out_munlock;
 	}
