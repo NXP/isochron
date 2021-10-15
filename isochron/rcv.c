@@ -362,9 +362,6 @@ static int prog_init(struct prog_data *prog)
 		return -errno;
 	}
 
-	if (!prog->etype)
-		prog->etype = ETH_P_ISOCHRON;
-
 	if (prog->l2)
 		/* Open PF_PACKET socket, listening for the specified EtherType */
 		prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
@@ -571,6 +568,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->l2 && !prog->l4)
 		prog->l2 = true;
+
+	if (!prog->etype)
+		prog->etype = ETH_P_ISOCHRON;
 
 	if (!prog->data_port)
 		prog->data_port = ISOCHRON_DATA_PORT;
