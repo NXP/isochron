@@ -20,7 +20,7 @@
 
 struct prog_data {
 	char if_name[IFNAMSIZ];
-	__u8 dest_mac[ETH_ALEN];
+	unsigned char dest_mac[ETH_ALEN];
 	unsigned int if_index;
 	__u8 rcvbuf[BUF_SIZ];
 	struct isochron_log log;

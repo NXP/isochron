@@ -222,7 +222,7 @@ struct prog_arg_long {
 };
 
 struct prog_arg_mac_addr {
-	char *buf;
+	unsigned char *buf;
 };
 
 struct prog_arg_boolean {
@@ -268,8 +268,8 @@ struct isochron_send_pkt_data {
 };
 
 struct isochron_rcv_pkt_data {
-	char smac[ETH_ALEN];
-	char dmac[ETH_ALEN];
+	unsigned char smac[ETH_ALEN];
+	unsigned char dmac[ETH_ALEN];
 	__s64 tx_time;
 	__s64 arrival;
 	__s64 hwts;
@@ -298,13 +298,13 @@ struct isochron_stats {
 	double path_delay_mean;
 };
 
-int mac_addr_from_string(__u8 *to, char *from);
+int mac_addr_from_string(unsigned char *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, bool on);
 int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout);
 __s64 timespec_to_ns(const struct timespec *ts);
 struct timespec ns_to_timespec(__s64 ns);
-void mac_addr_sprintf(char *buf, __u8 *addr);
+void mac_addr_sprintf(char *buf, unsigned char *addr);
 void ns_sprintf(char *buf, __s64 ns);
 
 /**
@@ -331,7 +331,7 @@ static inline __u64 ether_addr_to_u64(const unsigned char *addr)
  *
  * Please note: dst & src must both be aligned to u16.
  */
-static inline void ether_addr_copy(__u8 *dst, const __u8 *src)
+static inline void ether_addr_copy(unsigned char *dst, const unsigned char *src)
 {
 	*(__u32 *)dst = *(const __u32 *)src;
 	*(__u16 *)(dst + 4) = *(const __u16 *)(src + 4);
@@ -345,7 +345,7 @@ static inline void ether_addr_copy(__u8 *dst, const __u8 *src)
  *
  * Please note: addr must be aligned to u16.
  */
-static inline bool is_zero_ether_addr(const __u8 *addr)
+static inline bool is_zero_ether_addr(const unsigned char *addr)
 {
 	return ((*(const __u32 *)addr) | (*(const __u16 *)(addr + 4))) == 0;
 }

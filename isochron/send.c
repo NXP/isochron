@@ -33,8 +33,8 @@
 #define TIME_FMT_LEN	27 /* "[%s] " */
 
 struct prog_data {
-	__u8 dest_mac[ETH_ALEN];
-	__u8 src_mac[ETH_ALEN];
+	unsigned char dest_mac[ETH_ALEN];
+	unsigned char src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char sendbuf[BUF_SIZ];
 	struct cmsghdr *cmsg;
