@@ -12,6 +12,7 @@
 #include <linux/types.h>
 #include <netinet/ether.h>
 #include <sched.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/queue.h>
 #include <sys/syscall.h>
@@ -87,12 +88,6 @@ enum {
 	SOF_TIMESTAMPING_OPT_TX_SWHW = (1<<14),
 };
 #endif
-
-typedef _Bool		bool;
-enum {
-	false	= 0,
-	true	= 1
-};
 
 #define ARRAY_SIZE(array) \
 	(sizeof(array) / sizeof(*array))
