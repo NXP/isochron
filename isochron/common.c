@@ -156,24 +156,23 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	bool *boolean_ptr;
 	long *long_ptr;
 	bool *parsed_arr;
-	char *arg;
 
 	parsed_arr = calloc(sizeof(bool), prog_args_size);
 	if (!parsed_arr)
 		return -ENOMEM;
 
 	while (argc) {
+		char *arg = argv[0];
+
+		if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
+			prog_usage("Helper", prog_args,
+				   prog_args_size);
+			free(parsed_arr);
+			/* Fault the caller to make it stop */
+			return -EINVAL;
+		}
+
 		for (i = 0; i < prog_args_size; i++) {
-			arg = argv[0];
-
-			if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
-				prog_usage("Helper", prog_args,
-					   prog_args_size);
-				free(parsed_arr);
-				/* Fault the caller to make it stop */
-				return -EINVAL;
-			}
-
 			if (strcmp(arg, prog_args[i].short_opt) &&
 			    strcmp(arg, prog_args[i].long_opt))
 				continue;
