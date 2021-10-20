@@ -120,7 +120,6 @@ static void process_txtstamp(struct prog_data *prog, const char *buf,
 {
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
-	__s64 hwts, swts;
 
 	if (prog->l2)
 		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
