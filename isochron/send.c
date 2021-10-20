@@ -947,6 +947,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.long_ptr = {
 				.ptr = &prog->priority,
 			},
+			.optional = true,
 		}, {
 			.short_opt = "-P",
 			.long_opt = "--stats-port",
