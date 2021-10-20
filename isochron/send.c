@@ -964,6 +964,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.clkid = CLOCK_TAI,
 				.ns = &prog->base_time,
 			},
+			.optional = true,
 		}, {
 			.short_opt = "-a",
 			.long_opt = "--advance-time",
