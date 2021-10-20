@@ -130,7 +130,8 @@ static int required_args[] = {
 	[PROG_ARG_IP] = 1,
 };
 
-void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
+void prog_usage(const char *prog_name, struct prog_arg *prog_args,
+		int prog_args_size)
 {
 	int i;
 

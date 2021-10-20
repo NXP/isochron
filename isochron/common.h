@@ -251,7 +251,7 @@ struct prog_arg {
 int prog_parse_np_args(int argc, char **argv,
 		       struct prog_arg *prog_args,
 		       int prog_args_size);
-void prog_usage(char *prog_name, struct prog_arg *prog_args,
+void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
 struct isochron_timestamp {
