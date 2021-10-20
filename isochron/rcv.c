@@ -103,8 +103,8 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 static int multicast_listen(int fd, unsigned int if_index,
 			    unsigned char *macaddr, bool enable)
 {
-	int rc, filter_test, option;
 	struct packet_mreq mreq;
+	int rc, option;
 
 	if (enable)
 		option = PACKET_ADD_MEMBERSHIP;
