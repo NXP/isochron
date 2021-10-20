@@ -43,7 +43,7 @@ struct prog_data {
 
 static int signal_received;
 
-static int app_loop(void *app_data, char *rcvbuf, size_t len,
+static int app_loop(void *app_data, __u8 *rcvbuf, size_t len,
 		    const struct isochron_timestamp *tstamp)
 {
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
