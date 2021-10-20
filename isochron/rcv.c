@@ -58,6 +58,12 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 		struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
 		struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
 
+		if (len < sizeof(*eth_hdr) + sizeof(*hdr)) {
+			if (!prog->quiet)
+				printf("Packet too short (%zu bytes)\n", len);
+			return -1;
+		}
+
 		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 		rcv_pkt.etype = ntohs(eth_hdr->h_proto);
 		ether_addr_copy(rcv_pkt.smac, eth_hdr->h_source);
@@ -68,6 +74,12 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 					  prog->utc_tai_offset);
 	} else {
 		struct isochron_header *hdr = (struct isochron_header *)rcvbuf;
+
+		if (len < sizeof(*hdr)) {
+			if (!prog->quiet)
+				printf("Packet too short (%zu bytes)\n", len);
+			return -1;
+		}
 
 		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
 		rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
