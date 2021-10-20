@@ -115,7 +115,7 @@ static void trace(struct prog_data *prog, const char *fmt, ...)
 	}
 }
 
-static void process_txtstamp(struct prog_data *prog, const char *buf,
+static void process_txtstamp(struct prog_data *prog, const __u8 *buf,
 			     struct isochron_timestamp *tstamp)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
@@ -161,10 +161,10 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 {
-	unsigned char err_pkt[BUF_SIZ];
 	struct isochron_timestamp tstamp = {0};
 	struct isochron_header *hdr;
 	struct timespec now_ts;
+	__u8 err_pkt[BUF_SIZ];
 	__s64 now;
 	int rc;
 
