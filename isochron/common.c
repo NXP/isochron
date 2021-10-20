@@ -52,10 +52,9 @@ int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 	struct timespec now_ts = {0};
 	__kernel_time_t sec;
 	int relative = 0;
-	char *nsec_str;
 	long nsec = 0;
-	int size, rc;
 	__s64 now = 0;
+	int size;
 
 	if (from[0] == '+') {
 		relative = 1;
@@ -428,14 +427,12 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout)
 {
 	struct iovec iov = { buf, buflen };
-	struct app_header *app_hdr;
 	struct timespec *ts;
 	struct cmsghdr *cm;
 	struct msghdr msg;
 	char control[256];
 	ssize_t len;
 	int rc = 0;
-	int i;
 
 	memset(control, 0, sizeof(control));
 	memset(&msg, 0, sizeof(msg));
@@ -567,7 +564,6 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 {
 	int cnt = log->buf_len;
 	char *p = log->buf;
-	char *pos;
 	int rc;
 
 	rc = write(fd, &log->buf_len, sizeof(log->buf_len));
@@ -593,8 +589,8 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 
 int isochron_log_recv(struct isochron_log *log, int fd)
 {
-	char *pos, *p;
 	int buf_len;
+	char *p;
 	int rc;
 
 	rc = read(fd, &buf_len, sizeof(buf_len));
