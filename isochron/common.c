@@ -231,7 +231,8 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 		return -ENOMEM;
 
 	while (argc) {
-		char *arg = argv[0];
+		char *arg = argv[0], *val;
+		char *equals = NULL;
 
 		if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
 			prog_usage("Helper", prog_args,
@@ -239,6 +240,14 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 			free(parsed_arr);
 			/* Fault the caller to make it stop */
 			return -EINVAL;
+		}
+
+		equals = strchr(arg, '=');
+		if (equals) {
+			*equals = 0;
+			val = equals + 1;
+		} else {
+			val = argv[1];
 		}
 
 		for (i = 0; i < prog_args_size; i++) {
@@ -251,23 +260,28 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 			argc--;
 			argv++;
 
-			if (argc < required_args[prog_args[i].type]) {
+			if (!val && argc < required_args[prog_args[i].type]) {
 				fprintf(stderr, "Value expected after %s\n",
 					arg);
 				free(parsed_arr);
 				return -EINVAL;
 			}
 
-			rc = prog_parse_one_arg(argv[0], &prog_args[i]);
+			rc = prog_parse_one_arg(val, &prog_args[i]);
 			if (rc) {
 				free(parsed_arr);
 				return rc;
 			}
 
-			/* Consume actual argument */
-			parsed += required_args[prog_args[i].type];
-			argc -= required_args[prog_args[i].type];
-			argv += required_args[prog_args[i].type];
+			/* Consume actual argument value, unless it was
+			 * separated from the argument string by an "=" sign,
+			 * case in which it's really the same string
+			 */
+			if (!equals) {
+				parsed += required_args[prog_args[i].type];
+				argc -= required_args[prog_args[i].type];
+				argv += required_args[prog_args[i].type];
+			}
 			parsed_arr[i] = true;
 
 			/* Success, stop searching */
