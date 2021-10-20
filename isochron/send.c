@@ -689,8 +689,6 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 				  bool quiet, bool taprio, bool txtime,
 				  __s64 advance_time)
 {
-	__s64 tx_ts_diff = send_pkt->hwts - send_pkt->swts;
-	__s64 rx_ts_diff = rcv_pkt->swts - rcv_pkt->hwts;
 	struct isochron_stat_entry *entry;
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char tx_hwts_buf[TIMESPEC_BUFSIZ];
