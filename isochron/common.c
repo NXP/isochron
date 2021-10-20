@@ -137,9 +137,10 @@ void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
 	fprintf(stderr, "%s usage:\n", prog_name);
 
 	for (i = 0; i < prog_args_size; i++)
-		fprintf(stderr, "%s|%s: %s\n",
+		fprintf(stderr, "%s|%s: %s%s\n",
 			prog_args[i].short_opt, prog_args[i].long_opt,
-			prog_arg_type_str[prog_args[i].type]);
+			prog_arg_type_str[prog_args[i].type],
+			prog_args[i].optional ? " (optional)" : "");
 }
 
 static int prog_parse_one_arg(char *val, const struct prog_arg *match)
