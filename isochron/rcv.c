@@ -49,7 +49,6 @@ static int app_loop(void *app_data, char *rcvbuf, size_t len,
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct prog_data *prog = app_data;
 	struct timespec now_ts;
-	int i, rc;
 	__s64 now;
 
 	clock_gettime(prog->clkid, &now_ts);
