@@ -142,6 +142,80 @@ void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
 			prog_arg_type_str[prog_args[i].type]);
 }
 
+static int prog_parse_one_arg(char *val, const struct prog_arg *match)
+{
+	struct prog_arg_string string;
+	struct prog_arg_time time;
+	struct ip_address *ip_ptr;
+	bool *boolean_ptr;
+	long *long_ptr;
+	int rc;
+
+	switch (match->type) {
+	case PROG_ARG_MAC_ADDR:
+		rc = mac_addr_from_string(match->mac.buf, val);
+		if (rc < 0) {
+			fprintf(stderr, "Could not read %s: %s\n",
+				match->long_opt, strerror(-rc));
+			return rc;
+		}
+		break;
+	case PROG_ARG_LONG:
+		long_ptr = match->long_ptr.ptr;
+
+		errno = 0;
+		*long_ptr = strtol(val, NULL, 0);
+		if (errno) {
+			fprintf(stderr, "Could not read %s: %s\n",
+				match->long_opt, strerror(errno));
+			return -1;
+		}
+		break;
+	case PROG_ARG_IP:
+		ip_ptr = match->ip_ptr.ptr;
+
+		rc = inet_pton(AF_INET6, val, &ip_ptr->addr6);
+		if (rc > 0) {
+			ip_ptr->family = AF_INET6;
+		} else {
+			rc = inet_pton(AF_INET, val, &ip_ptr->addr);
+			if (rc > 0) {
+				ip_ptr->family = AF_INET;
+			} else {
+				fprintf(stderr, "IP address %s not in known format: %d (%s)\n",
+					val, errno, strerror(errno));
+				return -1;
+			}
+		}
+		break;
+	case PROG_ARG_TIME:
+		time = match->time;
+
+		rc = get_time_from_string(time.clkid, time.ns, val);
+		if (rc < 0) {
+			fprintf(stderr, "Could not read base time: %s\n",
+				strerror(-rc));
+			return -1;
+		}
+		break;
+	case PROG_ARG_BOOL:
+		boolean_ptr = match->boolean_ptr.ptr;
+
+		*boolean_ptr = true;
+		break;
+	case PROG_ARG_STRING:
+		string = match->string;
+		strncpy(string.buf, val, string.size);
+		break;
+	default:
+		fprintf(stderr, "Unknown argument type %d\n",
+			match->type);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /* Parse non-positional arguments and return the number of
  * arguments consumed. Return on first positional argument
  * found.
@@ -149,12 +223,7 @@ void prog_usage(char *prog_name, struct prog_arg *prog_args, int prog_args_size)
 int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 		       int prog_args_size)
 {
-	struct prog_arg_string string;
-	struct prog_arg_time time;
-	struct ip_address *ip_ptr;
 	int rc, i, parsed = 0;
-	bool *boolean_ptr;
-	long *long_ptr;
 	bool *parsed_arr;
 
 	parsed_arr = calloc(sizeof(bool), prog_args_size);
@@ -189,77 +258,10 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 				return -EINVAL;
 			}
 
-			switch (prog_args[i].type) {
-			case PROG_ARG_MAC_ADDR:
-				rc = mac_addr_from_string(prog_args[i].mac.buf,
-							  argv[0]);
-				if (rc < 0) {
-					fprintf(stderr, "Could not read %s: %s\n",
-						prog_args[i].long_opt,
-						strerror(-rc));
-					free(parsed_arr);
-					return rc;
-				}
-				break;
-			case PROG_ARG_LONG:
-				long_ptr = prog_args[i].long_ptr.ptr;
-
-				errno = 0;
-				*long_ptr = strtol(argv[0], NULL, 0);
-				if (errno) {
-					fprintf(stderr, "Could not read %s: %s\n",
-						prog_args[i].long_opt,
-						strerror(errno));
-					free(parsed_arr);
-					return -1;
-				}
-				break;
-			case PROG_ARG_IP:
-				ip_ptr = prog_args[i].ip_ptr.ptr;
-
-				rc = inet_pton(AF_INET6, argv[0],
-					       &ip_ptr->addr6);
-				if (rc > 0) {
-					ip_ptr->family = AF_INET6;
-				} else {
-					rc = inet_pton(AF_INET, argv[0],
-						       &ip_ptr->addr);
-					if (rc > 0) {
-						ip_ptr->family = AF_INET;
-					} else {
-						fprintf(stderr, "IP address %s not in known format: %d (%s)\n",
-							argv[0], errno,
-							strerror(errno));
-						return -1;
-					}
-				}
-				break;
-			case PROG_ARG_TIME:
-				time = prog_args[i].time;
-
-				rc = get_time_from_string(time.clkid, time.ns,
-							  argv[0]);
-				if (rc < 0) {
-					fprintf(stderr, "Could not read base time: %s\n",
-						strerror(-rc));
-					free(parsed_arr);
-					return -1;
-				}
-				break;
-			case PROG_ARG_BOOL:
-				boolean_ptr = prog_args[i].boolean_ptr.ptr;
-
-				*boolean_ptr = true;
-				break;
-			case PROG_ARG_STRING:
-				string = prog_args[i].string;
-				strncpy(string.buf, argv[0], string.size);
-				break;
-			default:
-				fprintf(stderr, "Unknown argument type %d\n",
-					prog_args[i].type);
+			rc = prog_parse_one_arg(argv[0], &prog_args[i]);
+			if (rc) {
 				free(parsed_arr);
-				return -EINVAL;
+				return rc;
 			}
 
 			/* Consume actual argument */
