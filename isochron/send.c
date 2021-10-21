@@ -674,7 +674,7 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 }
 
 static struct isochron_rcv_pkt_data
-*isochron_rcv_log_find(struct isochron_log *rcv_log, int seqid, __s64 tx_time)
+*isochron_rcv_log_find(struct isochron_log *rcv_log, __u32 seqid, __s64 tx_time)
 {
 	char *log_buf_end = rcv_log->buf + rcv_log->buf_len;
 	struct isochron_rcv_pkt_data *rcv_pkt;
