@@ -102,11 +102,15 @@ static void trace(struct prog_data *prog, const char *fmt, ...)
 	clock_gettime(prog->clkid, &now_ts);
 	now = timespec_to_ns(&now_ts);
 	ns_sprintf(now_buf, now);
-	snprintf(prog->tracebuf, TIME_FMT_LEN + 1, "[%24s]  ", now_buf);
+	/* The first 24 is for the minimum string width (for padding).
+	 * The second .24 is for precision (maximum string length).
+	 */
+	snprintf(prog->tracebuf, TIME_FMT_LEN + 1, "[%24.24s] ", now_buf);
+	prog->tracebuf[TIME_FMT_LEN] = ' ';
 
 	va_start(ap, fmt);
-	len += vsnprintf(prog->tracebuf + TIME_FMT_LEN, BUF_SIZ - TIME_FMT_LEN,
-			 fmt, ap);
+	len += vsnprintf(prog->tracebuf + TIME_FMT_LEN + 1,
+			 BUF_SIZ - TIME_FMT_LEN - 1, fmt, ap);
 	va_end(ap);
 
 	if (write(prog->trace_mark_fd, prog->tracebuf, len) < 0) {
