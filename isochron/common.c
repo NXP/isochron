@@ -387,6 +387,7 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 int sk_timestamping_init(int fd, const char *if_name, bool on)
 {
 	int rc, filter, flags, tx_type;
+	int enabled = on ? 1 : 0;
 
 	flags = SOF_TIMESTAMPING_TX_HARDWARE |
 		SOF_TIMESTAMPING_RX_HARDWARE |
@@ -412,7 +413,8 @@ int sk_timestamping_init(int fd, const char *if_name, bool on)
 		return -1;
 	}
 
-	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPNS, &on, sizeof(on));
+	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPNS, &enabled,
+			sizeof(enabled));
 	if (rc < 0) {
 		fprintf(stderr, "ioctl SO_TIMESTAMPNS failed: %s\n",
 			strerror(errno));
