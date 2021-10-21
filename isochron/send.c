@@ -598,7 +598,7 @@ static int prog_init(struct prog_data *prog)
 			isochron_log_teardown(&rcv_log);
 	}
 
-	return 0;
+	return rc;
 out_munlock:
 	munlockall();
 out_log_teardown:
