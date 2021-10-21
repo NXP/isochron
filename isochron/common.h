@@ -200,6 +200,7 @@ enum prog_arg_type {
 	PROG_ARG_STRING,
 	PROG_ARG_BOOL,
 	PROG_ARG_IP,
+	PROG_ARG_HELP,
 };
 
 struct prog_arg_string {
@@ -228,6 +229,10 @@ struct prog_arg_ip {
 	struct ip_address *ptr;
 };
 
+struct prog_arg_help {
+	bool *ptr;
+};
+
 struct prog_arg {
 	const char *short_opt;
 	const char *long_opt;
@@ -240,6 +245,7 @@ struct prog_arg {
 		struct prog_arg_mac_addr mac;
 		struct prog_arg_boolean boolean_ptr;
 		struct prog_arg_ip ip_ptr;
+		struct prog_arg_help help_ptr;
 	};
 };
 

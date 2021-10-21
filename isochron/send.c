@@ -917,8 +917,17 @@ static int prog_teardown(struct prog_data *prog)
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 {
+	bool help = false;
 	struct prog_arg args[] = {
 		{
+			.short_opt = "-h",
+			.long_opt = "--help",
+			.type = PROG_ARG_HELP,
+			.help_ptr = {
+			        .ptr = &help,
+			},
+			.optional = true,
+		}, {
 			.short_opt = "-i",
 			.long_opt = "--interface",
 			.type = PROG_ARG_STRING,
@@ -1178,6 +1187,11 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	} else if (rc < argc) {
 		fprintf(stderr, "%d unconsumed arguments. First: %s\n",
 			argc - rc, argv[rc]);
+		prog_usage("isochron-send", args, ARRAY_SIZE(args));
+		return -1;
+	}
+
+	if (help) {
 		prog_usage("isochron-send", args, ARRAY_SIZE(args));
 		return -1;
 	}

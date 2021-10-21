@@ -118,6 +118,7 @@ static const char * const prog_arg_type_str[] = {
 	[PROG_ARG_STRING] = "String",
 	[PROG_ARG_BOOL] = "Boolean",
 	[PROG_ARG_IP] = "IP address",
+	[PROG_ARG_HELP] = "Help text",
 };
 
 static int required_args[] = {
@@ -127,6 +128,7 @@ static int required_args[] = {
 	[PROG_ARG_STRING] = 1,
 	[PROG_ARG_BOOL] = 0,
 	[PROG_ARG_IP] = 1,
+	[PROG_ARG_HELP] = 0,
 };
 
 void prog_usage(const char *prog_name, struct prog_arg *prog_args,
@@ -150,6 +152,7 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 	struct ip_address *ip_ptr;
 	bool *boolean_ptr;
 	long *long_ptr;
+	bool *help_ptr;
 	int rc;
 
 	switch (match->type) {
@@ -208,6 +211,11 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 		string = match->string;
 		strncpy(string.buf, val, string.size);
 		break;
+	case PROG_ARG_HELP:
+		help_ptr = match->help_ptr.ptr;
+
+		*help_ptr = true;
+		break;
 	default:
 		fprintf(stderr, "Unknown argument type %d\n",
 			match->type);
@@ -224,6 +232,7 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 		       int prog_args_size)
 {
+	bool help_requested = false;
 	int rc, i, parsed = 0;
 	bool *parsed_arr;
 
@@ -234,14 +243,6 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	while (argc) {
 		char *arg = argv[0], *val;
 		char *equals = NULL;
-
-		if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
-			prog_usage("Helper", prog_args,
-				   prog_args_size);
-			free(parsed_arr);
-			/* Fault the caller to make it stop */
-			return -EINVAL;
-		}
 
 		equals = strchr(arg, '=');
 		if (equals) {
@@ -274,6 +275,9 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 				return rc;
 			}
 
+			if (prog_args[i].type == PROG_ARG_HELP)
+				help_requested = true;
+
 			/* Consume actual argument value, unless it was
 			 * separated from the argument string by an "=" sign,
 			 * case in which it's really the same string
@@ -296,7 +300,11 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	}
 
 	for (i = 0; i < prog_args_size; i++) {
-		if (!prog_args[i].optional && !parsed_arr[i]) {
+		/* Mandatory arguments are only mandatory if the user doesn't
+		 * specify --help.
+		 */
+		if (!prog_args[i].optional && !parsed_arr[i] &&
+		    !help_requested) {
 			fprintf(stderr, "Please specify %s\n",
 				prog_args[i].long_opt);
 			free(parsed_arr);
