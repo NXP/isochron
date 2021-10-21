@@ -178,6 +178,7 @@ void isochron_log_remove(struct isochron_log *log, void *p, int len);
 
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
+#define ISOCHRON_LOG_VERSION	1
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
 #define VLAN_PRIO_SHIFT		13

@@ -572,9 +572,17 @@ void isochron_log_data(struct isochron_log *log, void *data, int len)
 
 int isochron_log_xmit(struct isochron_log *log, int fd)
 {
+	__u32 log_version = ISOCHRON_LOG_VERSION;
 	int cnt = log->buf_len;
 	char *p = log->buf;
 	int rc;
+
+	rc = write(fd, &log_version, sizeof(log_version));
+	if (rc < 0) {
+		fprintf(stderr, "log_version write returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
 
 	rc = write(fd, &log->buf_len, sizeof(log->buf_len));
 	if (rc < 0) {
@@ -599,9 +607,24 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 
 int isochron_log_recv(struct isochron_log *log, int fd)
 {
+	__u32 log_version;
 	int buf_len;
 	char *p;
 	int rc;
+
+	rc = read(fd, &log_version, sizeof(log_version));
+	if (rc < 0) {
+		fprintf(stderr, "could not read buffer length: %d: %s\n",
+			-rc, strerror(-rc));
+		return rc;
+	}
+
+	if (log_version != ISOCHRON_LOG_VERSION) {
+		fprintf(stderr,
+			"incompatible isochron log version %d, expected %d, exiting\n",
+			log_version, ISOCHRON_LOG_VERSION);
+		return -EINVAL;
+	}
 
 	rc = read(fd, &buf_len, sizeof(buf_len));
 	if (rc < 0) {
