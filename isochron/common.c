@@ -703,7 +703,8 @@ static const char * const trace_marker_paths[] = {
 int trace_mark_open()
 {
 	struct stat st;
-	int rc, i, fd;
+	unsigned int i;
+	int rc, fd;
 
 	for (i = 0; i < ARRAY_SIZE(trace_marker_paths); i++) {
 		rc = stat(trace_marker_paths[i], &st);
