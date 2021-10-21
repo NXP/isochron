@@ -326,25 +326,29 @@ static int prog_init(struct prog_data *prog)
 	rc = sigaction(SIGTERM, &sa, NULL);
 	if (rc < 0) {
 		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
-		return -errno;
+		rc = -errno;
+		goto out_log_teardown;
 	}
 	rc = sigaction(SIGINT, &sa, NULL);
 	if (rc < 0) {
 		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
-		return -errno;
+		rc = -errno;
+		goto out_log_teardown;
 	}
 
 	prog->if_index = if_nametoindex(prog->if_name);
 	if (!prog->if_index) {
 		fprintf(stderr, "if_nametoindex(%s) returned %s\n",
 			prog->if_name, strerror(errno));
-		return -errno;
+		rc = -errno;
+		goto out_log_teardown;
 	}
 
 	prog->stats_listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (prog->stats_listenfd < 0) {
 		perror("listener: stats socket");
-		return -errno;
+		rc = -errno;
+		goto out_log_teardown;
 	}
 
 	/* Allow the socket to be reused, in case the connection
@@ -354,23 +358,23 @@ static int prog_init(struct prog_data *prog)
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
-		close(prog->stats_listenfd);
-		return -errno;
+		rc = -errno;
+		goto out_close_stats_listenfd;
 	}
 
 	rc = bind(prog->stats_listenfd, (struct sockaddr*)&serv_addr,
 		  sizeof(serv_addr));
 	if (rc < 0) {
 		perror("listener: bind");
-		close(prog->stats_listenfd);
-		return -errno;
+		rc = -errno;
+		goto out_close_stats_listenfd;
 	}
 
 	rc = listen(prog->stats_listenfd, 1);
 	if (rc < 0) {
 		perror("listener: listen");
-		close(prog->stats_listenfd);
-		return -errno;
+		rc = -errno;
+		goto out_close_stats_listenfd;
 	}
 
 	if (prog->l2)
@@ -382,8 +386,8 @@ static int prog_init(struct prog_data *prog)
 
 	if (prog->data_fd < 0) {
 		perror("listener: data socket");
-		close(prog->stats_listenfd);
-		return -errno;
+		rc = -errno;
+		goto out_close_stats_listenfd;
 	}
 
 	/* Allow the socket to be reused, in case the connection
@@ -394,8 +398,8 @@ static int prog_init(struct prog_data *prog)
 	if (rc < 0) {
 		perror("setsockopt");
 		close(prog->stats_listenfd);
-		close(prog->data_fd);
-		return -errno;
+		rc = -errno;
+		goto out_close_datafd;
 	}
 
 	if (prog->l2) {
@@ -404,18 +408,16 @@ static int prog_init(struct prog_data *prog)
 				prog->if_name, IFNAMSIZ - 1);
 		if (rc < 0) {
 			perror("SO_BINDTODEVICE");
-			close(prog->stats_listenfd);
-			close(prog->data_fd);
-			exit(EXIT_FAILURE);
+			rc = -errno;
+			goto out_close_datafd;
 		}
 	} else {
 		rc = bind(prog->data_fd, (struct sockaddr *)&serv_data_addr,
 			  sizeof(serv_data_addr));
 		if (rc < 0) {
 			perror("bind");
-			close(prog->stats_listenfd);
-			close(prog->data_fd);
-			return -errno;
+			rc = -errno;
+			goto out_close_datafd;
 		}
 	}
 
@@ -424,16 +426,27 @@ static int prog_init(struct prog_data *prog)
 				      prog->dest_mac, true);
 		if (rc) {
 			perror("multicast_listen");
-			close(prog->stats_listenfd);
-			close(prog->data_fd);
-			return rc;
+			rc = -errno;
+			goto out_close_datafd;
 		}
 	}
 
-	if (prog->do_ts)
-		return sk_timestamping_init(prog->data_fd, prog->if_name, true);
+	if (prog->do_ts) {
+		rc = sk_timestamping_init(prog->data_fd, prog->if_name, true);
+		if (rc)
+			goto out_close_datafd;
+	}
 
 	return 0;
+
+out_close_datafd:
+	close(prog->data_fd);
+out_close_stats_listenfd:
+	close(prog->stats_listenfd);
+out_log_teardown:
+	isochron_log_teardown(&prog->log);
+
+	return rc;
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
