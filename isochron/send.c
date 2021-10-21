@@ -454,7 +454,8 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	if (!ether_addr_to_u64(prog->src_mac))
-		ether_addr_copy(prog->src_mac, if_mac.ifr_hwaddr.sa_data);
+		ether_addr_copy(prog->src_mac,
+			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
 
 	if (!prog->etype)
 		prog->etype = ETH_P_ISOCHRON;
