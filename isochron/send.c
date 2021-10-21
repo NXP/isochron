@@ -605,7 +605,7 @@ out_log_teardown:
 	isochron_log_teardown(&prog->log);
 out_close_trace_mark_fd:
 	if (prog->trace_mark_fd)
-		close(prog->trace_mark_fd);
+		trace_mark_close(prog->trace_mark_fd);
 out_close_data_fd:
 	close(prog->data_fd);
 out:
