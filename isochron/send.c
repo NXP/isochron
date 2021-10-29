@@ -119,6 +119,27 @@ static void trace(struct prog_data *prog, const char *fmt, ...)
 	}
 }
 
+/* Calculate the first base_time in the future that satisfies this
+ * relationship:
+ *
+ * future_base_time = base_time + N x cycle_time >= now, or
+ *
+ *      now - base_time
+ * N >= ---------------
+ *         cycle_time
+ */
+static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
+{
+	__s64 n;
+
+	if (base_time >= now)
+		return base_time;
+
+	n = (now - base_time) / cycle_time;
+
+	return base_time + (n + 1) * cycle_time;
+}
+
 static void process_txtstamp(struct prog_data *prog, const __u8 *buf,
 			     struct isochron_timestamp *tstamp)
 {
@@ -256,10 +277,30 @@ static int run_nanosleep(struct prog_data *prog)
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
 	__u32 sched_policy = SCHED_OTHER;
-	__s64 wakeup = prog->base_time;
-	__s64 scheduled;
+	char now_buf[TIMESPEC_BUFSIZ];
+	__s64 wakeup, scheduled, now;
+	struct timespec now_ts;
 	int rc;
 	long i;
+
+	rc = clock_gettime(prog->clkid, &now_ts);
+	if (rc < 0) {
+		perror("clock_gettime");
+		return -errno;
+	}
+
+	now = timespec_to_ns(&now_ts);
+	prog->base_time += prog->shift_time;
+	prog->base_time -= prog->advance_time;
+
+	/* Make sure we get enough sleep at the beginning */
+	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
+					   now + NSEC_PER_SEC);
+
+	wakeup = prog->base_time;
+
+	ns_sprintf(now_buf, now);
+	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
 	if (prog->sched_fifo)
 		sched_policy = SCHED_FIFO;
@@ -336,27 +377,6 @@ static int run_nanosleep(struct prog_data *prog)
 	return wait_for_txtimestamps(prog);
 }
 
-/* Calculate the first base_time in the future that satisfies this
- * relationship:
- *
- * future_base_time = base_time + N x cycle_time >= now, or
- *
- *      now - base_time
- * N >= ---------------
- *         cycle_time
- */
-static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
-{
-	__s64 n;
-
-	if (base_time >= now)
-		return base_time;
-
-	n = (now - base_time) / cycle_time;
-
-	return base_time + (n + 1) * cycle_time;
-}
-
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log);
 
@@ -374,12 +394,9 @@ static void sig_handler(int signo)
 
 static int prog_init(struct prog_data *prog)
 {
-	char now_buf[TIMESPEC_BUFSIZ];
-	struct timespec now_ts;
 	struct sigaction sa;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
-	__s64 now;
 	int i, rc;
 
 	sa.sa_handler = sig_handler;
@@ -521,23 +538,6 @@ static int prog_init(struct prog_data *prog)
 
 	if (prog->l4)
 		prog->tx_len -= sizeof(struct ethhdr) + prog->l4_header_len;
-
-	rc = clock_gettime(prog->clkid, &now_ts);
-	if (rc < 0) {
-		perror("clock_gettime");
-		goto out_close_trace_mark_fd;
-	}
-
-	now = timespec_to_ns(&now_ts);
-	prog->base_time += prog->shift_time;
-	prog->base_time -= prog->advance_time;
-
-	/* Make sure we get enough sleep at the beginning */
-	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
-					   now + NSEC_PER_SEC);
-
-	ns_sprintf(now_buf, now);
-	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
 	rc = isochron_log_init(&prog->log, prog->iterations *
 			       sizeof(struct isochron_send_pkt_data));
