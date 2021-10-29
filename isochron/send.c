@@ -7,9 +7,11 @@
  * https://gist.github.com/austinmarton/1922600
  * https://sourceforge.net/p/linuxptp/mailman/message/31998404/
  */
+#include <inttypes.h>
 #include <linux/if_packet.h>
 #include <limits.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 /* For va_start and va_end */
@@ -17,6 +19,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <linux/un.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -27,16 +30,27 @@
 #include <signal.h>
 #include <math.h>
 #include "common.h"
+#include "ptpmon.h"
 #include <linux/net_tstamp.h>
 
 #define BUF_SIZ		10000
 #define TIME_FMT_LEN	27 /* "[%s] " */
 
+struct port {
+	LIST_ENTRY(port) list;
+	struct port_identity portid;
+	enum port_state state;
+	bool active;
+};
+
 struct prog_data {
 	unsigned char dest_mac[ETH_ALEN];
 	unsigned char src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
+	char uds_remote[UNIX_PATH_MAX];
 	char sendbuf[BUF_SIZ];
+	struct ptpmon *ptpmon;
+	LIST_HEAD(port_head, port) ports;
 	struct cmsghdr *cmsg;
 	struct iovec iov;
 	struct msghdr msg;
@@ -84,6 +98,9 @@ struct prog_data {
 	bool l2;
 	bool l4;
 	long data_port;
+	long domain_number;
+	long transport_specific;
+	long sync_threshold;
 };
 
 static int signal_received;
@@ -392,6 +409,217 @@ static void sig_handler(int signo)
 	}
 }
 
+static struct port *port_get(struct prog_data *prog,
+			     const struct port_identity *portid)
+{
+	struct port *port;
+
+	LIST_FOREACH(port, &prog->ports, list)
+		if (portid_eq(&port->portid, portid))
+			return port;
+
+	return NULL;
+}
+
+static struct port *port_add(struct prog_data *prog,
+			     const struct port_identity *portid)
+{
+	char portid_buf[PORTID_BUFSIZE];
+	struct port *port;
+
+	port = port_get(prog, portid);
+	if (port)
+		return port;
+
+	port = calloc(1, sizeof(*port));
+	if (!port)
+		return NULL;
+
+	portid_to_string(portid, portid_buf);
+	printf("new port %s\n", portid_buf);
+	memcpy(&port->portid, portid, sizeof(*portid));
+	LIST_INSERT_HEAD(&prog->ports, port, list);
+	return port;
+}
+
+static void port_del(struct port *port)
+{
+	LIST_REMOVE(port, list);
+	free(port);
+}
+
+static void port_set_state(struct port *port, enum port_state state)
+{
+	char portid_buf[PORTID_BUFSIZE];
+
+	if (port->state == state)
+		return;
+
+	portid_to_string(&port->portid, portid_buf);
+	printf("port %s changed state to %s\n", portid_buf,
+		port_state_to_string(state));
+	port->state = state;
+}
+
+static int prog_update_port_list(struct prog_data *prog)
+{
+	char portid_buf[PORTID_BUFSIZE];
+	struct default_ds default_ds;
+	struct port *port, *tmp;
+	int portnum;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_DEFAULT_DATA_SET,
+				    &default_ds, sizeof(default_ds));
+	if (rc) {
+		fprintf(stderr, "Failed to query DEFAULT_DATA_SET: %d (%s)\n",
+			rc, strerror(-rc));
+		fprintf(stderr,
+			"Please make sure PTP daemon is running, or re-run using --omit-sync\n");
+		return rc;
+	}
+
+	LIST_FOREACH(port, &prog->ports, list)
+		port->active = false;
+
+	for (portnum = 1; portnum <= ntohs(default_ds.number_ports); portnum++) {
+		struct port_identity portid;
+		struct port_ds port_ds;
+
+		portid_set(&portid, &default_ds.clock_identity, portnum);
+
+		rc = ptpmon_query_port_mid(prog->ptpmon, &portid,
+					   MID_PORT_DATA_SET,
+					   &port_ds, sizeof(port_ds));
+		if (rc) {
+			fprintf(stderr,
+				"Failed to query PORT_DATA_SET: %d (%s)\n",
+				rc, strerror(-rc));
+			return rc;
+		}
+
+		port = port_add(prog, &portid);
+		if (!port)
+			return -ENOMEM;
+
+		port->active = true;
+		port_set_state(port, port_ds.port_state);
+	}
+
+	LIST_FOREACH_SAFE(port, &prog->ports, list, tmp) {
+		if (!port->active) {
+			portid_to_string(&port->portid, portid_buf);
+			printf("Pruning inactive port %s\n", portid_buf);
+			port_del(port);
+		}
+	}
+
+	return 0;
+}
+
+static int prog_sync_done(struct prog_data *prog)
+{
+	bool all_masters = true, have_slaves = false;
+	struct current_ds current_ds;
+	__s64 master_offset;
+	struct port *port;
+	int rc;
+
+	LIST_FOREACH(port, &prog->ports, list) {
+		if (port->state != PS_MASTER)
+			all_masters = false;
+		if (port->state == PS_SLAVE)
+			have_slaves = true;
+	}
+
+	if (all_masters)
+		return 1;
+
+	if (!have_slaves)
+		return 0;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
+				    &current_ds, sizeof(current_ds));
+	if (rc) {
+		fprintf(stderr, "Failed to query CURRENT_DATA_SET: %d (%s)\n",
+			rc, strerror(-rc));
+		return rc;
+	}
+
+	master_offset = master_offset_from_current_ds(&current_ds);
+	printf("offset %10lld to master\n", master_offset);
+
+	return llabs(master_offset) <= prog->sync_threshold ? 1 : 0;
+}
+
+static int prog_check_sync(struct prog_data *prog)
+{
+	int rc;
+
+	if (!prog->ptpmon)
+		return 0;
+
+	while (1) {
+		if (signal_received)
+			return -EINTR;
+
+		rc = prog_update_port_list(prog);
+		if (rc)
+			return rc;
+
+		rc = prog_sync_done(prog);
+		if (rc < 0)
+			return rc;
+		if (rc == 1)
+			break;
+
+		sleep(1);
+	}
+
+	return 0;
+}
+
+static int prog_init_ptpmon(struct prog_data *prog)
+{
+	char uds_local[UNIX_PATH_MAX];
+	int rc;
+
+	if (prog->omit_sync)
+		return 0;
+
+	snprintf(uds_local, sizeof(uds_local), "/var/run/isochron.%d", getpid());
+
+	prog->ptpmon = ptpmon_create(prog->domain_number, prog->transport_specific,
+				     PTPMON_TIMEOUT_MS, uds_local, prog->uds_remote);
+	if (!prog->ptpmon)
+		return -ENOMEM;
+
+	rc = ptpmon_open(prog->ptpmon);
+	if (rc) {
+		fprintf(stderr, "failed to connect to %s: %d (%s)\n",
+			prog->uds_remote,  rc, strerror(-rc));
+		goto out_destroy;
+	}
+
+	return 0;
+
+out_destroy:
+	ptpmon_destroy(prog->ptpmon);
+	prog->ptpmon = NULL;
+
+	return rc;
+}
+
+static void prog_teardown_ptpmon(struct prog_data *prog)
+{
+	if (!prog->ptpmon)
+		return;
+
+	ptpmon_close(prog->ptpmon);
+	ptpmon_destroy(prog->ptpmon);
+	prog->ptpmon = NULL;
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	struct sigaction sa;
@@ -588,6 +816,10 @@ static int prog_init(struct prog_data *prog)
 		prog->cmsg->cmsg_type = SCM_TXTIME;
 		prog->cmsg->cmsg_len = CMSG_LEN(sizeof(__u64));
 	}
+
+	rc = prog_init_ptpmon(prog);
+	if (rc)
+		goto out_munlock;
 
 	/* Drain potentially old packets from the isochron receiver */
 	if (prog->stats_srv.family) {
@@ -903,6 +1135,8 @@ static int prog_teardown(struct prog_data *prog)
 			isochron_send_log_print(&prog->log);
 	}
 
+	prog_teardown_ptpmon(prog);
+
 	munlockall();
 
 	isochron_log_teardown(&prog->log);
@@ -1170,6 +1404,39 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->data_port,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-N",
+			.long_opt = "--domain-number",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->domain_number,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-t",
+			.long_opt = "--transport-specific",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->transport_specific,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-U",
+			.long_opt = "--unix-domain-socket",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->uds_remote,
+				.size = UNIX_PATH_MAX - 1,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-X",
+			.long_opt = "--sync-threshold",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->sync_threshold,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -1260,6 +1527,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -EINVAL;
 	}
 
+	if (strlen(prog->uds_remote) == 0)
+		sprintf(prog->uds_remote, "/var/run/ptp4l");
+
 	if (!prog->stats_port)
 		prog->stats_port = ISOCHRON_STATS_PORT;
 
@@ -1326,8 +1596,13 @@ int isochron_send_main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
+	rc = prog_check_sync(&prog);
+	if (rc < 0)
+		goto out;
+
 	rc_save = run_nanosleep(&prog);
 
+out:
 	rc = prog_teardown(&prog);
 	if (rc < 0)
 		return rc;

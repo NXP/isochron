@@ -18,6 +18,9 @@
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
+#include "ptpmon.h"
+
+#define PTPMON_TIMEOUT_MS	10
 
 struct sched_attr {
 	__u32 size;		/* Size of this structure */
@@ -364,5 +367,11 @@ static inline __s64 utc_to_tai(__s64 utc, __s64 offset)
 }
 
 int get_time_from_string(clockid_t clkid, __s64 *to, char *from);
+
+static inline __s64
+master_offset_from_current_ds(const struct current_ds *current_ds)
+{
+	return (__s64 )(__be64_to_cpu(current_ds->offset_from_master)) >> 16;
+}
 
 #endif

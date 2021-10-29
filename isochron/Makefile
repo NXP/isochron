@@ -6,6 +6,7 @@ src := \
 	isochron.o \
 	common.o \
 	rcv.o \
+	ptpmon.o \
 	send.o \
 	stats.o
 
