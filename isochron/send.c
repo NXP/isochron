@@ -579,6 +579,25 @@ static int prog_check_sync(struct prog_data *prog)
 	return 0;
 }
 
+static int prog_query_utc_offset(struct prog_data *prog)
+{
+	struct time_properties_ds time_properties_ds;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_TIME_PROPERTIES_DATA_SET,
+				    &time_properties_ds,
+				    sizeof(time_properties_ds));
+	if (rc) {
+		fprintf(stderr, "Failed to query TIME_PROPERTIES_DATA_SET: %d (%s)\n",
+			rc, strerror(-rc));
+		return rc;
+	}
+
+	prog->utc_tai_offset = ntohs(time_properties_ds.current_utc_offset);
+
+	return 0;
+}
+
 static int prog_init_ptpmon(struct prog_data *prog)
 {
 	char uds_local[UNIX_PATH_MAX];
@@ -601,8 +620,14 @@ static int prog_init_ptpmon(struct prog_data *prog)
 		goto out_destroy;
 	}
 
+	rc = prog_query_utc_offset(prog);
+	if (rc)
+		goto out_close;
+
 	return 0;
 
+out_close:
+	ptpmon_close(prog->ptpmon);
 out_destroy:
 	ptpmon_destroy(prog->ptpmon);
 	prog->ptpmon = NULL;
@@ -1569,9 +1594,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	}
 
 	if (prog->utc_tai_offset == -1) {
-		prog->utc_tai_offset = get_utc_tai_offset();
-		fprintf(stderr, "Using the kernel UTC-TAI offset which is %ld\n",
-			prog->utc_tai_offset);
+		/* If we're using the ptpmon, we'll get the UTC offset
+		 * from the PTP daemon.
+		 */
+		if (prog->omit_sync) {
+			prog->utc_tai_offset = get_utc_tai_offset();
+			fprintf(stderr, "Using the kernel UTC-TAI offset which is %ld\n",
+				prog->utc_tai_offset);
+		}
 	} else {
 		rc = set_utc_tai_offset(prog->utc_tai_offset);
 		if (rc == -1) {

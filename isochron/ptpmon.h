@@ -122,6 +122,13 @@ struct current_ds {
 	__be64			mean_path_delay;
 } __attribute((packed));
 
+/* MID_TIME_PROPERTIES_DATA_SET */
+struct time_properties_ds {
+	__be16			current_utc_offset;
+	__u8			flags;
+	__u8			time_source;
+} __attribute((packed));
+
 /** Defines the state of a port. */
 enum port_state {
 	PS_INITIALIZING = 1,
