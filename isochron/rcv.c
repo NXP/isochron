@@ -7,6 +7,7 @@
  * - https://gist.github.com/austinmarton/2862515
  */
 #include <linux/if_packet.h>
+#include <linux/un.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,16 +16,21 @@
 #include <errno.h>
 #include <poll.h>
 #include "common.h"
+#include "ptpmon.h"
+#include "sysmon.h"
 
 #define BUF_SIZ		10000
 
 struct prog_data {
 	char if_name[IFNAMSIZ];
 	unsigned char dest_mac[ETH_ALEN];
+	char uds_remote[UNIX_PATH_MAX];
 	unsigned int if_index;
 	__u8 rcvbuf[BUF_SIZ];
 	struct isochron_log log;
 	clockid_t clkid;
+	struct ptpmon *ptpmon;
+	struct sysmon *sysmon;
 	int stats_listenfd;
 	int data_fd;
 	bool do_ts;
@@ -39,6 +45,10 @@ struct prog_data {
 	bool l2;
 	bool l4;
 	long data_port;
+	long domain_number;
+	long transport_specific;
+	long sync_threshold;
+	long num_readings;
 };
 
 static int signal_received;
@@ -294,6 +304,54 @@ static void sig_handler(int signo)
 	}
 }
 
+static int prog_init_ptpmon(struct prog_data *prog)
+{
+	char uds_local[UNIX_PATH_MAX];
+	int rc;
+
+	snprintf(uds_local, sizeof(uds_local), "/var/run/isochron.%d", getpid());
+
+	prog->ptpmon = ptpmon_create(prog->domain_number, prog->transport_specific,
+				     PTPMON_TIMEOUT_MS, uds_local, prog->uds_remote);
+	if (!prog->ptpmon)
+		return -ENOMEM;
+
+	rc = ptpmon_open(prog->ptpmon);
+	if (rc) {
+		fprintf(stderr, "failed to connect to %s: %d (%s)\n",
+			prog->uds_remote,  rc, strerror(-rc));
+		goto out_destroy;
+	}
+
+	return 0;
+
+out_destroy:
+	ptpmon_destroy(prog->ptpmon);
+	prog->ptpmon = NULL;
+
+	return rc;
+}
+
+static void prog_teardown_ptpmon(struct prog_data *prog)
+{
+	ptpmon_close(prog->ptpmon);
+	ptpmon_destroy(prog->ptpmon);
+}
+
+static int prog_init_sysmon(struct prog_data *prog)
+{
+	prog->sysmon = sysmon_create(prog->if_name, prog->num_readings);
+	if (!prog->sysmon)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void prog_teardown_sysmon(struct prog_data *prog)
+{
+	sysmon_destroy(prog->sysmon);
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	struct sockaddr_in serv_addr = {
@@ -310,10 +368,18 @@ static int prog_init(struct prog_data *prog)
 	int sockopt = 1;
 	int rc;
 
+	rc = prog_init_ptpmon(prog);
+	if (rc)
+		return rc;
+
+	rc = prog_init_sysmon(prog);
+	if (rc)
+		goto out_teardown_ptpmon;
+
 	rc = isochron_log_init(&prog->log, prog->iterations *
 			       sizeof(struct isochron_rcv_pkt_data));
 	if (rc < 0)
-		return rc;
+		goto out_teardown_sysmon;
 
 	prog->clkid = CLOCK_TAI;
 	/* Convert negative logic from cmdline to positive */
@@ -445,6 +511,10 @@ out_close_stats_listenfd:
 	close(prog->stats_listenfd);
 out_log_teardown:
 	isochron_log_teardown(&prog->log);
+out_teardown_sysmon:
+	prog_teardown_sysmon(prog);
+out_teardown_ptpmon:
+	prog_teardown_ptpmon(prog);
 
 	return rc;
 }
@@ -565,6 +635,47 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->l4,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-N",
+			.long_opt = "--domain-number",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->domain_number,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-t",
+			.long_opt = "--transport-specific",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->transport_specific,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-U",
+			.long_opt = "--unix-domain-socket",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->uds_remote,
+				.size = UNIX_PATH_MAX - 1,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-X",
+			.long_opt = "--sync-threshold",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->sync_threshold,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-R",
+			.long_opt = "--num-readings",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->num_readings,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -619,6 +730,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (!prog->iterations)
 		prog->iterations = 187245;
 
+	if (!prog->num_readings)
+		prog->num_readings = 5;
+
+	if (strlen(prog->uds_remote) == 0)
+		sprintf(prog->uds_remote, "/var/run/ptp4l");
+
 	if (prog->utc_tai_offset == -1) {
 		prog->utc_tai_offset = get_utc_tai_offset();
 		fprintf(stderr, "Using the kernel UTC-TAI offset which is %ld\n",
@@ -646,6 +763,8 @@ static int prog_teardown(struct prog_data *prog)
 
 	close(prog->stats_listenfd);
 	close(prog->data_fd);
+	prog_teardown_sysmon(prog);
+	prog_teardown_ptpmon(prog);
 
 	return 0;
 }
