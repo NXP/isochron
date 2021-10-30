@@ -157,6 +157,67 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 	return base_time + (n + 1) * cycle_time;
 }
 
+/* With long cycle times, it is possible that the receiver might get the packet
+ * later than when we connect to it to retrieve logs (that's especially true
+ * when we have an out-of-band connection to the receiver, like through
+ * localhost). So let's wait for one full cycle-time for the receiver.
+ */
+static int wait_for_rcv_last_pkt(struct prog_data *prog)
+{
+	struct timespec interval_ts = ns_to_timespec(prog->cycle_time);
+	int rc;
+
+	do {
+		rc = clock_nanosleep(prog->clkid, 0, &interval_ts, NULL);
+	} while (rc == -EINTR);
+
+	return rc;
+}
+
+static int prog_collect_rcv_stats(struct prog_data *prog,
+				  struct isochron_log *rcv_log)
+{
+	struct sockaddr_in6 serv_addr6;
+	struct sockaddr_in serv_addr4;
+	struct sockaddr *serv_addr;
+	int stats_fd, size;
+	int rc;
+
+	rc = wait_for_rcv_last_pkt(prog);
+	if (rc)
+		return rc;
+
+	if (prog->stats_srv.family == AF_INET) {
+		serv_addr = (struct sockaddr *)&serv_addr4;
+		serv_addr4.sin_addr = prog->stats_srv.addr;
+		serv_addr4.sin_port = htons(prog->stats_port);
+		serv_addr4.sin_family = AF_INET;
+		size = sizeof(struct sockaddr_in);
+	} else if (prog->stats_srv.family == AF_INET6) {
+		serv_addr = (struct sockaddr *)&serv_addr6;
+		serv_addr6.sin6_addr = prog->stats_srv.addr6;
+		serv_addr6.sin6_port = htons(prog->stats_port);
+		serv_addr6.sin6_family = AF_INET6;
+		size = sizeof(struct sockaddr_in6);
+	}
+
+	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
+	if (stats_fd < 0) {
+		fprintf(stderr, "socket returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	rc = connect(stats_fd, serv_addr, size);
+	if (rc < 0) {
+		fprintf(stderr, "connect returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	return isochron_log_recv(rcv_log, stats_fd);
+}
+
 static void process_txtstamp(struct prog_data *prog, const __u8 *buf,
 			     struct isochron_timestamp *tstamp)
 {
@@ -393,9 +454,6 @@ static int run_nanosleep(struct prog_data *prog)
 
 	return wait_for_txtimestamps(prog);
 }
-
-static int prog_collect_rcv_stats(struct prog_data *prog,
-				  struct isochron_log *rcv_log);
 
 static void sig_handler(int signo)
 {
@@ -867,67 +925,6 @@ out_close_data_fd:
 	close(prog->data_fd);
 out:
 	return rc;
-}
-
-/* With long cycle times, it is possible that the receiver might get the packet
- * later than when we connect to it to retrieve logs (that's especially true
- * when we have an out-of-band connection to the receiver, like through
- * localhost). So let's wait for one full cycle-time for the receiver.
- */
-static int wait_for_rcv_last_pkt(struct prog_data *prog)
-{
-	struct timespec interval_ts = ns_to_timespec(prog->cycle_time);
-	int rc;
-
-	do {
-		rc = clock_nanosleep(prog->clkid, 0, &interval_ts, NULL);
-	} while (rc == -EINTR);
-
-	return rc;
-}
-
-static int prog_collect_rcv_stats(struct prog_data *prog,
-				  struct isochron_log *rcv_log)
-{
-	struct sockaddr_in6 serv_addr6;
-	struct sockaddr_in serv_addr4;
-	struct sockaddr *serv_addr;
-	int stats_fd, size;
-	int rc;
-
-	rc = wait_for_rcv_last_pkt(prog);
-	if (rc)
-		return rc;
-
-	if (prog->stats_srv.family == AF_INET) {
-		serv_addr = (struct sockaddr *)&serv_addr4;
-		serv_addr4.sin_addr = prog->stats_srv.addr;
-		serv_addr4.sin_port = htons(prog->stats_port);
-		serv_addr4.sin_family = AF_INET;
-		size = sizeof(struct sockaddr_in);
-	} else if (prog->stats_srv.family == AF_INET6) {
-		serv_addr = (struct sockaddr *)&serv_addr6;
-		serv_addr6.sin6_addr = prog->stats_srv.addr6;
-		serv_addr6.sin6_port = htons(prog->stats_port);
-		serv_addr6.sin6_family = AF_INET6;
-		size = sizeof(struct sockaddr_in6);
-	}
-
-	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
-	if (stats_fd < 0) {
-		fprintf(stderr, "socket returned %d: %s\n",
-			errno, strerror(errno));
-		return -errno;
-	}
-
-	rc = connect(stats_fd, serv_addr, size);
-	if (rc < 0) {
-		fprintf(stderr, "connect returned %d: %s\n",
-			errno, strerror(errno));
-		return -errno;
-	}
-
-	return isochron_log_recv(rcv_log, stats_fd);
 }
 
 static struct isochron_rcv_pkt_data
