@@ -64,7 +64,7 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 
 	clock_gettime(prog->clkid, &now_ts);
 	now = timespec_to_ns(&now_ts);
-	rcv_pkt.arrival = now;
+	rcv_pkt.arrival = __cpu_to_be64(now);
 	if (prog->l2) {
 		struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
 		struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
@@ -75,14 +75,14 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 			return -1;
 		}
 
-		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
-		rcv_pkt.etype = ntohs(eth_hdr->h_proto);
+		rcv_pkt.tx_time = hdr->tx_time;
+		rcv_pkt.etype = eth_hdr->h_proto;
 		ether_addr_copy(rcv_pkt.smac, eth_hdr->h_source);
 		ether_addr_copy(rcv_pkt.dmac, eth_hdr->h_dest);
-		rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
-		rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
-		rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
-					  prog->utc_tai_offset);
+		rcv_pkt.seqid = hdr->seqid;
+		rcv_pkt.hwts = __cpu_to_be64(timespec_to_ns(&tstamp->hw));
+		rcv_pkt.swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp->sw),
+							prog->utc_tai_offset));
 	} else {
 		struct isochron_header *hdr = (struct isochron_header *)rcvbuf;
 
@@ -92,16 +92,18 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 			return -1;
 		}
 
-		rcv_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
-		rcv_pkt.seqid = __be32_to_cpu(hdr->seqid);
-		rcv_pkt.hwts = timespec_to_ns(&tstamp->hw);
-		rcv_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
-					  prog->utc_tai_offset);
+		rcv_pkt.tx_time = hdr->tx_time;
+		rcv_pkt.seqid = hdr->seqid;
+		rcv_pkt.hwts = __cpu_to_be64(timespec_to_ns(&tstamp->hw));
+		rcv_pkt.swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp->sw),
+							prog->utc_tai_offset));
 	}
 
-	if (rcv_pkt.seqid > prog->iterations) {
-		if (!prog->quiet)
-			printf("Discarding seqid %d\n", rcv_pkt.seqid);
+	if (__be32_to_cpu(rcv_pkt.seqid) > prog->iterations) {
+		if (!prog->quiet) {
+			printf("Discarding seqid %d\n",
+			       __be32_to_cpu(rcv_pkt.seqid));
+		}
 		return -1;
 	}
 

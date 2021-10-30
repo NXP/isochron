@@ -270,12 +270,12 @@ static void process_txtstamp(struct prog_data *prog, const __u8 *buf,
 	else
 		hdr = (struct isochron_header *)(buf + prog->l4_header_len);
 
-	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
-	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
-	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
-	send_pkt.hwts = timespec_to_ns(&tstamp->hw);
-	send_pkt.swts = utc_to_tai(timespec_to_ns(&tstamp->sw),
-				   prog->utc_tai_offset);
+	send_pkt.tx_time = hdr->tx_time;
+	send_pkt.wakeup = hdr->wakeup;
+	send_pkt.seqid = hdr->seqid;
+	send_pkt.hwts = __cpu_to_be64(timespec_to_ns(&tstamp->hw));
+	send_pkt.swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp->sw),
+						 prog->utc_tai_offset));
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 
@@ -296,9 +296,9 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	else
 		hdr = (struct isochron_header *)buf;
 
-	send_pkt.tx_time = __be64_to_cpu(hdr->tx_time);
-	send_pkt.wakeup = __be64_to_cpu(hdr->wakeup);
-	send_pkt.seqid = __be32_to_cpu(hdr->seqid);
+	send_pkt.tx_time = hdr->tx_time;
+	send_pkt.wakeup = hdr->wakeup;
+	send_pkt.seqid = hdr->seqid;
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
@@ -1023,7 +1023,7 @@ out:
 }
 
 static struct isochron_rcv_pkt_data
-*isochron_rcv_log_find(struct isochron_log *rcv_log, __u32 seqid, __s64 tx_time)
+*isochron_rcv_log_find(struct isochron_log *rcv_log, __be32 seqid, __be64 tx_time)
 {
 	char *log_buf_end = rcv_log->buf + rcv_log->buf_len;
 	struct isochron_rcv_pkt_data *rcv_pkt;
@@ -1043,6 +1043,13 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 				  bool quiet, bool taprio, bool txtime,
 				  __s64 advance_time)
 {
+	__s64 tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
+	__s64 tx_wakeup = (__s64 )__be64_to_cpu(send_pkt->wakeup);
+	__s64 tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
+	__s64 tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
+	__s64 rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
+	__s64 rx_swts = (__s64 )__be64_to_cpu(rcv_pkt->swts);
+	__s64 arrival = (__s64 )__be64_to_cpu(rcv_pkt->arrival);
 	struct isochron_stat_entry *entry;
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char tx_hwts_buf[TIMESPEC_BUFSIZ];
@@ -1050,24 +1057,24 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 	char arrival_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 
-	ns_sprintf(scheduled_buf, send_pkt->tx_time);
-	ns_sprintf(tx_hwts_buf, send_pkt->hwts);
-	ns_sprintf(rx_hwts_buf, rcv_pkt->hwts);
-	ns_sprintf(arrival_buf, rcv_pkt->arrival);
-	ns_sprintf(wakeup_buf, send_pkt->wakeup);
+	ns_sprintf(scheduled_buf, tx_time);
+	ns_sprintf(tx_hwts_buf, tx_hwts);
+	ns_sprintf(rx_hwts_buf, rx_hwts);
+	ns_sprintf(arrival_buf, arrival);
+	ns_sprintf(wakeup_buf, tx_wakeup);
 
 	if (!quiet)
 		printf("seqid %d gate %s wakeup %s tx %s rx %s arrival %s\n",
-		       send_pkt->seqid, scheduled_buf, wakeup_buf,
+		       __be32_to_cpu(send_pkt->seqid), scheduled_buf, wakeup_buf,
 		       tx_hwts_buf, rx_hwts_buf, arrival_buf);
 
 	entry = calloc(1, sizeof(*entry));
 	if (!entry)
 		return;
 
-	entry->seqid = send_pkt->seqid;
-	entry->wakeup_to_hw_ts = send_pkt->hwts - send_pkt->wakeup;
-	entry->hw_rx_deadline_delta = rcv_pkt->hwts - rcv_pkt->tx_time;
+	entry->seqid = __be32_to_cpu(send_pkt->seqid);
+	entry->wakeup_to_hw_ts = tx_hwts - tx_wakeup;
+	entry->hw_rx_deadline_delta = rx_hwts - tx_time;
 	/* When tc-taprio or tc-etf offload is enabled, we know that the
 	 * MAC TX timestamp will be larger than the gate event, because the
 	 * application's schedule should be the same as the NIC's schedule.
@@ -1084,20 +1091,19 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 	 * losing deadlines".
 	 */
 	if (taprio || txtime)
-		entry->latency_budget = send_pkt->hwts - send_pkt->tx_time;
+		entry->latency_budget = tx_hwts - tx_time;
 	else
-		entry->latency_budget = send_pkt->tx_time - send_pkt->hwts;
-	entry->path_delay = rcv_pkt->hwts - send_pkt->hwts;
-	entry->wakeup_latency = send_pkt->wakeup - (send_pkt->tx_time -
-						    advance_time);
-	entry->arrival_latency = rcv_pkt->arrival - rcv_pkt->hwts;
+		entry->latency_budget = tx_time - tx_hwts;
+	entry->path_delay = rx_hwts - tx_hwts;
+	entry->wakeup_latency = tx_wakeup - (tx_time - advance_time);
+	entry->arrival_latency = arrival - rx_hwts;
 
-	if (send_pkt->hwts > send_pkt->tx_time)
+	if (tx_hwts > tx_time)
 		stats->hw_tx_deadline_misses++;
 
 	stats->frame_count++;
-	stats->tx_sync_offset_mean += send_pkt->hwts - send_pkt->swts;
-	stats->rx_sync_offset_mean += rcv_pkt->hwts - rcv_pkt->swts;
+	stats->tx_sync_offset_mean += tx_hwts - tx_swts;
+	stats->rx_sync_offset_mean += rx_hwts - rx_swts;
 	stats->path_delay_mean += entry->path_delay;
 
 	LIST_INSERT_HEAD(&stats->entries, entry, list);
@@ -1161,7 +1167,7 @@ void isochron_print_stats(struct isochron_log *send_log,
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid,
 						send_pkt->tx_time);
 		if (!rcv_pkt) {
-			printf("seqid %d lost\n", send_pkt->seqid);
+			printf("seqid %d lost\n", __be32_to_cpu(send_pkt->seqid));
 			continue;
 		}
 

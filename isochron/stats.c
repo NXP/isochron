@@ -37,6 +37,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 			       struct isochron_send_pkt_data *send_pkt,
 			       struct isochron_rcv_pkt_data *rcv_pkt)
 {
+	__u32 seqid;
+	__s64 time;
 	int rc;
 
 	switch (prog->state) {
@@ -60,7 +62,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 
 		break;
 	case STATE_SEQID:
-		send_pkt->seqid = strtol(word, NULL, 0);
+		seqid = strtol(word, NULL, 0);
+		send_pkt->seqid = __cpu_to_be32(seqid);
 		if (errno) {
 			fprintf(stderr,
 				"could not read seqid from string \"%s\": %s\n",
@@ -71,7 +74,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 		prog->state = STATE_UNKNOWN;
 		break;
 	case STATE_GATE:
-		rc = get_time_from_string(CLOCK_TAI, &send_pkt->tx_time, word);
+		rc = get_time_from_string(CLOCK_TAI, &time, word);
+		send_pkt->tx_time = __cpu_to_be64(time);
 		if (rc) {
 			fprintf(stderr,
 				"could not read gate from string \"%s\": %s\n",
@@ -82,7 +86,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 		prog->state = STATE_UNKNOWN;
 		break;
 	case STATE_WAKEUP:
-		rc = get_time_from_string(CLOCK_TAI, &send_pkt->wakeup, word);
+		rc = get_time_from_string(CLOCK_TAI, &time, word);
+		send_pkt->wakeup = __cpu_to_be64(time);
 		if (rc) {
 			fprintf(stderr,
 				"could not read wakeup from string \"%s\": %s\n",
@@ -92,7 +97,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 		prog->state = STATE_UNKNOWN;
 		break;
 	case STATE_TX:
-		rc = get_time_from_string(CLOCK_TAI, &send_pkt->hwts, word);
+		rc = get_time_from_string(CLOCK_TAI, &time, word);
+		send_pkt->hwts = __cpu_to_be64(time);
 		if (rc) {
 			fprintf(stderr,
 				"could not read tx from string \"%s\": %s\n",
@@ -102,7 +108,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 		prog->state = STATE_UNKNOWN;
 		break;
 	case STATE_RX:
-		rc = get_time_from_string(CLOCK_TAI, &rcv_pkt->hwts, word);
+		rc = get_time_from_string(CLOCK_TAI, &time, word);
+		rcv_pkt->hwts = __cpu_to_be64(time);
 		if (rc) {
 			fprintf(stderr,
 				"could not read rx from string \"%s\": %s\n",
@@ -112,7 +119,8 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 		prog->state = STATE_UNKNOWN;
 		break;
 	case STATE_ARRIVAL:
-		rc = get_time_from_string(CLOCK_TAI, &rcv_pkt->arrival, word);
+		rc = get_time_from_string(CLOCK_TAI, &time, word);
+		rcv_pkt->arrival = __cpu_to_be64(time);
 		if (rc) {
 			fprintf(stderr,
 				"could not read arrival from string \"%s\": %s\n",

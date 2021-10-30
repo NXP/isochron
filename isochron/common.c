@@ -704,12 +704,15 @@ void isochron_rcv_log_print(struct isochron_log *log)
 
 	for (rcv_pkt = (struct isochron_rcv_pkt_data *)log->buf;
 	     (char *)rcv_pkt < log_buf_end; rcv_pkt++) {
+		__s64 tx_time = (__s64 )__be64_to_cpu(rcv_pkt->tx_time);
+		__s64 rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
+		__s64 rx_swts = (__s64 )__be64_to_cpu(rcv_pkt->swts);
 		char scheduled_buf[TIMESPEC_BUFSIZ];
 		char smac_buf[MACADDR_BUFSIZ];
 		char dmac_buf[MACADDR_BUFSIZ];
 
 		/* Print packet */
-		ns_sprintf(scheduled_buf, rcv_pkt->tx_time);
+		ns_sprintf(scheduled_buf, tx_time);
 		mac_addr_sprintf(smac_buf, rcv_pkt->smac);
 		mac_addr_sprintf(dmac_buf, rcv_pkt->dmac);
 
@@ -717,16 +720,16 @@ void isochron_rcv_log_print(struct isochron_log *log)
 			char hwts_buf[TIMESPEC_BUFSIZ];
 			char swts_buf[TIMESPEC_BUFSIZ];
 
-			ns_sprintf(hwts_buf, rcv_pkt->hwts);
-			ns_sprintf(swts_buf, rcv_pkt->swts);
+			ns_sprintf(hwts_buf, rx_hwts);
+			ns_sprintf(swts_buf, rx_swts);
 
 			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-			       scheduled_buf, smac_buf, dmac_buf, rcv_pkt->etype,
-			       rcv_pkt->seqid, hwts_buf, swts_buf);
+			       scheduled_buf, smac_buf, dmac_buf, ntohs(rcv_pkt->etype),
+			       __be32_to_cpu(rcv_pkt->seqid), hwts_buf, swts_buf);
 		} else {
 			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
-			       scheduled_buf, smac_buf, dmac_buf, rcv_pkt->etype,
-			       rcv_pkt->seqid);
+			       scheduled_buf, smac_buf, dmac_buf, ntohs(rcv_pkt->etype),
+			       __be32_to_cpu(rcv_pkt->seqid));
 		}
 	}
 }
@@ -738,16 +741,20 @@ void isochron_send_log_print(struct isochron_log *log)
 
 	for (send_pkt = (struct isochron_send_pkt_data *)log->buf;
 	     (char *)send_pkt < log_buf_end; send_pkt++) {
+		__s64 tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
+		__s64 tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
+		__s64 tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
 		char scheduled_buf[TIMESPEC_BUFSIZ];
 		char hwts_buf[TIMESPEC_BUFSIZ];
 		char swts_buf[TIMESPEC_BUFSIZ];
 
-		ns_sprintf(scheduled_buf, send_pkt->tx_time);
-		ns_sprintf(hwts_buf, send_pkt->hwts);
-		ns_sprintf(swts_buf, send_pkt->swts);
+		ns_sprintf(scheduled_buf, tx_time);
+		ns_sprintf(hwts_buf, tx_hwts);
+		ns_sprintf(swts_buf, tx_swts);
 
 		printf("[%s] seqid %d txtstamp %s swts %s\n",
-		       scheduled_buf, send_pkt->seqid, hwts_buf, swts_buf);
+		       scheduled_buf, __be32_to_cpu(send_pkt->seqid),
+		       hwts_buf, swts_buf);
 	}
 }
 

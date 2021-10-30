@@ -209,7 +209,7 @@ struct isochron_tlv {
 
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
-#define ISOCHRON_LOG_VERSION	1
+#define ISOCHRON_LOG_VERSION	2
 #define ISOCHRON_MANAGEMENT_VERSION 2
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
@@ -294,22 +294,22 @@ struct isochron_timestamp {
 };
 
 struct isochron_send_pkt_data {
-	__s64 tx_time;
-	__s64 wakeup;
-	__s64 hwts;
-	__s64 swts;
-	__u32 seqid;
+	__be64 tx_time;
+	__be64 wakeup;
+	__be64 hwts;
+	__be64 swts;
+	__be32 seqid;
 };
 
 struct isochron_rcv_pkt_data {
 	unsigned char smac[ETH_ALEN];
 	unsigned char dmac[ETH_ALEN];
-	__s64 tx_time;
-	__s64 arrival;
-	__s64 hwts;
-	__s64 swts;
-	__u16 etype;
-	__u32 seqid;
+	__be64 tx_time;
+	__be64 arrival;
+	__be64 hwts;
+	__be64 swts;
+	__be16 etype;
+	__be32 seqid;
 };
 
 struct isochron_stat_entry {
