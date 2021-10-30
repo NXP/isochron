@@ -639,12 +639,13 @@ static int prog_teardown(struct prog_data *prog)
 	if (!prog->quiet)
 		isochron_rcv_log_print(&prog->log);
 	isochron_log_teardown(&prog->log);
-	close(prog->stats_listenfd);
-	close(prog->data_fd);
 
 	if (ether_addr_to_u64(prog->dest_mac))
 		multicast_listen(prog->data_fd, prog->if_index,
 				 prog->dest_mac, false);
+
+	close(prog->stats_listenfd);
+	close(prog->data_fd);
 
 	return 0;
 }
