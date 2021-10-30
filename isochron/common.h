@@ -179,9 +179,38 @@ void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);
 void isochron_log_remove(struct isochron_log *log, void *p, int len);
 
+enum isochron_management_id {
+	ISOCHRON_MID_LOG,
+};
+
+enum isochron_management_action {
+	ISOCHRON_GET = 0,
+	ISOCHRON_SET,
+	ISOCHRON_RESPONSE,
+};
+
+enum isochron_tlv_type {
+	ISOCHRON_TLV_MANAGEMENT = 0,
+};
+
+struct isochron_management_message {
+	__u8		version;
+	__u8		action;
+	__be16		reserved;
+	__be32		payload_length;
+	/* TLVs follow */
+} __attribute((packed));
+
+struct isochron_tlv {
+	__be16		tlv_type;
+	__be16		management_id;
+	__be32		length_field;
+} __attribute((packed));
+
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
 #define ISOCHRON_LOG_VERSION	1
+#define ISOCHRON_MANAGEMENT_VERSION 2
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
 #define VLAN_PRIO_SHIFT		13
@@ -302,6 +331,9 @@ struct isochron_stats {
 	double rx_sync_offset_mean;
 	double path_delay_mean;
 };
+
+ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
+ssize_t write_exact(int fd, const void *buf, size_t count);
 
 int mac_addr_from_string(unsigned char *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, bool on);

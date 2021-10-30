@@ -77,6 +77,7 @@ struct prog_data {
 	long priority;
 	long tx_len;
 	int data_fd;
+	int stats_fd;
 	long vid;
 	bool do_ts;
 	bool quiet;
@@ -180,15 +181,39 @@ static int wait_for_rcv_last_pkt(struct prog_data *prog)
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log)
 {
-	struct sockaddr_in6 serv_addr6;
-	struct sockaddr_in serv_addr4;
-	struct sockaddr *serv_addr;
-	int stats_fd, size;
+	struct isochron_management_message *msg;
+	unsigned char buf[BUFSIZ];
+	struct isochron_tlv *tlv;
+	ssize_t len;
 	int rc;
 
 	rc = wait_for_rcv_last_pkt(prog);
 	if (rc)
 		return rc;
+
+	msg = (struct isochron_management_message *)buf;
+	msg->version = ISOCHRON_MANAGEMENT_VERSION;
+	msg->action = ISOCHRON_GET;
+	msg->payload_length = __cpu_to_be32(sizeof(*tlv));
+
+	tlv = (struct isochron_tlv *)(msg + 1);
+	tlv->tlv_type = ISOCHRON_TLV_MANAGEMENT;
+	tlv->management_id = ISOCHRON_MID_LOG;
+	tlv->length_field = 0;
+
+	len = write_exact(prog->stats_fd, buf, sizeof(*msg) + sizeof(*tlv));
+	if (len <= 0)
+		return len;
+
+	return isochron_log_recv(rcv_log, prog->stats_fd);
+}
+
+static int prog_init_stats_socket(struct prog_data *prog)
+{
+	struct sockaddr_in6 serv_addr6;
+	struct sockaddr_in serv_addr4;
+	struct sockaddr *serv_addr;
+	int stats_fd, size, rc;
 
 	if (prog->stats_srv.family == AF_INET) {
 		serv_addr = (struct sockaddr *)&serv_addr4;
@@ -202,6 +227,8 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 		serv_addr6.sin6_port = htons(prog->stats_port);
 		serv_addr6.sin6_family = AF_INET6;
 		size = sizeof(struct sockaddr_in6);
+	} else {
+		return 0;
 	}
 
 	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
@@ -215,10 +242,21 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	if (rc < 0) {
 		fprintf(stderr, "connect returned %d: %s\n",
 			errno, strerror(errno));
+		close(stats_fd);
 		return -errno;
 	}
 
-	return isochron_log_recv(rcv_log, stats_fd);
+	prog->stats_fd = stats_fd;
+
+	return 0;
+}
+
+static void prog_teardown_stats_socket(struct prog_data *prog)
+{
+	if (!prog->stats_srv.family)
+		return;
+
+	close(prog->stats_fd);
 }
 
 static void process_txtstamp(struct prog_data *prog, const __u8 *buf,
@@ -948,17 +986,27 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		goto out_teardown_ptpmon;
 
+	rc = prog_init_stats_socket(prog);
+	if (rc)
+		goto out_teardown_sysmon;
+
 	/* Drain potentially old packets from the isochron receiver */
 	if (prog->stats_srv.family) {
 		struct isochron_log rcv_log;
 
 		rc = prog_collect_rcv_stats(prog, &rcv_log);
-		if (!rc)
-			isochron_log_teardown(&rcv_log);
+		if (rc)
+			goto out_stats_socket_teardown;
+
+		isochron_log_teardown(&rcv_log);
 	}
 
 	return rc;
 
+out_stats_socket_teardown:
+	prog_teardown_stats_socket(prog);
+out_teardown_sysmon:
+	prog_teardown_sysmon(prog);
 out_teardown_ptpmon:
 	prog_teardown_ptpmon(prog);
 out_munlock:
@@ -1204,6 +1252,7 @@ static int prog_teardown(struct prog_data *prog)
 			isochron_send_log_print(&prog->log);
 	}
 
+	prog_teardown_stats_socket(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
 

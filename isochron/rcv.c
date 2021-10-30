@@ -32,7 +32,9 @@ struct prog_data {
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
 	int stats_listenfd;
+	int stats_fd;
 	int data_fd;
+	bool have_client;
 	bool do_ts;
 	bool quiet;
 	long etype;
@@ -186,13 +188,11 @@ static int prog_client_connect_event(struct prog_data *prog)
 	char client_addr[INET6_ADDRSTRLEN];
 	struct sockaddr_in addr;
 	socklen_t addr_len;
-	int stats_fd;
-	int rc;
 
 	addr_len = sizeof(struct sockaddr_in);
-	rc = accept(prog->stats_listenfd,
-		    (struct sockaddr *)&addr, &addr_len);
-	if (rc < 0) {
+	prog->stats_fd = accept(prog->stats_listenfd, (struct sockaddr *)&addr,
+				&addr_len);
+	if (prog->stats_fd < 0) {
 		if (errno != EINTR)
 			fprintf(stderr, "accept returned %d: %s\n",
 				errno, strerror(errno));
@@ -203,21 +203,94 @@ static int prog_client_connect_event(struct prog_data *prog)
 		       client_addr, addr_len)) {
 		fprintf(stderr, "inet_pton returned %d: %s\n",
 			errno, strerror(errno));
+		close(prog->stats_fd);
 		return -errno;
 	}
 
 	printf("Accepted connection from %s\n", client_addr);
 
-	stats_fd = rc;
+	prog->have_client = true;
 
-	isochron_log_xmit(&prog->log, stats_fd);
-	isochron_log_teardown(&prog->log);
-	rc = isochron_log_init(&prog->log, prog->iterations *
-			       sizeof(struct isochron_rcv_pkt_data));
+	return 0;
+}
 
-	close(stats_fd);
+static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
+{
+	size_t tlv_size_bytes;
 
-	return rc;
+	tlv_size_bytes = __be32_to_cpu((*tlv)->length_field) + sizeof(**tlv);
+	*len += tlv_size_bytes;
+	*tlv = (struct isochron_tlv *)((unsigned char *)tlv + tlv_size_bytes);
+}
+
+static int isochron_parse_one_tlv(struct prog_data *prog,
+				  struct isochron_tlv *tlv)
+{
+	if (ntohs(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
+		return 0;
+
+	switch (ntohs(tlv->management_id)) {
+	case ISOCHRON_MID_LOG:
+		isochron_log_xmit(&prog->log, prog->stats_fd);
+		isochron_log_teardown(&prog->log);
+		return isochron_log_init(&prog->log, prog->iterations *
+					 sizeof(struct isochron_rcv_pkt_data));
+	default:
+		return 0;
+	}
+}
+
+static int prog_client_mgmt_event(struct prog_data *prog)
+{
+	struct isochron_management_message msg;
+	unsigned char buf[BUF_SIZ];
+	struct isochron_tlv *tlv;
+	size_t parsed_len = 0;
+	ssize_t len;
+	int rc;
+
+	len = recv_exact(prog->stats_fd, &msg, sizeof(msg), 0);
+	if (len <= 0)
+		goto out_client_close_or_err;
+
+	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
+		fprintf(stderr, "Expected management version %d, got %d\n",
+			ISOCHRON_MANAGEMENT_VERSION, msg.version);
+		return 0;
+	}
+
+	if (msg.action != ISOCHRON_GET) {
+		fprintf(stderr, "Expected GET action, got %d\n", msg.action);
+		return 0;
+	}
+
+	len = __be32_to_cpu(msg.payload_length);
+	if (len >= BUF_SIZ) {
+		fprintf(stderr, "GET message too large at %zd, max %d\n", len, BUF_SIZ);
+		return 0;
+	}
+
+	len = recv_exact(prog->stats_fd, buf, len, 0);
+	if (len <= 0)
+		goto out_client_close_or_err;
+
+	tlv = (struct isochron_tlv *)buf;
+
+	while (parsed_len < (size_t)len) {
+		rc = isochron_parse_one_tlv(prog, tlv);
+		if (rc)
+			return rc;
+
+		isochron_tlv_next(&tlv, &parsed_len);
+	}
+
+	return 0;
+
+out_client_close_or_err:
+	close(prog->stats_fd);
+	prog->have_client = false;
+
+	return len;
 }
 
 static int server_loop(struct prog_data *prog)
@@ -228,7 +301,7 @@ static int server_loop(struct prog_data *prog)
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 		[1] = {
-			.fd = prog->stats_listenfd,
+			/* .fd to be filled in dynamically */
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 	};
@@ -256,6 +329,11 @@ static int server_loop(struct prog_data *prog)
 	}
 
 	do {
+		if (prog->have_client)
+			pfd[1].fd = prog->stats_fd;
+		else
+			pfd[1].fd = prog->stats_listenfd;
+
 		cnt = poll(pfd, ARRAY_SIZE(pfd), -1);
 		if (cnt < 0) {
 			if (errno == EINTR) {
@@ -277,13 +355,23 @@ static int server_loop(struct prog_data *prog)
 		}
 
 		if (pfd[1].revents & (POLLIN | POLLERR | POLLPRI)) {
-			rc = prog_client_connect_event(prog);
-			if (rc)
-				break;
+			if (prog->have_client) {
+				rc = prog_client_mgmt_event(prog);
+				if (rc)
+					break;
+			} else {
+				rc = prog_client_connect_event(prog);
+				if (rc)
+					break;
+			}
 		}
+
 		if (signal_received)
 			break;
 	} while (1);
+
+	if (prog->have_client)
+		close(prog->stats_fd);
 
 	/* Restore scheduling policy */
 	if (sched_policy != SCHED_OTHER) {
