@@ -53,11 +53,10 @@ struct prog_data {
 
 static int signal_received;
 
-static int app_loop(void *app_data, __u8 *rcvbuf, size_t len,
+static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 		    const struct isochron_timestamp *tstamp)
 {
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
-	struct prog_data *prog = app_data;
 	struct timespec now_ts;
 	__s64 now;
 
@@ -158,9 +157,71 @@ static int multicast_listen(int fd, unsigned int if_index,
 	return -1;
 }
 
-static int server_loop(struct prog_data *prog, void *app_data)
+static int prog_data_event(struct prog_data *prog)
 {
+	struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
 	struct isochron_timestamp tstamp = {0};
+	ssize_t len;
+
+	len = sk_receive(prog->data_fd, prog->rcvbuf,
+			 BUF_SIZ, &tstamp, 0,
+			 TXTSTAMP_TIMEOUT_MS);
+	/* Suppress "Interrupted system call" message */
+	if (len < 0 && errno != EINTR) {
+		fprintf(stderr, "recvfrom returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	if (prog->l2 &&
+	    ether_addr_to_u64(prog->dest_mac) &&
+	    ether_addr_to_u64(prog->dest_mac) != ether_addr_to_u64(eth_hdr->h_dest))
+		return 0;
+
+	return app_loop(prog, prog->rcvbuf, len, &tstamp);
+}
+
+static int prog_client_connect_event(struct prog_data *prog)
+{
+	char client_addr[INET6_ADDRSTRLEN];
+	struct sockaddr_in addr;
+	socklen_t addr_len;
+	int stats_fd;
+	int rc;
+
+	addr_len = sizeof(struct sockaddr_in);
+	rc = accept(prog->stats_listenfd,
+		    (struct sockaddr *)&addr, &addr_len);
+	if (rc < 0) {
+		if (errno != EINTR)
+			fprintf(stderr, "accept returned %d: %s\n",
+				errno, strerror(errno));
+		return -errno;
+	}
+
+	if (!inet_ntop(addr.sin_family, &addr.sin_addr.s_addr,
+		       client_addr, addr_len)) {
+		fprintf(stderr, "inet_pton returned %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	printf("Accepted connection from %s\n", client_addr);
+
+	stats_fd = rc;
+
+	isochron_log_xmit(&prog->log, stats_fd);
+	isochron_log_teardown(&prog->log);
+	rc = isochron_log_init(&prog->log, prog->iterations *
+			       sizeof(struct isochron_rcv_pkt_data));
+
+	close(stats_fd);
+
+	return rc;
+}
+
+static int server_loop(struct prog_data *prog)
+{
 	struct pollfd pfd[2] = {
 		[0] = {
 			.fd = prog->data_fd,
@@ -172,7 +233,6 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		},
 	};
 	__u32 sched_policy = SCHED_OTHER;
-	ssize_t len;
 	int rc = 0;
 	int cnt;
 
@@ -211,64 +271,15 @@ static int server_loop(struct prog_data *prog, void *app_data)
 		}
 
 		if (pfd[0].revents & (POLLIN | POLLERR | POLLPRI)) {
-			struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
-
-			len = sk_receive(prog->data_fd, prog->rcvbuf,
-					 BUF_SIZ, &tstamp, 0,
-					 TXTSTAMP_TIMEOUT_MS);
-			/* Suppress "Interrupted system call" message */
-			if (len < 0 && errno != EINTR) {
-				fprintf(stderr, "recvfrom returned %d: %s\n",
-					errno, strerror(errno));
-				rc = -errno;
-				break;
-			}
-			if (prog->l2)
-				if (ether_addr_to_u64(prog->dest_mac) &&
-				    ether_addr_to_u64(prog->dest_mac) !=
-				    ether_addr_to_u64(eth_hdr->h_dest))
-					continue;
-
-			rc = app_loop(app_data, prog->rcvbuf, len, &tstamp);
-			if (rc < 0)
+			rc = prog_data_event(prog);
+			if (rc)
 				break;
 		}
 
 		if (pfd[1].revents & (POLLIN | POLLERR | POLLPRI)) {
-			char client_addr[INET6_ADDRSTRLEN];
-			struct sockaddr_in addr;
-			socklen_t addr_len;
-			int stats_fd;
-
-			addr_len = sizeof(struct sockaddr_in);
-			rc = accept(prog->stats_listenfd,
-				    (struct sockaddr *)&addr, &addr_len);
-			if (rc < 0) {
-				if (errno != EINTR)
-					fprintf(stderr, "accept returned %d: %s\n",
-						errno, strerror(errno));
-				return -errno;
-			}
-
-			if (!inet_ntop(addr.sin_family, &addr.sin_addr.s_addr,
-				       client_addr, addr_len)) {
-				fprintf(stderr, "inet_pton returned %d: %s\n",
-					errno, strerror(errno));
-				return -errno;
-			}
-
-			printf("Accepted connection from %s\n", client_addr);
-
-			stats_fd = rc;
-
-			isochron_log_xmit(&prog->log, stats_fd);
-			isochron_log_teardown(&prog->log);
-			rc = isochron_log_init(&prog->log, prog->iterations *
-					       sizeof(struct isochron_rcv_pkt_data));
-			if (rc < 0)
+			rc = prog_client_connect_event(prog);
+			if (rc)
 				break;
-
-			close(stats_fd);
 		}
 		if (signal_received)
 			break;
@@ -782,7 +793,7 @@ int isochron_rcv_main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	rc_save = server_loop(&prog, &prog);
+	rc_save = server_loop(&prog);
 
 	rc = prog_teardown(&prog);
 	if (rc < 0)
