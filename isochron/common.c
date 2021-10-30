@@ -43,6 +43,21 @@ ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags)
 	return received;
 }
 
+ssize_t read_exact(int fd, void *buf, size_t count)
+{
+	size_t total_read = 0;
+	ssize_t ret;
+
+	do {
+		ret = read(fd, buf + total_read, count - total_read);
+		if (ret <= 0)
+			return ret;
+		total_read += ret;
+	} while (total_read != count);
+
+	return total_read;
+}
+
 ssize_t write_exact(int fd, const void *buf, size_t count)
 {
 	size_t written = 0;
@@ -602,96 +617,78 @@ void isochron_log_data(struct isochron_log *log, void *data, int len)
 
 int isochron_log_xmit(struct isochron_log *log, int fd)
 {
-	__u32 log_version = ISOCHRON_LOG_VERSION;
-	int cnt = log->buf_len;
-	char *p = log->buf;
-	int rc;
+	__be32 log_version = __cpu_to_be32(ISOCHRON_LOG_VERSION);
+	__be32 buf_len = __cpu_to_be32(log->buf_len);
+	ssize_t len;
 
-	rc = write(fd, &log_version, sizeof(log_version));
-	if (rc < 0) {
+	len = write_exact(fd, &log_version, sizeof(log_version));
+	if (len <= 0) {
 		fprintf(stderr, "log_version write returned %d: %s\n",
 			errno, strerror(errno));
 		return -errno;
 	}
 
-	rc = write(fd, &log->buf_len, sizeof(log->buf_len));
-	if (rc < 0) {
+	len = write_exact(fd, &buf_len, sizeof(buf_len));
+	if (len <= 0) {
 		fprintf(stderr, "buf_len write returned %d: %s\n",
 			errno, strerror(errno));
 		return -errno;
 	}
 
-	while ((rc = write(fd, p, cnt)) > 0) {
-		cnt -= rc;
-		p += rc;
+	if (log->buf_len) {
+		len = write_exact(fd, log->buf, log->buf_len);
+		if (len <= 0) {
+			fprintf(stderr, "write returned %d: %s\n",
+				errno, strerror(errno));
+			return -errno;
+		}
 	}
 
-	if (rc < 0) {
-		fprintf(stderr, "write returned %d: %s\n",
-			errno, strerror(errno));
-		rc = -errno;
-	}
-
-	return rc;
+	return 0;
 }
 
 int isochron_log_recv(struct isochron_log *log, int fd)
 {
-	__u32 log_version;
-	int buf_len;
-	char *p;
+	__be32 log_version;
+	__be32 buf_len;
+	ssize_t len;
 	int rc;
 
-	rc = read(fd, &log_version, sizeof(log_version));
-	if (rc < 0) {
+	len = read_exact(fd, &log_version, sizeof(log_version));
+	if (len <= 0) {
 		fprintf(stderr, "could not read buffer length: %d: %s\n",
-			-rc, strerror(-rc));
-		return rc;
-	}
-
-	if (log_version != ISOCHRON_LOG_VERSION) {
-		fprintf(stderr,
-			"incompatible isochron log version %d, expected %d, exiting\n",
-			log_version, ISOCHRON_LOG_VERSION);
-		return -EINVAL;
-	}
-
-	rc = read(fd, &buf_len, sizeof(buf_len));
-	if (rc < 0) {
-		fprintf(stderr, "could not read buffer length: %d: %s\n",
-			-rc, strerror(-rc));
-		return rc;
-	}
-
-	if (buf_len < 0) {
-		fprintf(stderr, "invalid buffer length: %d\n", buf_len);
-		return -ERANGE;
-	}
-
-	rc = isochron_log_init(log, buf_len);
-	if (rc)
-		return rc;
-
-	log->buf_len = buf_len;
-	p = log->buf;
-
-	while ((rc = read(fd, p, buf_len)) > 0 && buf_len) {
-		p += rc;
-		buf_len -= rc;
-	}
-
-	if (rc < 0) {
-		fprintf(stderr, "read returned %d: %s\n",
 			errno, strerror(errno));
-		isochron_log_teardown(log);
 		return -errno;
 	}
 
-	if (buf_len) {
-		fprintf(stderr, "%d unread bytes from receive buffer\n",
-			buf_len);
-		isochron_log_teardown(log);
-		return -EIO;
+	if (__be32_to_cpu(log_version) != ISOCHRON_LOG_VERSION) {
+		fprintf(stderr,
+			"incompatible isochron log version %d, expected %d, exiting\n",
+			__be32_to_cpu(log_version), ISOCHRON_LOG_VERSION);
+		return -EINVAL;
+	}
+
+	len = read_exact(fd, &buf_len, sizeof(buf_len));
+	if (len <= 0) {
+		fprintf(stderr, "could not read buffer length: %d: %s\n",
+			errno, strerror(errno));
+		return -errno;
+	}
+
+	rc = isochron_log_init(log, __be32_to_cpu(buf_len));
+	if (rc)
+		return rc;
+
+	log->buf_len = __be32_to_cpu(buf_len);
+
+	if (log->buf_len) {
+		len = read_exact(fd, log->buf, log->buf_len);
+		if (len <= 0) {
+			fprintf(stderr, "read of %d bytes returned %d: %s\n",
+				log->buf_len, errno, strerror(errno));
+			isochron_log_teardown(log);
+			return -errno;
+		}
 	}
 
 	return 0;

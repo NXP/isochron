@@ -209,7 +209,7 @@ struct isochron_tlv {
 
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
-#define ISOCHRON_LOG_VERSION	2
+#define ISOCHRON_LOG_VERSION	3
 #define ISOCHRON_MANAGEMENT_VERSION 2
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
