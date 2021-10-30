@@ -207,6 +207,11 @@ struct isochron_tlv {
 	__be32		length_field;
 } __attribute((packed));
 
+size_t isochron_log_buf_tlv_size(struct isochron_log *log);
+
+int isochron_send_tlv(int fd, enum isochron_management_action action,
+		      enum isochron_management_id mid, size_t size);
+
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
 #define ISOCHRON_LOG_VERSION	3

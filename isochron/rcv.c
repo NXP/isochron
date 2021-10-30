@@ -228,11 +228,19 @@ static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 static int isochron_parse_one_tlv(struct prog_data *prog,
 				  struct isochron_tlv *tlv)
 {
+	int rc;
+
 	if (ntohs(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
 		return 0;
 
 	switch (ntohs(tlv->management_id)) {
 	case ISOCHRON_MID_LOG:
+		rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+				       ISOCHRON_MID_LOG,
+				       isochron_log_buf_tlv_size(&prog->log));
+		if (rc)
+			return 0;
+
 		isochron_log_xmit(&prog->log, prog->stats_fd);
 		isochron_log_teardown(&prog->log);
 		return isochron_log_init(&prog->log, prog->iterations *

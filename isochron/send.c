@@ -181,9 +181,8 @@ static int wait_for_rcv_last_pkt(struct prog_data *prog)
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log)
 {
-	struct isochron_management_message *msg;
-	unsigned char buf[BUFSIZ];
-	struct isochron_tlv *tlv;
+	struct isochron_management_message msg;
+	struct isochron_tlv tlv;
 	ssize_t len;
 	int rc;
 
@@ -191,19 +190,25 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	if (rc)
 		return rc;
 
-	msg = (struct isochron_management_message *)buf;
-	msg->version = ISOCHRON_MANAGEMENT_VERSION;
-	msg->action = ISOCHRON_GET;
-	msg->payload_length = __cpu_to_be32(sizeof(*tlv));
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_GET, ISOCHRON_MID_LOG, 0);
+	if (rc)
+		return rc;
 
-	tlv = (struct isochron_tlv *)(msg + 1);
-	tlv->tlv_type = ISOCHRON_TLV_MANAGEMENT;
-	tlv->management_id = ISOCHRON_MID_LOG;
-	tlv->length_field = 0;
-
-	len = write_exact(prog->stats_fd, buf, sizeof(*msg) + sizeof(*tlv));
+	len = recv_exact(prog->stats_fd, &msg, sizeof(msg), 0);
 	if (len <= 0)
-		return len;
+		return len ? len : -ECONNRESET;
+
+	len = recv_exact(prog->stats_fd, &tlv, sizeof(tlv), 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	if (msg.version != ISOCHRON_MANAGEMENT_VERSION ||
+	    msg.action != ISOCHRON_RESPONSE ||
+	    ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT ||
+	    ntohs(tlv.management_id) != ISOCHRON_MID_LOG) {
+		fprintf(stderr, "Unexpected reply from isochron receiver\n");
+		return -EBADMSG;
+	}
 
 	return isochron_log_recv(rcv_log, prog->stats_fd);
 }

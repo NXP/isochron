@@ -761,6 +761,39 @@ void isochron_log_remove(struct isochron_log *log, void *p, int len)
 	log->buf_len -= len;
 }
 
+int isochron_send_tlv(int fd, enum isochron_management_action action,
+		      enum isochron_management_id mid, size_t size)
+{
+	struct isochron_management_message *msg;
+	unsigned char buf[BUFSIZ];
+	struct isochron_tlv *tlv;
+	ssize_t len;
+
+	msg = (struct isochron_management_message *)buf;
+	msg->version = ISOCHRON_MANAGEMENT_VERSION;
+	msg->action = action;
+	msg->payload_length = __cpu_to_be32(sizeof(*tlv) + size);
+
+	tlv = (struct isochron_tlv *)(msg + 1);
+	tlv->tlv_type = htons(ISOCHRON_TLV_MANAGEMENT);
+	tlv->management_id = htons(mid);
+	tlv->length_field = __cpu_to_be32(size);
+
+	len = write_exact(fd, buf, sizeof(*msg) + sizeof(*tlv));
+	if (len < 0)
+		return len;
+	if (len == 0)
+		return -ECONNRESET;
+	return 0;
+}
+
+size_t isochron_log_buf_tlv_size(struct isochron_log *log)
+{
+	return sizeof(__be32) + /* log_version */
+	       sizeof(__be32) + /* buf_len */
+	       log->buf_len;
+}
+
 static const char * const trace_marker_paths[] = {
 	"/sys/kernel/debug/tracing/trace_marker",
 	"/debug/tracing/trace_marker",
