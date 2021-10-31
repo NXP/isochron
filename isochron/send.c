@@ -771,7 +771,7 @@ static int prog_init_ptpmon(struct prog_data *prog)
 	snprintf(uds_local, sizeof(uds_local), "/var/run/isochron.%d", getpid());
 
 	prog->ptpmon = ptpmon_create(prog->domain_number, prog->transport_specific,
-				     PTPMON_TIMEOUT_MS, uds_local, prog->uds_remote);
+				     uds_local, prog->uds_remote);
 	if (!prog->ptpmon)
 		return -ENOMEM;
 

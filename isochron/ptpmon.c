@@ -13,7 +13,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <linux/un.h>
-#include <poll.h>
 #include <unistd.h>
 #include "ptpmon.h"
 
@@ -123,7 +122,6 @@ struct ptpmon {
 	struct port_identity port_identity;
 	int transport_specific;
 	int domain_number;
-	int timeout;
 	int fd;
 	__u16 sequence_id;
 	struct default_ds dds;
@@ -279,28 +277,6 @@ static int uds_recv(int fd, const char *uds_remote, void *buf, int buflen)
 	return recvfrom(fd, buf, buflen, 0, (struct sockaddr *)&sun, &len);
 }
 
-static int uds_poll(int fd, int timeout)
-{
-	struct pollfd pfd[1] = {
-		[0] = {
-			.fd = fd,
-			.events = POLLIN | POLLPRI | POLLERR,
-		},
-	};
-	int cnt;
-
-	cnt = poll(pfd, ARRAY_SIZE(pfd), timeout);
-	if (cnt < 0) {
-		if (errno != EINTR) {
-			fprintf(stderr, "poll returned %d: %s\n",
-				errno, strerror(errno));
-		}
-		return -errno;
-	}
-
-	return cnt ? 0 : -ETIMEDOUT;
-}
-
 static int uds_bind(const char *uds_local)
 {
 	struct sockaddr_un sun;
@@ -355,10 +331,6 @@ static int ptpmon_send(struct ptpmon *ptpmon, struct ptp_message *msg)
 static int ptpmon_recv(struct ptpmon *ptpmon, struct ptp_message *msg)
 {
 	int len;
-
-	len = uds_poll(ptpmon->fd, ptpmon->timeout);
-	if (len)
-		return len;
 
 	len = uds_recv(ptpmon->fd, ptpmon->uds_remote, msg->buf, PTP_MSGSIZE);
 	if (len >= 0)
@@ -626,8 +598,7 @@ void ptpmon_close(struct ptpmon *ptpmon)
 }
 
 struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
-			     int timeout, const char *uds_local,
-			     const char *uds_remote)
+			     const char *uds_local, const char *uds_remote)
 {
 	struct ptpmon *ptpmon;
 
@@ -637,7 +608,6 @@ struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
 
 	ptpmon->domain_number = domain_number;
 	ptpmon->transport_specific = transport_specific;
-	ptpmon->timeout = timeout;
 	strncpy(ptpmon->uds_local, uds_local, UNIX_PATH_MAX);
 	strncpy(ptpmon->uds_remote, uds_remote, UNIX_PATH_MAX);
 	ptpmon->port_identity.port_number = htons(getpid());

@@ -210,8 +210,7 @@ const char *port_state_to_string(enum port_state state);
 struct ptpmon;
 
 struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
-			     int timeout, const char *uds_local,
-			     const char *uds_remote);
+			     const char *uds_local, const char *uds_remote);
 void ptpmon_destroy(struct ptpmon *ptpmon);
 int ptpmon_open(struct ptpmon *ptpmon);
 void ptpmon_close(struct ptpmon *ptpmon);

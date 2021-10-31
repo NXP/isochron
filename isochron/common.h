@@ -20,8 +20,6 @@
 #include <unistd.h>
 #include "ptpmon.h"
 
-#define PTPMON_TIMEOUT_MS	10
-
 struct sched_attr {
 	__u32 size;		/* Size of this structure */
 	__u32 sched_policy;	/* Policy (SCHED_*) */
