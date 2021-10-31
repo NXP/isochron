@@ -443,4 +443,7 @@ master_offset_from_current_ds(const struct current_ds *current_ds)
 	return (__s64 )(__be64_to_cpu(current_ds->offset_from_master)) >> 16;
 }
 
+int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
+				    enum port_state *port_state);
+
 #endif

@@ -847,3 +847,47 @@ int get_utc_tai_offset()
 	adjtimex(&tx);
 	return tx.tai;
 }
+
+int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
+				    enum port_state *port_state)
+{
+	struct default_ds default_ds;
+	int portnum;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(ptpmon, MID_DEFAULT_DATA_SET,
+				    &default_ds, sizeof(default_ds));
+	if (rc) {
+		fprintf(stderr, "Failed to query DEFAULT_DATA_SET: %d (%s)\n",
+			rc, strerror(-rc));
+		return rc;
+	}
+
+	for (portnum = 1; portnum <= ntohs(default_ds.number_ports); portnum++) {
+		struct port_properties_np port_properties_np;
+		struct port_identity portid;
+
+		portid_set(&portid, &default_ds.clock_identity, portnum);
+
+		rc = ptpmon_query_port_mid_extra(ptpmon, &portid,
+						 MID_PORT_PROPERTIES_NP,
+						 &port_properties_np,
+						 sizeof(port_properties_np),
+						 MAX_IFACE_LEN);
+		if (rc) {
+			fprintf(stderr,
+				"Failed to query PORT_PROPERTIES_NP: %d (%s)\n",
+				rc, strerror(-rc));
+			return rc;
+		}
+
+		if (strcmp(port_properties_np.iface, iface))
+			continue;
+
+		*port_state = port_properties_np.port_state;
+
+		return 0;
+	}
+
+	return -ENODEV;
+}

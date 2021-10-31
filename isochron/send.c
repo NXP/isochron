@@ -52,7 +52,8 @@ struct prog_data {
 	char sendbuf[BUF_SIZ];
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
-	LIST_HEAD(port_head, port) ports;
+	enum port_state last_local_port_state;
+	enum port_state last_remote_port_state;
 	struct cmsghdr *cmsg;
 	struct iovec iov;
 	struct msghdr msg;
@@ -637,152 +638,57 @@ static void sig_handler(int signo)
 	}
 }
 
-static struct port *port_get(struct prog_data *prog,
-			     const struct port_identity *portid)
-{
-	struct port *port;
-
-	LIST_FOREACH(port, &prog->ports, list)
-		if (portid_eq(&port->portid, portid))
-			return port;
-
-	return NULL;
-}
-
-static struct port *port_add(struct prog_data *prog,
-			     const struct port_identity *portid)
-{
-	char portid_buf[PORTID_BUFSIZE];
-	struct port *port;
-
-	port = port_get(prog, portid);
-	if (port)
-		return port;
-
-	port = calloc(1, sizeof(*port));
-	if (!port)
-		return NULL;
-
-	portid_to_string(portid, portid_buf);
-	printf("new port %s\n", portid_buf);
-	memcpy(&port->portid, portid, sizeof(*portid));
-	LIST_INSERT_HEAD(&prog->ports, port, list);
-	return port;
-}
-
-static void port_del(struct port *port)
-{
-	LIST_REMOVE(port, list);
-	free(port);
-}
-
-static void port_set_state(struct port *port, enum port_state state)
-{
-	char portid_buf[PORTID_BUFSIZE];
-
-	if (port->state == state)
-		return;
-
-	portid_to_string(&port->portid, portid_buf);
-	printf("port %s changed state to %s\n", portid_buf,
-		port_state_to_string(state));
-	port->state = state;
-}
-
-static int prog_update_port_list(struct prog_data *prog)
-{
-	char portid_buf[PORTID_BUFSIZE];
-	struct default_ds default_ds;
-	struct port *port, *tmp;
-	int portnum;
-	int rc;
-
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_DEFAULT_DATA_SET,
-				    &default_ds, sizeof(default_ds));
-	if (rc) {
-		fprintf(stderr, "Failed to query DEFAULT_DATA_SET: %d (%s)\n",
-			rc, strerror(-rc));
-		fprintf(stderr,
-			"Please make sure PTP daemon is running, or re-run using --omit-sync\n");
-		return rc;
-	}
-
-	LIST_FOREACH(port, &prog->ports, list)
-		port->active = false;
-
-	for (portnum = 1; portnum <= ntohs(default_ds.number_ports); portnum++) {
-		struct port_identity portid;
-		struct port_ds port_ds;
-
-		portid_set(&portid, &default_ds.clock_identity, portnum);
-
-		rc = ptpmon_query_port_mid(prog->ptpmon, &portid,
-					   MID_PORT_DATA_SET,
-					   &port_ds, sizeof(port_ds));
-		if (rc) {
-			fprintf(stderr,
-				"Failed to query PORT_DATA_SET: %d (%s)\n",
-				rc, strerror(-rc));
-			return rc;
-		}
-
-		port = port_add(prog, &portid);
-		if (!port)
-			return -ENOMEM;
-
-		port->active = true;
-		port_set_state(port, port_ds.port_state);
-	}
-
-	LIST_FOREACH_SAFE(port, &prog->ports, list, tmp) {
-		if (!port->active) {
-			portid_to_string(&port->portid, portid_buf);
-			printf("Pruning inactive port %s\n", portid_buf);
-			port_del(port);
-		}
-	}
-
-	return 0;
-}
-
 static bool prog_sync_done(struct prog_data *prog)
 {
+	bool local_port_transient_state, remote_port_transient_state;
 	bool remote_ptpmon_sync_done, remote_sysmon_sync_done;
 	bool local_ptpmon_sync_done, local_sysmon_sync_done;
-	bool all_masters = true, have_slaves = false;
+	enum port_state local_port_state, remote_port_state;
 	__s64 rcv_sysmon_offset, rcv_ptpmon_offset;
 	struct clock_identity rcv_gm_clkid;
 	__s64 sysmon_offset, sysmon_delay;
-	enum port_state rcv_port_state;
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct current_ds current_ds;
 	__s64 ptpmon_offset;
 	int rcv_utc_offset;
-	struct port *port;
 	__u64 sysmon_ts;
 	int rc;
 
 	rc = prog_collect_receiver_sync_stats(prog, &rcv_sysmon_offset,
 					      &rcv_ptpmon_offset,
-					      &rcv_utc_offset, &rcv_port_state,
+					      &rcv_utc_offset,
+					      &remote_port_state,
 					      &rcv_gm_clkid);
 	if (rc)
 		return false;
 
 	rcv_sysmon_offset += NSEC_PER_SEC * rcv_utc_offset;
 
-	LIST_FOREACH(port, &prog->ports, list) {
-		if (port->state != PS_MASTER)
-			all_masters = false;
-		if (port->state == PS_SLAVE)
-			have_slaves = true;
+	if (remote_port_state != prog->last_remote_port_state) {
+		printf("Remote port changed state to %s\n",
+		       port_state_to_string(remote_port_state));
+		prog->last_remote_port_state = remote_port_state;
 	}
 
-	if (all_masters)
-		return true;
-
-	if (!have_slaves)
+	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
+					     &local_port_state);
+	if (rc) {
+		fprintf(stderr,
+			"Failed to query port state for %s (%s), waiting for ptp4l\n",
+			prog->if_name, strerror(-rc));
 		return false;
+	}
+
+	if (local_port_state != prog->last_local_port_state) {
+		printf("Local port changed state to %s\n",
+		       port_state_to_string(local_port_state));
+		prog->last_local_port_state = local_port_state;
+	}
+
+	local_port_transient_state = local_port_state != PS_MASTER &&
+				     local_port_state != PS_SLAVE;
+	remote_port_transient_state = remote_port_state != PS_MASTER &&
+				      remote_port_state != PS_SLAVE;
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
@@ -812,24 +718,19 @@ static bool prog_sync_done(struct prog_data *prog)
 	remote_ptpmon_sync_done = !!(llabs(rcv_ptpmon_offset) <= prog->sync_threshold);
 	remote_sysmon_sync_done = !!(llabs(rcv_sysmon_offset) <= prog->sync_threshold);
 
-	return local_ptpmon_sync_done && local_sysmon_sync_done &&
+	return !local_port_transient_state && !remote_port_transient_state &&
+	       local_ptpmon_sync_done && local_sysmon_sync_done &&
 	       remote_ptpmon_sync_done && remote_sysmon_sync_done;
 }
 
 static int prog_check_sync(struct prog_data *prog)
 {
-	int rc;
-
 	if (!prog->ptpmon)
 		return 0;
 
 	while (1) {
 		if (signal_received)
 			return -EINTR;
-
-		rc = prog_update_port_list(prog);
-		if (rc)
-			continue;
 
 		if (prog_sync_done(prog))
 			break;

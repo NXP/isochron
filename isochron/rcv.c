@@ -295,50 +295,22 @@ static int prog_forward_utc_offset(struct prog_data *prog)
 static int prog_forward_port_state(struct prog_data *prog)
 {
 	struct isochron_port_state state;
-	struct default_ds default_ds;
-	int portnum;
+	enum port_state port_state;
 	int rc;
 
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_DEFAULT_DATA_SET,
-				    &default_ds, sizeof(default_ds));
-	if (rc) {
-		fprintf(stderr, "Failed to query DEFAULT_DATA_SET: %d (%s)\n",
-			rc, strerror(-rc));
-		fprintf(stderr,
-			"Please make sure PTP daemon is running, or re-run using --omit-sync\n");
-		return rc;
-	}
+	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
+					     &port_state);
+	if (rc)
+		return 0;
 
-	/* FIXME: this always returns the port state of the first port,
-	 * not necessarily our port.
-	 */
-	for (portnum = 1; portnum <= ntohs(default_ds.number_ports); portnum++) {
-		struct port_identity portid;
-		struct port_ds port_ds;
+	state.state = port_state;
 
-		portid_set(&portid, &default_ds.clock_identity, portnum);
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_PORT_STATE, sizeof(state));
+	if (rc)
+		return 0;
 
-		rc = ptpmon_query_port_mid(prog->ptpmon, &portid,
-					   MID_PORT_DATA_SET,
-					   &port_ds, sizeof(port_ds));
-		if (rc) {
-			fprintf(stderr,
-				"Failed to query PORT_DATA_SET: %d (%s)\n",
-				rc, strerror(-rc));
-			return rc;
-		}
-
-		state.state = port_ds.port_state;
-
-		rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-				       ISOCHRON_MID_PORT_STATE,
-				       sizeof(state));
-		if (rc)
-			return 0;
-
-		write_exact(prog->stats_fd, &state, sizeof(state));
-		break;
-	}
+	write_exact(prog->stats_fd, &state, sizeof(state));
 
 	return 0;
 }

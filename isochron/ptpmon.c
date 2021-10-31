@@ -429,6 +429,42 @@ static int ptpmon_copy_data_set(void *priv, struct ptp_tlv *tlv,
 	return 0;
 }
 
+static __u8 *ptp_management_tlv_extra_len_field(__u8 *tlv_data, size_t dest_len)
+{
+	return tlv_data + dest_len - 1;
+}
+
+static int ptpmon_copy_variable_len_data_set(void *priv, struct ptp_tlv *tlv,
+					     const void *tlv_data)
+{
+	struct ptpmon_tlv_parse_priv *parse = priv;
+	size_t extra_len, expected_len;
+
+	if (ntohs(tlv->management_id) != parse->mid) {
+		fprintf(stderr, "unknown management id 0x%x, expected 0x%x\n",
+			ntohs(tlv->management_id), parse->mid);
+		return -EINVAL;
+	}
+
+	extra_len = *ptp_management_tlv_extra_len_field((__u8 *)tlv_data,
+							parse->dest_len);
+	expected_len = parse->dest_len + 2 + extra_len;
+	/* PTP messages are padded to even lengths */
+	if (expected_len & 1)
+		expected_len++;
+
+	if (ntohs(tlv->length_field) != expected_len) {
+		fprintf(stderr,
+			"unexpected TLV length %d for management id %d, expected %zu\n",
+			ntohs(tlv->length_field), parse->mid, expected_len);
+		return -EINVAL;
+	}
+
+	memcpy(parse->dest, tlv_data, parse->dest_len + extra_len);
+
+	return 0;
+}
+
 static int ptp_management_message_for_each_tlv(struct ptp_message *msg,
 					       ptpmon_tlv_cb_t cb, void *priv)
 {
@@ -479,6 +515,59 @@ static int ptp_message_parse_reply(struct ptp_message *msg, ptpmon_tlv_cb_t cb,
 	}
 
 	return ptp_management_message_for_each_tlv(msg, cb, priv);
+}
+
+static void ptp_management_message_update_extra_len(struct ptp_message *msg,
+						    size_t dest_len,
+						    size_t extra_len)
+{
+	struct ptp_tlv *tlv = ptp_management_suffix(msg);
+	void *tlv_data = ptp_management_tlv_data(tlv);
+
+	*ptp_management_tlv_extra_len_field(tlv_data, dest_len) = extra_len;
+}
+
+int ptpmon_query_port_mid_extra(struct ptpmon *ptpmon,
+				const struct port_identity *target_port_identity,
+				enum ptp_management_id mid,
+				void *dest, size_t dest_len, size_t extra_len)
+{
+	struct ptpmon_tlv_parse_priv parse = {
+		.mid = mid,
+		.dest = dest,
+		.dest_len = dest_len,
+	};
+	struct ptp_message msg;
+	int err;
+
+	ptp_message_clear(&msg);
+
+	ptpmon_message_init(ptpmon, &msg, GET, target_port_identity);
+
+	if (!ptp_message_add_management_tlv(&msg, mid, dest_len + extra_len))
+		return -ERANGE;
+
+	ptp_management_message_update_extra_len(&msg, dest_len, extra_len);
+
+	err = ptpmon_send(ptpmon, &msg);
+	if (err)
+		return err;
+
+	err = ptpmon_recv(ptpmon, &msg);
+	if (err)
+		return err;
+
+	return ptp_message_parse_reply(&msg, ptpmon_copy_variable_len_data_set,
+				       &parse);
+}
+
+int ptpmon_query_clock_mid_extra(struct ptpmon *ptpmon,
+				 enum ptp_management_id mid,
+				 void *dest, size_t dest_len,
+				 size_t extra_len)
+{
+	return ptpmon_query_port_mid_extra(ptpmon, &target_all_ports, mid,
+					   dest, dest_len, extra_len);
 }
 
 int ptpmon_query_port_mid(struct ptpmon *ptpmon,

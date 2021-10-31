@@ -9,6 +9,8 @@
 
 #include <stdbool.h>
 
+#define MAX_IFACE_LEN					255
+
 enum ptp_management_id {
 	/* Clock management ID values */
 	MID_USER_DESCRIPTION				= 0x0002,
@@ -142,6 +144,15 @@ struct parent_data_set {
 	struct clock_identity	grandmaster_identity;
 } __attribute((packed));
 
+/* MID_PORT_PROPERTIES_NP */
+struct port_properties_np {
+	struct port_identity	port_identity;
+	__u8			port_state;
+	__u8			timestamping;
+	__u8			iface_len;
+	char			iface[0]; /* up to MAX_IFACE_LEN */
+} __attribute((packed));
+
 /** Defines the state of a port. */
 enum port_state {
 	PS_INITIALIZING = 1,
@@ -210,5 +221,13 @@ int ptpmon_query_port_mid(struct ptpmon *ptpmon,
 			  void *dest, size_t dest_len);
 int ptpmon_query_clock_mid(struct ptpmon *ptpmon, enum ptp_management_id mid,
 			   void *dest, size_t dest_len);
+int ptpmon_query_port_mid_extra(struct ptpmon *ptpmon,
+				const struct port_identity *target_port_identity,
+				enum ptp_management_id mid,
+				void *dest, size_t dest_len, size_t extra_len);
+int ptpmon_query_clock_mid_extra(struct ptpmon *ptpmon,
+				 enum ptp_management_id mid,
+				 void *dest, size_t dest_len,
+				 size_t extra_len);
 
 #endif
