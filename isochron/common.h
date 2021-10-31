@@ -181,6 +181,11 @@ void isochron_log_remove(struct isochron_log *log, void *p, int len);
 
 enum isochron_management_id {
 	ISOCHRON_MID_LOG,
+	ISOCHRON_MID_SYSMON_OFFSET,
+	ISOCHRON_MID_PTPMON_OFFSET,
+	ISOCHRON_MID_UTC_OFFSET,
+	ISOCHRON_MID_PORT_STATE,
+	ISOCHRON_MID_GM_CLOCK_IDENTITY,
 };
 
 enum isochron_management_action {
@@ -205,6 +210,33 @@ struct isochron_tlv {
 	__be16		tlv_type;
 	__be16		management_id;
 	__be32		length_field;
+} __attribute((packed));
+
+/* ISOCHRON_MID_SYSMON_OFFSET */
+struct isochron_sysmon_offset {
+	__be64			offset;
+	__be64			time;
+	__be64			delay;
+} __attribute((packed));
+
+/* ISOCHRON_MID_PTPMON_OFFSET */
+struct isochron_ptpmon_offset {
+	__be64			offset;
+} __attribute((packed));
+
+/* ISOCHRON_MID_UTC_OFFSET */
+struct isochron_utc_offset {
+	__be16			offset;
+} __attribute((packed));
+
+/* ISOCHRON_MID_PORT_STATE */
+struct isochron_port_state {
+	__u8			state;
+} __attribute((packed));
+
+/* ISOCHRON_MID_GM_CLOCK_IDENTITY */
+struct isochron_gm_clock_identity {
+	struct clock_identity	clock_identity;
 } __attribute((packed));
 
 size_t isochron_log_buf_tlv_size(struct isochron_log *log);

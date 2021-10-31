@@ -216,6 +216,158 @@ static int prog_client_connect_event(struct prog_data *prog)
 	return 0;
 }
 
+static int prog_forward_sysmon_offset(struct prog_data *prog)
+{
+	struct isochron_sysmon_offset sysmon;
+	__s64 sysmon_offset, sysmon_delay;
+	__u64 sysmon_ts;
+	int rc;
+
+	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
+			       &sysmon_delay);
+	if (rc)
+		return rc;
+
+	sysmon.offset = __cpu_to_be64(sysmon_offset);
+	sysmon.time = __cpu_to_be64(sysmon_ts);
+	sysmon.delay = __cpu_to_be64(sysmon_delay);
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_SYSMON_OFFSET,
+			       sizeof(sysmon));
+	if (rc)
+		return 0;
+
+	write_exact(prog->stats_fd, &sysmon, sizeof(sysmon));
+
+	return 0;
+}
+
+static int prog_forward_ptpmon_offset(struct prog_data *prog)
+{
+	struct isochron_ptpmon_offset ptpmon;
+	struct current_ds current_ds;
+	__s64 ptpmon_offset;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
+				    &current_ds, sizeof(current_ds));
+	if (rc)
+		return rc;
+
+	ptpmon_offset = master_offset_from_current_ds(&current_ds);
+	ptpmon.offset = __cpu_to_be64(ptpmon_offset);
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_PTPMON_OFFSET,
+			       sizeof(ptpmon));
+	if (rc)
+		return 0;
+
+	write_exact(prog->stats_fd, &ptpmon, sizeof(ptpmon));
+
+	return 0;
+}
+
+static int prog_forward_utc_offset(struct prog_data *prog)
+{
+	struct time_properties_ds time_properties_ds;
+	struct isochron_utc_offset utc;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_TIME_PROPERTIES_DATA_SET,
+				    &time_properties_ds, sizeof(time_properties_ds));
+	if (rc)
+		return rc;
+
+	utc.offset = time_properties_ds.current_utc_offset;
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_UTC_OFFSET, sizeof(utc));
+	if (rc)
+		return 0;
+
+	write_exact(prog->stats_fd, &utc, sizeof(utc));
+
+	return 0;
+}
+
+static int prog_forward_port_state(struct prog_data *prog)
+{
+	struct isochron_port_state state;
+	struct default_ds default_ds;
+	int portnum;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_DEFAULT_DATA_SET,
+				    &default_ds, sizeof(default_ds));
+	if (rc) {
+		fprintf(stderr, "Failed to query DEFAULT_DATA_SET: %d (%s)\n",
+			rc, strerror(-rc));
+		fprintf(stderr,
+			"Please make sure PTP daemon is running, or re-run using --omit-sync\n");
+		return rc;
+	}
+
+	/* FIXME: this always returns the port state of the first port,
+	 * not necessarily our port.
+	 */
+	for (portnum = 1; portnum <= ntohs(default_ds.number_ports); portnum++) {
+		struct port_identity portid;
+		struct port_ds port_ds;
+
+		portid_set(&portid, &default_ds.clock_identity, portnum);
+
+		rc = ptpmon_query_port_mid(prog->ptpmon, &portid,
+					   MID_PORT_DATA_SET,
+					   &port_ds, sizeof(port_ds));
+		if (rc) {
+			fprintf(stderr,
+				"Failed to query PORT_DATA_SET: %d (%s)\n",
+				rc, strerror(-rc));
+			return rc;
+		}
+
+		state.state = port_ds.port_state;
+
+		rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+				       ISOCHRON_MID_PORT_STATE,
+				       sizeof(state));
+		if (rc)
+			return 0;
+
+		write_exact(prog->stats_fd, &state, sizeof(state));
+		break;
+	}
+
+	return 0;
+}
+
+static int prog_forward_gm_clock_identity(struct prog_data *prog)
+{
+	struct isochron_gm_clock_identity gm;
+	struct parent_data_set parent_ds;
+	int rc;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
+				    &parent_ds, sizeof(parent_ds));
+	if (rc)
+		return rc;
+
+	memcpy(&gm.clock_identity, &parent_ds.grandmaster_identity,
+	       sizeof(gm.clock_identity));
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_GM_CLOCK_IDENTITY,
+			       sizeof(gm));
+	if (rc)
+		return 0;
+
+	write_exact(prog->stats_fd, &gm, sizeof(gm));
+
+	return 0;
+}
+
 static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 {
 	size_t tlv_size_bytes;
@@ -246,6 +398,16 @@ static int isochron_parse_one_tlv(struct prog_data *prog,
 		isochron_log_teardown(&prog->log);
 		return isochron_log_init(&prog->log, prog->iterations *
 					 sizeof(struct isochron_rcv_pkt_data));
+	case ISOCHRON_MID_SYSMON_OFFSET:
+		return prog_forward_sysmon_offset(prog);
+	case ISOCHRON_MID_PTPMON_OFFSET:
+		return prog_forward_ptpmon_offset(prog);
+	case ISOCHRON_MID_UTC_OFFSET:
+		return prog_forward_utc_offset(prog);
+	case ISOCHRON_MID_PORT_STATE:
+		return prog_forward_port_state(prog);
+	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
+		return prog_forward_gm_clock_identity(prog);
 	default:
 		return isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
 					 mid, 0);

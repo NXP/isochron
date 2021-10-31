@@ -129,6 +129,19 @@ struct time_properties_ds {
 	__u8			time_source;
 } __attribute((packed));
 
+/* MID_PARENT_DATA_SET */
+struct parent_data_set {
+	struct port_identity	parent_port_identity;
+	__u8			parent_stats;
+	__u8			reserved;
+	__be16			observed_parent_offset_scaled_log_variance;
+	__be32			observed_parent_clock_phase_change_rate;
+	__u8			grandmaster_priority1;
+	struct clock_quality	grandmaster_clock_quality;
+	__u8			grandmaster_priority2;
+	struct clock_identity	grandmaster_identity;
+} __attribute((packed));
+
 /** Defines the state of a port. */
 enum port_state {
 	PS_INITIALIZING = 1,

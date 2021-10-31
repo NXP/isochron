@@ -213,6 +213,130 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	return isochron_log_recv(rcv_log, prog->stats_fd);
 }
 
+static int isochron_query_mid(int fd, enum isochron_management_id mid,
+			      void *data, size_t data_len)
+{
+	struct isochron_management_message msg;
+	struct isochron_tlv tlv;
+	ssize_t len;
+	int rc;
+
+	rc = isochron_send_tlv(fd, ISOCHRON_GET, mid, 0);
+	if (rc)
+		return rc;
+
+	len = recv_exact(fd, &msg, sizeof(msg), 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
+		fprintf(stderr,
+			"Unexpected message version %d from isochron receiver\n",
+			msg.version);
+		return -EBADMSG;
+	}
+
+	if (msg.action != ISOCHRON_RESPONSE) {
+		fprintf(stderr, "Unexpected action %d from isochron receiver\n",
+			msg.action);
+		return -EBADMSG;
+	}
+
+	if (__be32_to_cpu(msg.payload_length) != data_len + sizeof(tlv)) {
+		fprintf(stderr, "Unexpected payload length %d from isochron receiver\n",
+			__be32_to_cpu(msg.payload_length));
+		return -EBADMSG;
+	}
+
+	len = recv_exact(fd, &tlv, sizeof(tlv), 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	if (ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
+		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
+			ntohs(tlv.tlv_type));
+		return -EBADMSG;
+	}
+
+	if (ntohs(tlv.management_id) != mid) {
+		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
+			ntohs(tlv.management_id));
+		return -EBADMSG;
+	}
+
+	if (__be32_to_cpu(tlv.length_field) != data_len) {
+		fprintf(stderr, "Unexpected TLV length %d from isochron receiver\n",
+			__be32_to_cpu(tlv.length_field));
+		return -EBADMSG;
+	}
+
+	len = recv_exact(fd, data, data_len, 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	return 0;
+}
+
+static int prog_collect_receiver_sync_stats(struct prog_data *prog,
+					    __s64 *sysmon_offset,
+					    __s64 *ptpmon_offset,
+					    int *utc_offset,
+					    enum port_state *port_state,
+					    struct clock_identity *gm_clkid)
+{
+	struct isochron_gm_clock_identity gm;
+	struct isochron_sysmon_offset sysmon;
+	struct isochron_ptpmon_offset ptpmon;
+	struct isochron_port_state state;
+	struct isochron_utc_offset utc;
+	int fd = prog->stats_fd;
+	int rc;
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_SYSMON_OFFSET, &sysmon,
+				sizeof(sysmon));
+	if (rc) {
+		fprintf(stderr, "sysmon offset missing from receiver reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_PTPMON_OFFSET, &ptpmon,
+				sizeof(ptpmon));
+	if (rc) {
+		fprintf(stderr, "ptpmon offset missing from receiver reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_UTC_OFFSET, &utc,
+				sizeof(utc));
+	if (rc) {
+		fprintf(stderr, "UTC offset missing from receiver reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_PORT_STATE, &state,
+				sizeof(state));
+	if (rc) {
+		fprintf(stderr, "port state missing from receiver reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_GM_CLOCK_IDENTITY, &gm,
+				sizeof(gm));
+	if (rc) {
+		fprintf(stderr, "GM clock identity missing from receiver reply: %d\n",
+			rc);
+		return rc;
+	}
+
+	*sysmon_offset = __be64_to_cpu(sysmon.offset);
+	*ptpmon_offset = __be64_to_cpu(ptpmon.offset);
+	*utc_offset = ntohs(utc.offset);
+	*port_state = state.state;
+	memcpy(gm_clkid, &gm.clock_identity, sizeof(*gm_clkid));
+
+	return 0;
+}
+
 static int prog_init_stats_socket(struct prog_data *prog)
 {
 	struct sockaddr_in6 serv_addr6;
@@ -623,15 +747,29 @@ static int prog_update_port_list(struct prog_data *prog)
 
 static int prog_sync_done(struct prog_data *prog)
 {
+	bool remote_ptpmon_sync_done, remote_sysmon_sync_done;
 	bool local_ptpmon_sync_done, local_sysmon_sync_done;
 	bool all_masters = true, have_slaves = false;
+	__s64 rcv_sysmon_offset, rcv_ptpmon_offset;
+	struct clock_identity rcv_gm_clkid;
 	__s64 sysmon_offset, sysmon_delay;
+	enum port_state rcv_port_state;
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct current_ds current_ds;
 	__s64 ptpmon_offset;
+	int rcv_utc_offset;
 	struct port *port;
 	__u64 sysmon_ts;
 	int rc;
+
+	rc = prog_collect_receiver_sync_stats(prog, &rcv_sysmon_offset,
+					      &rcv_ptpmon_offset,
+					      &rcv_utc_offset, &rcv_port_state,
+					      &rcv_gm_clkid);
+	if (rc)
+		return rc;
+
+	rcv_sysmon_offset += NSEC_PER_SEC * rcv_utc_offset;
 
 	LIST_FOREACH(port, &prog->ports, list) {
 		if (port->state != PS_MASTER)
@@ -664,13 +802,18 @@ static int prog_sync_done(struct prog_data *prog)
 	sysmon_offset += NSEC_PER_SEC * prog->utc_tai_offset;
 
 	ns_sprintf(now_buf, sysmon_ts);
-	printf("isochron[%s]: ptpmon offset %10lld sysmon offset %10lld delay %10lld\n",
-	       now_buf, ptpmon_offset, sysmon_offset, sysmon_delay);
+
+	printf("isochron[%s]: local ptpmon %10lld sysmon %10lld remote ptpmon %10lld sysmon %lld\n",
+	       now_buf, ptpmon_offset, sysmon_offset, rcv_ptpmon_offset,
+	       rcv_sysmon_offset);
 
 	local_ptpmon_sync_done = !!(llabs(ptpmon_offset) <= prog->sync_threshold);
 	local_sysmon_sync_done = !!(llabs(sysmon_offset) <= prog->sync_threshold);
+	remote_ptpmon_sync_done = !!(llabs(rcv_ptpmon_offset) <= prog->sync_threshold);
+	remote_sysmon_sync_done = !!(llabs(rcv_sysmon_offset) <= prog->sync_threshold);
 
-	return local_ptpmon_sync_done && local_sysmon_sync_done;
+	return local_ptpmon_sync_done && local_sysmon_sync_done &&
+	       remote_ptpmon_sync_done && remote_sysmon_sync_done;
 }
 
 static int prog_check_sync(struct prog_data *prog)
