@@ -745,7 +745,7 @@ static int prog_update_port_list(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_sync_done(struct prog_data *prog)
+static bool prog_sync_done(struct prog_data *prog)
 {
 	bool remote_ptpmon_sync_done, remote_sysmon_sync_done;
 	bool local_ptpmon_sync_done, local_sysmon_sync_done;
@@ -767,7 +767,7 @@ static int prog_sync_done(struct prog_data *prog)
 					      &rcv_utc_offset, &rcv_port_state,
 					      &rcv_gm_clkid);
 	if (rc)
-		return rc;
+		return false;
 
 	rcv_sysmon_offset += NSEC_PER_SEC * rcv_utc_offset;
 
@@ -779,17 +779,17 @@ static int prog_sync_done(struct prog_data *prog)
 	}
 
 	if (all_masters)
-		return 1;
+		return true;
 
 	if (!have_slaves)
-		return 0;
+		return false;
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
 	if (rc) {
 		fprintf(stderr, "Failed to query CURRENT_DATA_SET: %d (%s)\n",
 			rc, strerror(-rc));
-		return rc;
+		return false;
 	}
 
 	ptpmon_offset = master_offset_from_current_ds(&current_ds);
@@ -797,7 +797,7 @@ static int prog_sync_done(struct prog_data *prog)
 	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
 			       &sysmon_delay);
 	if (rc)
-		return rc;
+		return false;
 
 	sysmon_offset += NSEC_PER_SEC * prog->utc_tai_offset;
 
@@ -829,12 +829,9 @@ static int prog_check_sync(struct prog_data *prog)
 
 		rc = prog_update_port_list(prog);
 		if (rc)
-			return rc;
+			continue;
 
-		rc = prog_sync_done(prog);
-		if (rc < 0)
-			return rc;
-		if (rc == 1)
+		if (prog_sync_done(prog))
 			break;
 
 		sleep(1);
