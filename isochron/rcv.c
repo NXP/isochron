@@ -216,6 +216,11 @@ static int prog_client_connect_event(struct prog_data *prog)
 	return 0;
 }
 
+static void isochron_send_empty_tlv(int fd, enum isochron_management_id mid)
+{
+	isochron_send_tlv(fd, ISOCHRON_RESPONSE, mid, 0);
+}
+
 static int prog_forward_sysmon_offset(struct prog_data *prog)
 {
 	struct isochron_sysmon_offset sysmon;
@@ -225,8 +230,12 @@ static int prog_forward_sysmon_offset(struct prog_data *prog)
 
 	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
 			       &sysmon_delay);
-	if (rc)
-		return rc;
+	if (rc) {
+		fprintf(stderr, "Failed to read sysmon offset: %s\n",
+			strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_SYSMON_OFFSET);
+		return 0;
+	}
 
 	sysmon.offset = __cpu_to_be64(sysmon_offset);
 	sysmon.time = __cpu_to_be64(sysmon_ts);
@@ -252,8 +261,12 @@ static int prog_forward_ptpmon_offset(struct prog_data *prog)
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
-	if (rc)
-		return rc;
+	if (rc) {
+		fprintf(stderr, "Failed to read ptpmon offset: %s\n",
+			strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PTPMON_OFFSET);
+		return 0;
+	}
 
 	ptpmon_offset = master_offset_from_current_ds(&current_ds);
 	ptpmon.offset = __cpu_to_be64(ptpmon_offset);
@@ -277,8 +290,12 @@ static int prog_forward_utc_offset(struct prog_data *prog)
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_TIME_PROPERTIES_DATA_SET,
 				    &time_properties_ds, sizeof(time_properties_ds));
-	if (rc)
-		return rc;
+	if (rc) {
+		fprintf(stderr, "Failed to read ptpmon UTC offset: %s\n",
+			strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_UTC_OFFSET);
+		return 0;
+	}
 
 	utc.offset = time_properties_ds.current_utc_offset;
 
@@ -300,8 +317,12 @@ static int prog_forward_port_state(struct prog_data *prog)
 
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
 					     &port_state);
-	if (rc)
+	if (rc) {
+		fprintf(stderr, "Failed to read ptpmon port state: %s\n",
+			strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PORT_STATE);
 		return 0;
+	}
 
 	state.state = port_state;
 
@@ -323,8 +344,12 @@ static int prog_forward_gm_clock_identity(struct prog_data *prog)
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
 				    &parent_ds, sizeof(parent_ds));
-	if (rc)
-		return rc;
+	if (rc) {
+		fprintf(stderr, "Failed to read ptpmon GM clockID: %s\n",
+			strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_GM_CLOCK_IDENTITY);
+		return 0;
+	}
 
 	memcpy(&gm.clock_identity, &parent_ds.grandmaster_identity,
 	       sizeof(gm.clock_identity));
@@ -381,8 +406,8 @@ static int isochron_parse_one_tlv(struct prog_data *prog,
 	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
 		return prog_forward_gm_clock_identity(prog);
 	default:
-		return isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-					 mid, 0);
+		isochron_send_empty_tlv(prog->stats_fd, mid);
+		return 0;
 	}
 }
 
