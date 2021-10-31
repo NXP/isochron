@@ -20,6 +20,20 @@
 #include <unistd.h>
 #include "ptpmon.h"
 
+#define min(a,b) \
+({ \
+	__typeof__ (a) _a = (a); \
+	__typeof__ (b) _b = (b); \
+	_a < _b ? _a : _b; \
+})
+
+#define max(a,b) \
+({ \
+	__typeof__ (a) _a = (a); \
+	__typeof__ (b) _b = (b); \
+	_a > _b ? _a : _b; \
+})
+
 struct sched_attr {
 	__u32 size;		/* Size of this structure */
 	__u32 sched_policy;	/* Policy (SCHED_*) */

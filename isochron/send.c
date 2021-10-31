@@ -214,10 +214,23 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	return isochron_log_recv(rcv_log, prog->stats_fd);
 }
 
+static void isochron_drain_fd(int fd, size_t len)
+{
+	unsigned char junk[BUFSIZ];
+
+	while (len) {
+		size_t count = min(len, (size_t)BUFSIZ);
+
+		recv_exact(fd, junk, count, 0);
+		len -= count;
+	};
+}
+
 static int isochron_query_mid(int fd, enum isochron_management_id mid,
 			      void *data, size_t data_len)
 {
 	struct isochron_management_message msg;
+	size_t payload_length, tlv_length;
 	struct isochron_tlv tlv;
 	ssize_t len;
 	int rc;
@@ -243,9 +256,12 @@ static int isochron_query_mid(int fd, enum isochron_management_id mid,
 		return -EBADMSG;
 	}
 
-	if (__be32_to_cpu(msg.payload_length) != data_len + sizeof(tlv)) {
-		fprintf(stderr, "Unexpected payload length %d from isochron receiver\n",
-			__be32_to_cpu(msg.payload_length));
+	payload_length = __be32_to_cpu(msg.payload_length);
+	if (payload_length != data_len + sizeof(tlv)) {
+		fprintf(stderr,
+			"Expected payload length %zu from isochron receiver, got %zu\n",
+			data_len + sizeof(tlv), payload_length);
+		isochron_drain_fd(fd, payload_length);
 		return -EBADMSG;
 	}
 
@@ -253,27 +269,34 @@ static int isochron_query_mid(int fd, enum isochron_management_id mid,
 	if (len <= 0)
 		return len ? len : -ECONNRESET;
 
+	tlv_length = __be32_to_cpu(tlv.length_field);
+	if (tlv_length != data_len) {
+		fprintf(stderr,
+			"Expected TLV length %zu from isochron receiver, got %zu\n",
+			data_len, tlv_length);
+		isochron_drain_fd(fd, tlv_length);
+		return -EBADMSG;
+	}
+
 	if (ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
 		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
 			ntohs(tlv.tlv_type));
+		isochron_drain_fd(fd, tlv_length);
 		return -EBADMSG;
 	}
 
 	if (ntohs(tlv.management_id) != mid) {
 		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
 			ntohs(tlv.management_id));
+		isochron_drain_fd(fd, tlv_length);
 		return -EBADMSG;
 	}
 
-	if (__be32_to_cpu(tlv.length_field) != data_len) {
-		fprintf(stderr, "Unexpected TLV length %d from isochron receiver\n",
-			__be32_to_cpu(tlv.length_field));
-		return -EBADMSG;
+	if (data_len) {
+		len = recv_exact(fd, data, data_len, 0);
+		if (len <= 0)
+			return len ? len : -ECONNRESET;
 	}
-
-	len = recv_exact(fd, data, data_len, 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
 
 	return 0;
 }
