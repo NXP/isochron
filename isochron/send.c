@@ -31,6 +31,7 @@
 #include <math.h>
 #include "common.h"
 #include "ptpmon.h"
+#include "sysmon.h"
 #include <linux/net_tstamp.h>
 
 #define BUF_SIZ		10000
@@ -50,6 +51,7 @@ struct prog_data {
 	char uds_remote[UNIX_PATH_MAX];
 	char sendbuf[BUF_SIZ];
 	struct ptpmon *ptpmon;
+	struct sysmon *sysmon;
 	LIST_HEAD(port_head, port) ports;
 	struct cmsghdr *cmsg;
 	struct iovec iov;
@@ -101,6 +103,7 @@ struct prog_data {
 	long domain_number;
 	long transport_specific;
 	long sync_threshold;
+	long num_readings;
 };
 
 static int signal_received;
@@ -577,10 +580,14 @@ static int prog_update_port_list(struct prog_data *prog)
 
 static int prog_sync_done(struct prog_data *prog)
 {
+	bool local_ptpmon_sync_done, local_sysmon_sync_done;
 	bool all_masters = true, have_slaves = false;
+	__s64 sysmon_offset, sysmon_delay;
+	char now_buf[TIMESPEC_BUFSIZ];
 	struct current_ds current_ds;
-	__s64 master_offset;
+	__s64 ptpmon_offset;
 	struct port *port;
+	__u64 sysmon_ts;
 	int rc;
 
 	LIST_FOREACH(port, &prog->ports, list) {
@@ -604,10 +611,23 @@ static int prog_sync_done(struct prog_data *prog)
 		return rc;
 	}
 
-	master_offset = master_offset_from_current_ds(&current_ds);
-	printf("offset %10lld to master\n", master_offset);
+	ptpmon_offset = master_offset_from_current_ds(&current_ds);
 
-	return llabs(master_offset) <= prog->sync_threshold ? 1 : 0;
+	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
+			       &sysmon_delay);
+	if (rc)
+		return rc;
+
+	sysmon_offset += NSEC_PER_SEC * prog->utc_tai_offset;
+
+	ns_sprintf(now_buf, sysmon_ts);
+	printf("isochron[%s]: ptpmon offset %10lld sysmon offset %10lld delay %10lld\n",
+	       now_buf, ptpmon_offset, sysmon_offset, sysmon_delay);
+
+	local_ptpmon_sync_done = !!(llabs(ptpmon_offset) <= prog->sync_threshold);
+	local_sysmon_sync_done = !!(llabs(sysmon_offset) <= prog->sync_threshold);
+
+	return local_ptpmon_sync_done && local_sysmon_sync_done;
 }
 
 static int prog_check_sync(struct prog_data *prog)
@@ -701,6 +721,26 @@ static void prog_teardown_ptpmon(struct prog_data *prog)
 	ptpmon_close(prog->ptpmon);
 	ptpmon_destroy(prog->ptpmon);
 	prog->ptpmon = NULL;
+}
+
+static int prog_init_sysmon(struct prog_data *prog)
+{
+	if (prog->omit_sync)
+		return 0;
+
+	prog->sysmon = sysmon_create(prog->if_name, prog->num_readings);
+	if (!prog->sysmon)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void prog_teardown_sysmon(struct prog_data *prog)
+{
+	if (!prog->sysmon)
+		return;
+
+	sysmon_destroy(prog->sysmon);
 }
 
 static int prog_init(struct prog_data *prog)
@@ -904,6 +944,10 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		goto out_munlock;
 
+	rc = prog_init_sysmon(prog);
+	if (rc)
+		goto out_teardown_ptpmon;
+
 	/* Drain potentially old packets from the isochron receiver */
 	if (prog->stats_srv.family) {
 		struct isochron_log rcv_log;
@@ -914,6 +958,9 @@ static int prog_init(struct prog_data *prog)
 	}
 
 	return rc;
+
+out_teardown_ptpmon:
+	prog_teardown_ptpmon(prog);
 out_munlock:
 	munlockall();
 out_log_teardown:
@@ -1157,6 +1204,7 @@ static int prog_teardown(struct prog_data *prog)
 			isochron_send_log_print(&prog->log);
 	}
 
+	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
 
 	munlockall();
@@ -1459,6 +1507,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->sync_threshold,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-R",
+			.long_opt = "--num-readings",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->num_readings,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -1589,6 +1645,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			"cannot take timestamps if running indefinitely\n");
 		return -EINVAL;
 	}
+
+	if (!prog->num_readings)
+		prog->num_readings = 5;
 
 	if (prog->utc_tai_offset == -1) {
 		/* If we're using the ptpmon, we'll get the UTC offset

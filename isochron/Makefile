@@ -8,7 +8,8 @@ src := \
 	rcv.o \
 	ptpmon.o \
 	send.o \
-	stats.o
+	stats.o \
+	sysmon.o
 
 objs := $(addprefix isochron/, $(src))
 
