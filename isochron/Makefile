@@ -24,6 +24,9 @@ isochron/isochron: $(objs)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -c $< -o $@
+ifeq ($(C),1)
+	$(CHECK) $(CHECKFLAGS) $(CFLAGS) $<
+endif
 
 clean:
 	rm -f $(objs) $(deps)
