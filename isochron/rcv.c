@@ -917,14 +917,6 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			},
 			.optional = true,
 		}, {
-			.short_opt = "-n",
-			.long_opt = "--num-frames",
-			.type = PROG_ARG_LONG,
-			.long_ptr = {
-				.ptr = &prog->iterations,
-			},
-			.optional = true,
-		}, {
 			.short_opt = "-H",
 			.long_opt = "--sched-priority",
 			.type = PROG_ARG_LONG,
