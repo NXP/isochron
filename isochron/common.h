@@ -178,7 +178,8 @@ struct vlan_ethhdr {
 };
 
 struct isochron_log {
-	__u32		buf_len;
+	size_t		buf_total_size;
+	size_t		buf_len;
 	char		*buf;
 };
 

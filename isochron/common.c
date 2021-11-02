@@ -597,6 +597,7 @@ int isochron_log_init(struct isochron_log *log, size_t size)
 	if (!log->buf)
 		return -ENOMEM;
 
+	log->buf_total_size = size;
 	log->buf_len = 0;
 
 	return 0;
@@ -610,6 +611,13 @@ void isochron_log_teardown(struct isochron_log *log)
 void isochron_log_data(struct isochron_log *log, void *data, int len)
 {
 	char *p = log->buf + log->buf_len;
+
+	if (log->buf_len + len > log->buf_total_size) {
+		fprintf(stderr,
+			"Not logging event, buffer size of %lu exceeded\n",
+			log->buf_total_size);
+		return;
+	}
 
 	memcpy(p, data, len);
 	log->buf_len += len;
@@ -679,12 +687,13 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 	if (rc)
 		return rc;
 
-	log->buf_len = __be32_to_cpu(buf_len);
+	log->buf_total_size = __be32_to_cpu(buf_len);
+	log->buf_len = log->buf_total_size;
 
 	if (log->buf_len) {
 		len = read_exact(fd, log->buf, log->buf_len);
 		if (len <= 0) {
-			fprintf(stderr, "read of %d bytes returned %d: %s\n",
+			fprintf(stderr, "read of %zu bytes returned %d: %s\n",
 				log->buf_len, errno, strerror(errno));
 			isochron_log_teardown(log);
 			return -errno;
