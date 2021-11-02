@@ -696,20 +696,134 @@ static void prog_teardown_sysmon(struct prog_data *prog)
 	sysmon_destroy(prog->sysmon);
 }
 
-static int prog_init(struct prog_data *prog)
+static int prog_init_stats_listenfd(struct prog_data *prog)
 {
 	struct sockaddr_in serv_addr = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
 		.sin_port = htons(prog->stats_port),
 	};
+	int sockopt = 1;
+	int fd, rc;
+
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0) {
+		perror("listener: stats socket");
+		return -errno;
+	}
+
+	/* Allow the socket to be reused, in case the connection
+	 * is closed prematurely
+	 */
+	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
+	if (rc < 0) {
+		perror("setsockopt: stats socket");
+		goto out;
+	}
+
+	rc = bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+	if (rc < 0) {
+		perror("bind: stats socket");
+		goto out;
+	}
+
+	rc = listen(fd, 1);
+	if (rc < 0) {
+		perror("listen: stats socket");
+		goto out;
+	}
+
+	prog->stats_listenfd = fd;
+
+	return 0;
+
+out:
+	close(fd);
+	return -errno;
+}
+
+static void prog_teardown_stats_listenfd(struct prog_data *prog)
+{
+	close(prog->stats_listenfd);
+}
+
+static int prog_init_data_fd(struct prog_data *prog)
+{
 	struct sockaddr_in serv_data_addr = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
 		.sin_port = htons(prog->data_port),
 	};
-	struct sigaction sa;
 	int sockopt = 1;
+	int fd, rc;
+
+	if (prog->l2)
+		/* Open PF_PACKET socket, listening for the specified EtherType */
+		fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
+	else
+		fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (fd < 0) {
+		perror("listener: data socket");
+		return -errno;
+	}
+
+	/* Allow the socket to be reused, in case the connection
+	 * is closed prematurely
+	 */
+	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
+	if (rc < 0) {
+		perror("setsockopt");
+		goto out;
+	}
+
+	if (prog->l2) {
+		/* Bind to device */
+		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
+				IFNAMSIZ - 1);
+	} else {
+		rc = bind(fd, (struct sockaddr *)&serv_data_addr,
+			  sizeof(serv_data_addr));
+	}
+	if (rc < 0) {
+		perror("bind");
+		goto out;
+	}
+
+	if (ether_addr_to_u64(prog->dest_mac)) {
+		rc = multicast_listen(fd, prog->if_index, prog->dest_mac, true);
+		if (rc) {
+			perror("multicast_listen");
+			goto out;
+		}
+	}
+
+	if (prog->do_ts) {
+		rc = sk_timestamping_init(fd, prog->if_name, true);
+		if (rc)
+			goto out;
+	}
+
+	prog->data_fd = fd;
+
+	return 0;
+
+out:
+	close(fd);
+	return -errno;
+}
+
+static void prog_teardown_data_fd(struct prog_data *prog)
+{
+	if (ether_addr_to_u64(prog->dest_mac))
+		multicast_listen(prog->data_fd, prog->if_index,
+				 prog->dest_mac, false);
+
+	close(prog->data_fd);
+}
+
+static int prog_init(struct prog_data *prog)
+{
+	struct sigaction sa;
 	int rc;
 
 	rc = prog_init_ptpmon(prog);
@@ -749,110 +863,22 @@ static int prog_init(struct prog_data *prog)
 		goto out_teardown_sysmon;
 	}
 
-	prog->stats_listenfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (prog->stats_listenfd < 0) {
-		perror("listener: stats socket");
-		rc = -errno;
+	rc = prog_init_stats_listenfd(prog);
+	if (rc)
 		goto out_teardown_sysmon;
-	}
 
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(prog->stats_listenfd, SOL_SOCKET, SO_REUSEADDR, &sockopt,
-			sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt");
-		rc = -errno;
-		goto out_close_stats_listenfd;
-	}
-
-	rc = bind(prog->stats_listenfd, (struct sockaddr*)&serv_addr,
-		  sizeof(serv_addr));
-	if (rc < 0) {
-		perror("listener: bind");
-		rc = -errno;
-		goto out_close_stats_listenfd;
-	}
-
-	rc = listen(prog->stats_listenfd, 1);
-	if (rc < 0) {
-		perror("listener: listen");
-		rc = -errno;
-		goto out_close_stats_listenfd;
-	}
-
-	if (prog->l2)
-		/* Open PF_PACKET socket, listening for the specified EtherType */
-		prog->data_fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
-	else
-		prog->data_fd = socket(AF_INET, SOCK_DGRAM,
-				       IPPROTO_UDP);
-
-	if (prog->data_fd < 0) {
-		perror("listener: data socket");
-		rc = -errno;
-		goto out_close_stats_listenfd;
-	}
-
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_REUSEADDR, &sockopt,
-			sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt");
-		close(prog->stats_listenfd);
-		rc = -errno;
-		goto out_close_datafd;
-	}
-
-	if (prog->l2) {
-		/* Bind to device */
-		rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_BINDTODEVICE,
-				prog->if_name, IFNAMSIZ - 1);
-		if (rc < 0) {
-			perror("SO_BINDTODEVICE");
-			rc = -errno;
-			goto out_close_datafd;
-		}
-	} else {
-		rc = bind(prog->data_fd, (struct sockaddr *)&serv_data_addr,
-			  sizeof(serv_data_addr));
-		if (rc < 0) {
-			perror("bind");
-			rc = -errno;
-			goto out_close_datafd;
-		}
-	}
-
-	if (ether_addr_to_u64(prog->dest_mac)) {
-		rc = multicast_listen(prog->data_fd, prog->if_index,
-				      prog->dest_mac, true);
-		if (rc) {
-			perror("multicast_listen");
-			rc = -errno;
-			goto out_close_datafd;
-		}
-	}
-
-	if (prog->do_ts) {
-		rc = sk_timestamping_init(prog->data_fd, prog->if_name, true);
-		if (rc)
-			goto out_close_datafd;
-	}
+	rc = prog_init_data_fd(prog);
+	if (rc)
+		goto out_teardown_stats_listenfd;
 
 	return 0;
 
-out_close_datafd:
-	close(prog->data_fd);
-out_close_stats_listenfd:
-	close(prog->stats_listenfd);
+out_teardown_stats_listenfd:
+	prog_teardown_stats_listenfd(prog);
 out_teardown_sysmon:
 	prog_teardown_sysmon(prog);
 out_teardown_ptpmon:
 	prog_teardown_ptpmon(prog);
-
 	return rc;
 }
 
@@ -1080,12 +1106,8 @@ static int prog_teardown(struct prog_data *prog)
 		isochron_rcv_log_print(&prog->log);
 	isochron_log_teardown(&prog->log);
 
-	if (ether_addr_to_u64(prog->dest_mac))
-		multicast_listen(prog->data_fd, prog->if_index,
-				 prog->dest_mac, false);
-
-	close(prog->stats_listenfd);
-	close(prog->data_fd);
+	prog_teardown_data_fd(prog);
+	prog_teardown_stats_listenfd(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
 
