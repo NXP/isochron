@@ -199,6 +199,7 @@ enum isochron_management_id {
 	ISOCHRON_MID_UTC_OFFSET,
 	ISOCHRON_MID_PORT_STATE,
 	ISOCHRON_MID_GM_CLOCK_IDENTITY,
+	ISOCHRON_MID_PACKET_COUNT,
 };
 
 enum isochron_management_action {
@@ -251,6 +252,11 @@ struct isochron_port_state {
 struct isochron_gm_clock_identity {
 	struct clock_identity	clock_identity;
 } __attribute((packed));
+
+/* ISOCHRON_MID_PACKET_COUNT */
+struct isochron_packet_count {
+	__be64			count;
+};
 
 size_t isochron_log_buf_tlv_size(struct isochron_log *log);
 

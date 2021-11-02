@@ -374,14 +374,74 @@ static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 	*tlv = (struct isochron_tlv *)((unsigned char *)tlv + tlv_size_bytes);
 }
 
-static int isochron_parse_one_tlv(struct prog_data *prog,
-				  struct isochron_tlv *tlv)
+static void *isochron_tlv_data(struct isochron_tlv *tlv)
+{
+	return tlv + 1;
+}
+
+static int prog_set_packet_count(struct prog_data *prog,
+				 struct isochron_packet_count *packet_count,
+				 size_t struct_size)
+{
+	size_t iterations;
+	int rc;
+
+	if (struct_size != sizeof(*packet_count)) {
+		fprintf(stderr,
+			"Expected %zu bytes for PACKET_COUNT command, got %zu\n",
+			sizeof(*packet_count), struct_size);
+		isochron_send_empty_tlv(prog->stats_fd,
+					ISOCHRON_MID_PACKET_COUNT);
+		return 0;
+	}
+
+	iterations = __be64_to_cpu(packet_count->count);
+
+	isochron_log_teardown(&prog->log);
+	rc = isochron_log_init(&prog->log, iterations *
+			       sizeof(struct isochron_rcv_pkt_data));
+	if (rc) {
+		fprintf(stderr,
+			"Could not allocate memory for %zu iterations: %s\n",
+			iterations, strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd,
+					ISOCHRON_MID_PACKET_COUNT);
+		return 0;
+	}
+
+	prog->iterations = iterations;
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_PACKET_COUNT,
+			       sizeof(*packet_count));
+	if (rc)
+		return 0;
+
+	write_exact(prog->stats_fd, packet_count, sizeof(*packet_count));
+
+	return 0;
+}
+
+static int isochron_set_parse_one_tlv(struct prog_data *prog,
+				      struct isochron_tlv *tlv)
+{
+	enum isochron_management_id mid = ntohs(tlv->management_id);
+
+	switch (mid) {
+	case ISOCHRON_MID_PACKET_COUNT:
+		return prog_set_packet_count(prog, isochron_tlv_data(tlv),
+					     __be32_to_cpu(tlv->length_field));
+	default:
+		isochron_send_empty_tlv(prog->stats_fd, mid);
+		return 0;
+	}
+}
+
+static int isochron_get_parse_one_tlv(struct prog_data *prog,
+				      struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = ntohs(tlv->management_id);
 	int rc;
-
-	if (ntohs(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
-		return 0;
 
 	switch (mid) {
 	case ISOCHRON_MID_LOG:
@@ -430,8 +490,8 @@ static int prog_client_mgmt_event(struct prog_data *prog)
 		return 0;
 	}
 
-	if (msg.action != ISOCHRON_GET) {
-		fprintf(stderr, "Expected GET action, got %d\n", msg.action);
+	if (msg.action != ISOCHRON_GET && msg.action != ISOCHRON_SET) {
+		fprintf(stderr, "Unexpected action %d\n", msg.action);
 		return 0;
 	}
 
@@ -448,9 +508,23 @@ static int prog_client_mgmt_event(struct prog_data *prog)
 	tlv = (struct isochron_tlv *)buf;
 
 	while (parsed_len < (size_t)len) {
-		rc = isochron_parse_one_tlv(prog, tlv);
-		if (rc)
-			return rc;
+		if (ntohs(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
+			continue;
+
+		switch (msg.action) {
+		case ISOCHRON_GET:
+			rc = isochron_get_parse_one_tlv(prog, tlv);
+			if (rc)
+				return rc;
+			break;
+		case ISOCHRON_SET:
+			rc = isochron_set_parse_one_tlv(prog, tlv);
+			if (rc)
+				return rc;
+			break;
+		default:
+			break;
+		}
 
 		isochron_tlv_next(&tlv, &parsed_len);
 	}
@@ -646,11 +720,6 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		goto out_teardown_ptpmon;
 
-	rc = isochron_log_init(&prog->log, prog->iterations *
-			       sizeof(struct isochron_rcv_pkt_data));
-	if (rc < 0)
-		goto out_teardown_sysmon;
-
 	prog->clkid = CLOCK_TAI;
 	/* Convert negative logic from cmdline to positive */
 	prog->do_ts = !prog->do_ts;
@@ -663,13 +732,13 @@ static int prog_init(struct prog_data *prog)
 	if (rc < 0) {
 		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
 		rc = -errno;
-		goto out_log_teardown;
+		goto out_teardown_sysmon;
 	}
 	rc = sigaction(SIGINT, &sa, NULL);
 	if (rc < 0) {
 		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
 		rc = -errno;
-		goto out_log_teardown;
+		goto out_teardown_sysmon;
 	}
 
 	prog->if_index = if_nametoindex(prog->if_name);
@@ -677,14 +746,14 @@ static int prog_init(struct prog_data *prog)
 		fprintf(stderr, "if_nametoindex(%s) returned %s\n",
 			prog->if_name, strerror(errno));
 		rc = -errno;
-		goto out_log_teardown;
+		goto out_teardown_sysmon;
 	}
 
 	prog->stats_listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (prog->stats_listenfd < 0) {
 		perror("listener: stats socket");
 		rc = -errno;
-		goto out_log_teardown;
+		goto out_teardown_sysmon;
 	}
 
 	/* Allow the socket to be reused, in case the connection
@@ -779,8 +848,6 @@ out_close_datafd:
 	close(prog->data_fd);
 out_close_stats_listenfd:
 	close(prog->stats_listenfd);
-out_log_teardown:
-	isochron_log_teardown(&prog->log);
 out_teardown_sysmon:
 	prog_teardown_sysmon(prog);
 out_teardown_ptpmon:
@@ -993,12 +1060,6 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->data_port)
 		prog->data_port = ISOCHRON_DATA_PORT;
-
-	/* Default to the old behavior, which was to allocate a 10 MiB
-	 * log buffer given a 56 byte size of struct isochron_rcv_pkt_data
-	 */
-	if (!prog->iterations)
-		prog->iterations = 187245;
 
 	if (!prog->num_readings)
 		prog->num_readings = 5;

@@ -301,6 +301,113 @@ static int isochron_query_mid(int fd, enum isochron_management_id mid,
 	return 0;
 }
 
+static int isochron_update_mid(int fd, enum isochron_management_id mid,
+			       void *data, size_t data_len)
+{
+	struct isochron_management_message msg;
+	size_t payload_length, tlv_length;
+	struct isochron_tlv tlv;
+	unsigned char *tmp_buf;
+	ssize_t len;
+	int rc;
+
+	tmp_buf = malloc(data_len);
+	if (!tmp_buf)
+		return -ENOMEM;
+
+	rc = isochron_send_tlv(fd, ISOCHRON_SET, mid, data_len);
+	if (rc) {
+		free(tmp_buf);
+		return rc;
+	}
+
+	len = write_exact(fd, data, data_len);
+	if (len <= 0) {
+		free(tmp_buf);
+		return len ? len : -ECONNRESET;
+	}
+
+	len = recv_exact(fd, &msg, sizeof(msg), 0);
+	if (len <= 0) {
+		free(tmp_buf);
+		return len ? len : -ECONNRESET;
+	}
+
+	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
+		fprintf(stderr,
+			"Unexpected message version %d from isochron receiver\n",
+			msg.version);
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	if (msg.action != ISOCHRON_RESPONSE) {
+		fprintf(stderr, "Unexpected action %d from isochron receiver\n",
+			msg.action);
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	payload_length = __be32_to_cpu(msg.payload_length);
+	if (payload_length != data_len + sizeof(tlv)) {
+		fprintf(stderr,
+			"Expected payload length %zu from isochron receiver, got %zu\n",
+			data_len + sizeof(tlv), payload_length);
+		isochron_drain_fd(fd, payload_length);
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	len = recv_exact(fd, &tlv, sizeof(tlv), 0);
+	if (len <= 0) {
+		free(tmp_buf);
+		return len ? len : -ECONNRESET;
+	}
+
+	tlv_length = __be32_to_cpu(tlv.length_field);
+	if (tlv_length != data_len) {
+		fprintf(stderr,
+			"Expected TLV length %zu from isochron receiver, got %zu\n",
+			data_len, tlv_length);
+		isochron_drain_fd(fd, tlv_length);
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	if (ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
+		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
+			ntohs(tlv.tlv_type));
+		isochron_drain_fd(fd, tlv_length);
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	if (ntohs(tlv.management_id) != mid) {
+		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
+			ntohs(tlv.management_id));
+		isochron_drain_fd(fd, tlv_length);
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	len = recv_exact(fd, tmp_buf, data_len, 0);
+	if (len <= 0) {
+		free(tmp_buf);
+		return len ? len : -ECONNRESET;
+	}
+
+	if (memcmp(tmp_buf, data, data_len)) {
+		fprintf(stderr,
+			"Unexpected reply contents from isochron receiver\n");
+		free(tmp_buf);
+		return -EBADMSG;
+	}
+
+	free(tmp_buf);
+
+	return 0;
+}
+
 static int prog_collect_receiver_sync_stats(struct prog_data *prog,
 					    __s64 *sysmon_offset,
 					    __s64 *ptpmon_offset,
@@ -781,6 +888,30 @@ static int prog_query_utc_offset(struct prog_data *prog)
 	prog->utc_tai_offset = ntohs(time_properties_ds.current_utc_offset);
 
 	return 0;
+}
+
+static int prog_prepare_receiver(struct prog_data *prog)
+{
+	struct isochron_packet_count packet_count = {
+		.count = __cpu_to_be64(prog->iterations),
+	};
+
+	if (!prog->stats_srv.family)
+		return 0;
+
+	return isochron_update_mid(prog->stats_fd, ISOCHRON_MID_PACKET_COUNT,
+				   &packet_count, sizeof(packet_count));
+}
+
+static int prog_prepare_session(struct prog_data *prog)
+{
+	int rc;
+
+	rc = prog_prepare_receiver(prog);
+	if (rc)
+		return rc;
+
+	return prog_check_sync(prog);
 }
 
 static int prog_init_ptpmon(struct prog_data *prog)
@@ -1806,7 +1937,7 @@ int isochron_send_main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	rc = prog_check_sync(&prog);
+	rc = prog_prepare_session(&prog);
 	if (rc < 0)
 		goto out;
 
