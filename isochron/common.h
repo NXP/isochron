@@ -131,32 +131,39 @@ enum {
  * pollute POSIX space naming,
  */
 #include <byteswap.h>
+
+#ifdef __CHECKER__
+#define __force		__attribute__((force))
+#else
+# define __force
+#endif /* __CHECKER__ */
+
 #if __BYTE_ORDER == __BIG_ENDIAN
 #  ifndef __be32_to_cpu
-#  define __be32_to_cpu(x)	(x)
+#  define __be32_to_cpu(x)	((__force __u32)(__be32)(x))
 #  endif
 #  ifndef __cpu_to_be32
-#  define __cpu_to_be32(x)	(x)
+#  define __cpu_to_be32(x)	((__force __be32)(__u32)(x))
 #  endif
 #  ifndef __be64_to_cpu
-#  define __be64_to_cpu(x)	(x)
+#  define __be64_to_cpu(x)	((__force __u64)(__be64)(x))
 #  endif
 #  ifndef __cpu_to_be64
-#  define __cpu_to_be64(x)	(x)
+#  define __cpu_to_be64(x)	((__force __be64)(__u64)(x))
 #  endif
 # else
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 #  ifndef __be32_to_cpu
-#  define __be32_to_cpu(x)	__bswap_32(x)
+#  define __be32_to_cpu(x)	__bswap_32((__force __u32)(__be32)(x))
 #  endif
 #  ifndef __cpu_to_be32
-#  define __cpu_to_be32(x)	__bswap_32(x)
+#  define __cpu_to_be32(x)	((__force __be32)__bswap_32((x)))
 #  endif
 #  ifndef __be64_to_cpu
-#  define __be64_to_cpu(x)	__bswap_64(x)
+#  define __be64_to_cpu(x)	__bswap_64((__force __u64)(__be64)(x))
 #  endif
 #  ifndef __cpu_to_be64
-#  define __cpu_to_be64(x)	__bswap_64(x)
+#  define __cpu_to_be64(x)	((__force __be64)__bswap_64((x)))
 #  endif
 # endif
 #endif
