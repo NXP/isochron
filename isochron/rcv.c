@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/timerfd.h>
 #include <net/if.h>
 #include <signal.h>
 #include <errno.h>
@@ -34,12 +35,15 @@ struct prog_data {
 	int stats_listenfd;
 	int stats_fd;
 	int data_fd;
+	int data_timeout_fd;
 	bool have_client;
+	bool client_waiting_for_log;
 	bool do_ts;
 	bool quiet;
 	long etype;
 	long stats_port;
 	long iterations;
+	long received_pkt_count;
 	bool sched_fifo;
 	bool sched_rr;
 	long sched_priority;
@@ -55,14 +59,69 @@ struct prog_data {
 
 static int signal_received;
 
+static int prog_rearm_data_timeout_fd(struct prog_data *prog)
+{
+	struct itimerspec timeout = {
+		.it_value = {
+			.tv_sec = 5,
+			.tv_nsec = 0,
+		},
+		.it_interval = {
+			.tv_sec = 0,
+			.tv_nsec = 0,
+		},
+	};
+
+	if (timerfd_settime(prog->data_timeout_fd, 0, &timeout, NULL) < 0) {
+		perror("timerfd_settime");
+		return -errno;
+	}
+
+	return 0;
+}
+
+static void prog_disarm_data_timeout_fd(struct prog_data *prog)
+{
+	struct itimerspec timeout = {};
+
+	timerfd_settime(prog->data_timeout_fd, 0, &timeout, NULL);
+}
+
+static bool prog_received_all_packets(struct prog_data *prog)
+{
+	return prog->received_pkt_count == prog->iterations;
+}
+
+static int prog_forward_isochron_log(struct prog_data *prog)
+{
+	int rc;
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_LOG,
+			       isochron_log_buf_tlv_size(&prog->log));
+	if (rc)
+		return 0;
+
+	isochron_log_xmit(&prog->log, prog->stats_fd);
+	isochron_log_teardown(&prog->log);
+	return isochron_log_init(&prog->log, prog->iterations *
+				 sizeof(struct isochron_rcv_pkt_data));
+}
+
 static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 		    const struct isochron_timestamp *tstamp)
 {
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct timespec now_ts;
 	__s64 now;
+	int rc;
 
 	clock_gettime(prog->clkid, &now_ts);
+
+	rc = prog_rearm_data_timeout_fd(prog);
+	if (rc)
+		return rc;
+
 	now = timespec_to_ns(&now_ts);
 	rcv_pkt.arrival = __cpu_to_be64(now);
 	if (prog->l2) {
@@ -108,6 +167,11 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 	}
 
 	isochron_log_data(&prog->log, &rcv_pkt, sizeof(rcv_pkt));
+	prog->received_pkt_count++;
+
+	/* Expedite the log transmission if we're late */
+	if (prog->client_waiting_for_log && prog_received_all_packets(prog))
+		return prog_forward_isochron_log(prog);
 
 	return 0;
 }
@@ -185,6 +249,33 @@ static int prog_data_event(struct prog_data *prog)
 	return app_loop(prog, prog->rcvbuf, len, &tstamp);
 }
 
+static int prog_data_fd_timeout(struct prog_data *prog)
+{
+	if (!prog->client_waiting_for_log)
+		return 0;
+
+	/* Ok, ok, time is up, let's send what we've got so far. */
+	prog->client_waiting_for_log = false;
+
+	prog_disarm_data_timeout_fd(prog);
+
+	fprintf(stderr,
+		"Timed out waiting for data packets, received %ld out of %ld expected\n",
+		prog->received_pkt_count, prog->iterations);
+
+	return prog_forward_isochron_log(prog);
+}
+
+static void prog_close_client_stats_session(struct prog_data *prog)
+{
+	prog_disarm_data_timeout_fd(prog);
+	close(prog->stats_fd);
+	prog->have_client = false;
+	prog->client_waiting_for_log = false;
+	prog->received_pkt_count = 0;
+	prog->iterations = 0;
+}
+
 static int prog_client_connect_event(struct prog_data *prog)
 {
 	char client_addr[INET6_ADDRSTRLEN];
@@ -205,7 +296,7 @@ static int prog_client_connect_event(struct prog_data *prog)
 		       client_addr, addr_len)) {
 		fprintf(stderr, "inet_pton returned %d: %s\n",
 			errno, strerror(errno));
-		close(prog->stats_fd);
+		prog_close_client_stats_session(prog);
 		return -errno;
 	}
 
@@ -411,6 +502,16 @@ static int prog_set_packet_count(struct prog_data *prog,
 
 	prog->iterations = iterations;
 
+	/* Clock is ticking! */
+	rc = prog_rearm_data_timeout_fd(prog);
+	if (rc) {
+		fprintf(stderr, "Could not arm timeout timer: %s\n",
+			strerror(-rc));
+		isochron_send_empty_tlv(prog->stats_fd,
+					ISOCHRON_MID_PACKET_COUNT);
+		return 0;
+	}
+
 	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_PACKET_COUNT,
 			       sizeof(*packet_count));
@@ -441,20 +542,16 @@ static int isochron_get_parse_one_tlv(struct prog_data *prog,
 				      struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = ntohs(tlv->management_id);
-	int rc;
 
 	switch (mid) {
 	case ISOCHRON_MID_LOG:
-		rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-				       ISOCHRON_MID_LOG,
-				       isochron_log_buf_tlv_size(&prog->log));
-		if (rc)
+		/* Keep the client on hold */
+		if (!prog_received_all_packets(prog)) {
+			prog->client_waiting_for_log = true;
 			return 0;
+		}
 
-		isochron_log_xmit(&prog->log, prog->stats_fd);
-		isochron_log_teardown(&prog->log);
-		return isochron_log_init(&prog->log, prog->iterations *
-					 sizeof(struct isochron_rcv_pkt_data));
+		return prog_forward_isochron_log(prog);
 	case ISOCHRON_MID_SYSMON_OFFSET:
 		return prog_forward_sysmon_offset(prog);
 	case ISOCHRON_MID_PTPMON_OFFSET:
@@ -532,21 +629,24 @@ static int prog_client_mgmt_event(struct prog_data *prog)
 	return 0;
 
 out_client_close_or_err:
-	close(prog->stats_fd);
-	prog->have_client = false;
+	prog_close_client_stats_session(prog);
 
 	return len;
 }
 
 static int server_loop(struct prog_data *prog)
 {
-	struct pollfd pfd[2] = {
+	struct pollfd pfd[3] = {
 		[0] = {
 			.fd = prog->data_fd,
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 		[1] = {
 			/* .fd to be filled in dynamically */
+			.events = POLLIN | POLLERR | POLLPRI,
+		},
+		[2] = {
+			.fd = prog->data_timeout_fd,
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 	};
@@ -611,12 +711,25 @@ static int server_loop(struct prog_data *prog)
 			}
 		}
 
+		if (pfd[2].revents & (POLLIN | POLLERR | POLLPRI)) {
+			__u64 expiry_count;
+
+			rc = read_exact(prog->data_timeout_fd, &expiry_count,
+					sizeof(expiry_count));
+			if (rc < 0)
+				break;
+
+			rc = prog_data_fd_timeout(prog);
+			if (rc)
+				break;
+		}
+
 		if (signal_received)
 			break;
 	} while (1);
 
 	if (prog->have_client)
-		close(prog->stats_fd);
+		prog_close_client_stats_session(prog);
 
 	/* Restore scheduling policy */
 	if (sched_policy != SCHED_OTHER) {
@@ -821,6 +934,27 @@ static void prog_teardown_data_fd(struct prog_data *prog)
 	close(prog->data_fd);
 }
 
+static int prog_init_data_timeout_fd(struct prog_data *prog)
+{
+	int fd;
+
+	fd = timerfd_create(CLOCK_MONOTONIC, 0);
+	if (fd < 0) {
+		perror("timerfd_create");
+		return -errno;
+	}
+
+	prog->data_timeout_fd = fd;
+
+	return 0;
+}
+
+static void prog_teardown_data_timeout_fd(struct prog_data *prog)
+{
+	prog_disarm_data_timeout_fd(prog);
+	close(prog->data_timeout_fd);
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	struct sigaction sa;
@@ -871,8 +1005,14 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		goto out_teardown_stats_listenfd;
 
+	rc = prog_init_data_timeout_fd(prog);
+	if (rc)
+		goto out_teardown_data_fd;
+
 	return 0;
 
+out_teardown_data_fd:
+	prog_teardown_data_fd(prog);
 out_teardown_stats_listenfd:
 	prog_teardown_stats_listenfd(prog);
 out_teardown_sysmon:
@@ -1106,6 +1246,7 @@ static int prog_teardown(struct prog_data *prog)
 		isochron_rcv_log_print(&prog->log);
 	isochron_log_teardown(&prog->log);
 
+	prog_teardown_data_timeout_fd(prog);
 	prog_teardown_data_fd(prog);
 	prog_teardown_stats_listenfd(prog);
 	prog_teardown_sysmon(prog);

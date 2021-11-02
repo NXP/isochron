@@ -162,23 +162,6 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 	return base_time + (n + 1) * cycle_time;
 }
 
-/* With long cycle times, it is possible that the receiver might get the packet
- * later than when we connect to it to retrieve logs (that's especially true
- * when we have an out-of-band connection to the receiver, like through
- * localhost). So let's wait for one full cycle-time for the receiver.
- */
-static int wait_for_rcv_last_pkt(struct prog_data *prog)
-{
-	struct timespec interval_ts = ns_to_timespec(prog->cycle_time);
-	int rc;
-
-	do {
-		rc = clock_nanosleep(prog->clkid, 0, &interval_ts, NULL);
-	} while (rc == -EINTR);
-
-	return rc;
-}
-
 static int prog_collect_rcv_stats(struct prog_data *prog,
 				  struct isochron_log *rcv_log)
 {
@@ -186,10 +169,6 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 	struct isochron_tlv tlv;
 	ssize_t len;
 	int rc;
-
-	rc = wait_for_rcv_last_pkt(prog);
-	if (rc)
-		return rc;
 
 	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_GET, ISOCHRON_MID_LOG, 0);
 	if (rc)
@@ -907,11 +886,11 @@ static int prog_prepare_session(struct prog_data *prog)
 {
 	int rc;
 
-	rc = prog_prepare_receiver(prog);
+	rc = prog_check_sync(prog);
 	if (rc)
 		return rc;
 
-	return prog_check_sync(prog);
+	return prog_prepare_receiver(prog);
 }
 
 static int prog_init_ptpmon(struct prog_data *prog)

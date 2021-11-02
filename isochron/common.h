@@ -396,6 +396,7 @@ struct isochron_stats {
 };
 
 ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
+ssize_t read_exact(int fd, void *buf, size_t count);
 ssize_t write_exact(int fd, const void *buf, size_t count);
 
 int mac_addr_from_string(unsigned char *to, char *from);
