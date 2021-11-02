@@ -12,15 +12,21 @@ src := \
 	sysmon.o
 
 objs := $(addprefix isochron/, $(src))
+deps := $(patsubst %.o, %.d, $(objs))
+
+all: isochron/isochron
+
+# include all .d files
+-include $(deps)
 
 isochron/isochron: $(objs)
 	$(CC) $^ -o $@ $(LDFLAGS) -lm
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $^ -o $@
+	$(CC) $(CFLAGS) -MMD -c $< -o $@
 
 clean:
-	rm -f $(objs)
+	rm -f $(objs) $(deps)
 
 install: isochron/isochron
 	install -m 0755 -D isochron/isochron $(DESTDIR)${bindir}/isochron
