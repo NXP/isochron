@@ -84,9 +84,9 @@ enum txtime_flags {
 #endif
 
 struct isochron_header {
-	__s64			tx_time;
-	__s64			wakeup;
-	__u32			seqid;
+	__be64			tx_time;
+	__be64			wakeup;
+	__be32			seqid;
 }  __attribute__((packed));
 
 #define NSEC_PER_SEC	1000000000LL
