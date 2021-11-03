@@ -456,6 +456,7 @@ void trace_mark_close(int fd);
 
 int set_utc_tai_offset(int offset);
 int get_utc_tai_offset();
+void isochron_fixup_kernel_utc_offset(int ptp_utc_offset);
 
 static inline __s64 utc_to_tai(__s64 utc, __s64 offset)
 {

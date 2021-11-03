@@ -853,6 +853,7 @@ static int prog_check_sync(struct prog_data *prog)
 static int prog_query_utc_offset(struct prog_data *prog)
 {
 	struct time_properties_ds time_properties_ds;
+	int ptp_utc_offset;
 	int rc;
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_TIME_PROPERTIES_DATA_SET,
@@ -864,7 +865,9 @@ static int prog_query_utc_offset(struct prog_data *prog)
 		return rc;
 	}
 
-	prog->utc_tai_offset = ntohs(time_properties_ds.current_utc_offset);
+	ptp_utc_offset = ntohs(time_properties_ds.current_utc_offset);
+	isochron_fixup_kernel_utc_offset(ptp_utc_offset);
+	prog->utc_tai_offset = ptp_utc_offset;
 
 	return 0;
 }

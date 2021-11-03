@@ -857,6 +857,19 @@ int get_utc_tai_offset()
 	return tx.tai;
 }
 
+void isochron_fixup_kernel_utc_offset(int ptp_utc_offset)
+{
+	int kernel_offset = get_utc_tai_offset();
+
+	if (ptp_utc_offset == kernel_offset)
+		return;
+
+	printf("Kernel UTC-TAI offset of %d seems out of date, updating it to %d\n",
+	       kernel_offset, ptp_utc_offset);
+
+	set_utc_tai_offset(ptp_utc_offset);
+}
+
 int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 				    enum port_state *port_state)
 {

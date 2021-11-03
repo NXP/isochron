@@ -397,6 +397,9 @@ static int prog_forward_utc_offset(struct prog_data *prog)
 
 	write_exact(prog->stats_fd, &utc, sizeof(utc));
 
+	isochron_fixup_kernel_utc_offset(ntohs(utc.offset));
+	prog->utc_tai_offset = ntohs(utc.offset);
+
 	return 0;
 }
 
