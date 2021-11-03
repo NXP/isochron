@@ -730,11 +730,11 @@ void isochron_rcv_log_print(struct isochron_log *log)
 			ns_sprintf(swts_buf, rx_swts);
 
 			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-			       scheduled_buf, smac_buf, dmac_buf, ntohs(rcv_pkt->etype),
+			       scheduled_buf, smac_buf, dmac_buf, __be16_to_cpu(rcv_pkt->etype),
 			       __be32_to_cpu(rcv_pkt->seqid), hwts_buf, swts_buf);
 		} else {
 			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
-			       scheduled_buf, smac_buf, dmac_buf, ntohs(rcv_pkt->etype),
+			       scheduled_buf, smac_buf, dmac_buf, __be16_to_cpu(rcv_pkt->etype),
 			       __be32_to_cpu(rcv_pkt->seqid));
 		}
 	}
@@ -784,8 +784,8 @@ int isochron_send_tlv(int fd, enum isochron_management_action action,
 	msg->payload_length = __cpu_to_be32(sizeof(*tlv) + size);
 
 	tlv = (struct isochron_tlv *)(msg + 1);
-	tlv->tlv_type = htons(ISOCHRON_TLV_MANAGEMENT);
-	tlv->management_id = htons(mid);
+	tlv->tlv_type = __cpu_to_be16(ISOCHRON_TLV_MANAGEMENT);
+	tlv->management_id = __cpu_to_be16(mid);
 	tlv->length_field = __cpu_to_be32(size);
 
 	len = write_exact(fd, buf, sizeof(*msg) + sizeof(*tlv));
@@ -874,7 +874,7 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 				    enum port_state *port_state)
 {
 	struct default_ds default_ds;
-	int portnum;
+	int portnum, num_ports;
 	int rc;
 
 	rc = ptpmon_query_clock_mid(ptpmon, MID_DEFAULT_DATA_SET,
@@ -885,7 +885,9 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 		return rc;
 	}
 
-	for (portnum = 1; portnum <= ntohs(default_ds.number_ports); portnum++) {
+	num_ports = __be16_to_cpu(default_ds.number_ports);
+
+	for (portnum = 1; portnum <= num_ports; portnum++) {
 		struct port_properties_np port_properties_np;
 		struct port_identity portid;
 

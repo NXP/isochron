@@ -139,6 +139,12 @@ enum {
 #endif /* __CHECKER__ */
 
 #if __BYTE_ORDER == __BIG_ENDIAN
+#  ifndef __be16_to_cpu
+#  define __be16_to_cpu(x)	((__force __u16)(__be16)(x))
+#  endif
+#  ifndef __cpu_to_be16
+#  define __cpu_to_be16(x)	((__force __be16)(__u16)(x))
+#  endif
 #  ifndef __be32_to_cpu
 #  define __be32_to_cpu(x)	((__force __u32)(__be32)(x))
 #  endif
@@ -153,6 +159,12 @@ enum {
 #  endif
 # else
 # if __BYTE_ORDER == __LITTLE_ENDIAN
+#  ifndef __be16_to_cpu
+#  define __be16_to_cpu(x)	__bswap_16((__force __u16)(__be16)(x))
+#  endif
+#  ifndef __cpu_to_be16
+#  define __cpu_to_be16(x)	((__force __be16)__bswap_16((x)))
+#  endif
 #  ifndef __be32_to_cpu
 #  define __be32_to_cpu(x)	__bswap_32((__force __u32)(__be32)(x))
 #  endif

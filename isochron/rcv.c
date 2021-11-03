@@ -397,8 +397,8 @@ static int prog_forward_utc_offset(struct prog_data *prog)
 
 	write_exact(prog->stats_fd, &utc, sizeof(utc));
 
-	isochron_fixup_kernel_utc_offset(ntohs(utc.offset));
-	prog->utc_tai_offset = ntohs(utc.offset);
+	isochron_fixup_kernel_utc_offset(__be16_to_cpu(utc.offset));
+	prog->utc_tai_offset = __be16_to_cpu(utc.offset);
 
 	return 0;
 }
@@ -529,7 +529,7 @@ static int prog_set_packet_count(struct prog_data *prog,
 static int isochron_set_parse_one_tlv(struct prog_data *prog,
 				      struct isochron_tlv *tlv)
 {
-	enum isochron_management_id mid = ntohs(tlv->management_id);
+	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
 
 	switch (mid) {
 	case ISOCHRON_MID_PACKET_COUNT:
@@ -544,7 +544,7 @@ static int isochron_set_parse_one_tlv(struct prog_data *prog,
 static int isochron_get_parse_one_tlv(struct prog_data *prog,
 				      struct isochron_tlv *tlv)
 {
-	enum isochron_management_id mid = ntohs(tlv->management_id);
+	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
 
 	switch (mid) {
 	case ISOCHRON_MID_LOG:
@@ -608,7 +608,7 @@ static int prog_client_mgmt_event(struct prog_data *prog)
 	tlv = (struct isochron_tlv *)buf;
 
 	while (parsed_len < (size_t)len) {
-		if (ntohs(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
+		if (__be16_to_cpu(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
 			continue;
 
 		switch (msg.action) {

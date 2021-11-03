@@ -184,8 +184,8 @@ static int prog_collect_rcv_stats(struct prog_data *prog,
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION ||
 	    msg.action != ISOCHRON_RESPONSE ||
-	    ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT ||
-	    ntohs(tlv.management_id) != ISOCHRON_MID_LOG) {
+	    __be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT ||
+	    __be16_to_cpu(tlv.management_id) != ISOCHRON_MID_LOG) {
 		fprintf(stderr, "Unexpected reply from isochron receiver\n");
 		return -EBADMSG;
 	}
@@ -257,16 +257,16 @@ static int isochron_query_mid(int fd, enum isochron_management_id mid,
 		return -EBADMSG;
 	}
 
-	if (ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
+	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
 		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
-			ntohs(tlv.tlv_type));
+			__be16_to_cpu(tlv.tlv_type));
 		isochron_drain_fd(fd, tlv_length);
 		return -EBADMSG;
 	}
 
-	if (ntohs(tlv.management_id) != mid) {
+	if (__be16_to_cpu(tlv.management_id) != mid) {
 		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
-			ntohs(tlv.management_id));
+			__be16_to_cpu(tlv.management_id));
 		isochron_drain_fd(fd, tlv_length);
 		return -EBADMSG;
 	}
@@ -353,17 +353,17 @@ static int isochron_update_mid(int fd, enum isochron_management_id mid,
 		return -EBADMSG;
 	}
 
-	if (ntohs(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
+	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
 		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
-			ntohs(tlv.tlv_type));
+			__be16_to_cpu(tlv.tlv_type));
 		isochron_drain_fd(fd, tlv_length);
 		free(tmp_buf);
 		return -EBADMSG;
 	}
 
-	if (ntohs(tlv.management_id) != mid) {
+	if (__be16_to_cpu(tlv.management_id) != mid) {
 		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
-			ntohs(tlv.management_id));
+			__be16_to_cpu(tlv.management_id));
 		isochron_drain_fd(fd, tlv_length);
 		free(tmp_buf);
 		return -EBADMSG;
@@ -440,7 +440,7 @@ static int prog_collect_receiver_sync_stats(struct prog_data *prog,
 
 	*sysmon_offset = __be64_to_cpu(sysmon.offset);
 	*ptpmon_offset = __be64_to_cpu(ptpmon.offset);
-	*utc_offset = ntohs(utc.offset);
+	*utc_offset = __be16_to_cpu(utc.offset);
 	*port_state = state.state;
 	memcpy(gm_clkid, &gm.clock_identity, sizeof(*gm_clkid));
 
@@ -865,7 +865,7 @@ static int prog_query_utc_offset(struct prog_data *prog)
 		return rc;
 	}
 
-	ptp_utc_offset = ntohs(time_properties_ds.current_utc_offset);
+	ptp_utc_offset = __be16_to_cpu(time_properties_ds.current_utc_offset);
 	isochron_fixup_kernel_utc_offset(ptp_utc_offset);
 	prog->utc_tai_offset = ptp_utc_offset;
 
@@ -1069,17 +1069,17 @@ static int prog_init(struct prog_data *prog)
 
 		ether_addr_copy(hdr->h_source, prog->src_mac);
 		ether_addr_copy(hdr->h_dest, prog->dest_mac);
-		hdr->h_vlan_proto = htons(ETH_P_8021Q);
+		hdr->h_vlan_proto = __cpu_to_be16(ETH_P_8021Q);
 		/* Ethertype field */
-		hdr->h_vlan_encapsulated_proto = htons(prog->etype);
-		hdr->h_vlan_TCI = htons((prog->priority << VLAN_PRIO_SHIFT) |
-					(prog->vid & VLAN_VID_MASK));
+		hdr->h_vlan_encapsulated_proto = __cpu_to_be16(prog->etype);
+		hdr->h_vlan_TCI = __cpu_to_be16((prog->priority << VLAN_PRIO_SHIFT) |
+						(prog->vid & VLAN_VID_MASK));
 	} else {
 		struct ethhdr *hdr = (struct ethhdr *)prog->sendbuf;
 
 		ether_addr_copy(hdr->h_source, prog->src_mac);
 		ether_addr_copy(hdr->h_dest, prog->dest_mac);
-		hdr->h_proto = htons(prog->etype);
+		hdr->h_proto = __cpu_to_be16(prog->etype);
 	}
 
 	if (prog->l2) {
