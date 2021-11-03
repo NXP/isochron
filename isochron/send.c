@@ -765,6 +765,7 @@ static bool prog_sync_done(struct prog_data *prog)
 	__s64 rcv_sysmon_offset, rcv_ptpmon_offset;
 	struct clock_identity rcv_gm_clkid;
 	__s64 sysmon_offset, sysmon_delay;
+	struct parent_data_set parent_ds;
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct current_ds current_ds;
 	bool have_remote_stats;
@@ -781,6 +782,15 @@ static bool prog_sync_done(struct prog_data *prog)
 					      &rcv_gm_clkid);
 	if (rc)
 		return false;
+
+	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
+				    &parent_ds, sizeof(parent_ds));
+	if (rc) {
+		fprintf(stderr,
+			"Failed to query grandmaster clock id (%s), waiting for ptp4l\n",
+			strerror(-rc));
+		return false;
+	}
 
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
 					     &local_port_state);
@@ -830,6 +840,22 @@ static bool prog_sync_done(struct prog_data *prog)
 			       port_state_to_string(remote_port_state));
 			prog->last_remote_port_state = remote_port_state;
 		}
+
+		if (!clockid_eq(&parent_ds.grandmaster_identity,
+				&rcv_gm_clkid)) {
+			char remote_gm[CLOCKID_BUFSIZE];
+			char local_gm[CLOCKID_BUFSIZE];
+
+			clockid_to_string(&parent_ds.grandmaster_identity,
+					  local_gm);
+			clockid_to_string(&rcv_gm_clkid, remote_gm);
+
+			printf("Sender and receiver not synchronized to the same grandmaster, sender has %s, receiver has %s\n",
+			       local_gm, remote_gm);
+
+			return false;
+		}
+
 		remote_port_transient_state = remote_port_state != PS_MASTER &&
 					      remote_port_state != PS_SLAVE;
 

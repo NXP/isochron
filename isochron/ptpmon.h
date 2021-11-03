@@ -206,6 +206,12 @@ static inline bool portid_eq(const struct port_identity *a,
 	return memcmp(a, b, sizeof(*a)) == 0;
 }
 
+static inline bool clockid_eq(const struct clock_identity *a,
+			      const struct clock_identity *b)
+{
+	return memcmp(a, b, sizeof(*a)) == 0;
+}
+
 const char *port_state_to_string(enum port_state state);
 
 struct ptpmon;
