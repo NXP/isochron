@@ -389,6 +389,7 @@ static int isochron_update_mid(int fd, enum isochron_management_id mid,
 }
 
 static int prog_collect_receiver_sync_stats(struct prog_data *prog,
+					    bool *have_remote_stats,
 					    __s64 *sysmon_offset,
 					    __s64 *ptpmon_offset,
 					    int *utc_offset,
@@ -402,6 +403,13 @@ static int prog_collect_receiver_sync_stats(struct prog_data *prog,
 	struct isochron_utc_offset utc;
 	int fd = prog->stats_fd;
 	int rc;
+
+	if (!prog->stats_srv.family) {
+		*have_remote_stats = false;
+		return 0;
+	}
+
+	*have_remote_stats = true;
 
 	rc = isochron_query_mid(fd, ISOCHRON_MID_SYSMON_OFFSET, &sysmon,
 				sizeof(sysmon));
@@ -759,26 +767,20 @@ static bool prog_sync_done(struct prog_data *prog)
 	__s64 sysmon_offset, sysmon_delay;
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct current_ds current_ds;
+	bool have_remote_stats;
 	__s64 ptpmon_offset;
 	int rcv_utc_offset;
 	__u64 sysmon_ts;
 	int rc;
 
-	rc = prog_collect_receiver_sync_stats(prog, &rcv_sysmon_offset,
+	rc = prog_collect_receiver_sync_stats(prog, &have_remote_stats,
+					      &rcv_sysmon_offset,
 					      &rcv_ptpmon_offset,
 					      &rcv_utc_offset,
 					      &remote_port_state,
 					      &rcv_gm_clkid);
 	if (rc)
 		return false;
-
-	rcv_sysmon_offset += NSEC_PER_SEC * rcv_utc_offset;
-
-	if (remote_port_state != prog->last_remote_port_state) {
-		printf("Remote port changed state to %s\n",
-		       port_state_to_string(remote_port_state));
-		prog->last_remote_port_state = remote_port_state;
-	}
 
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
 					     &local_port_state);
@@ -797,8 +799,6 @@ static bool prog_sync_done(struct prog_data *prog)
 
 	local_port_transient_state = local_port_state != PS_MASTER &&
 				     local_port_state != PS_SLAVE;
-	remote_port_transient_state = remote_port_state != PS_MASTER &&
-				      remote_port_state != PS_SLAVE;
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
@@ -817,16 +817,36 @@ static bool prog_sync_done(struct prog_data *prog)
 
 	sysmon_offset += NSEC_PER_SEC * prog->utc_tai_offset;
 
-	ns_sprintf(now_buf, sysmon_ts);
-
-	printf("isochron[%s]: local ptpmon %10lld sysmon %10lld remote ptpmon %10lld sysmon %lld\n",
-	       now_buf, ptpmon_offset, sysmon_offset, rcv_ptpmon_offset,
-	       rcv_sysmon_offset);
-
 	local_ptpmon_sync_done = !!(llabs(ptpmon_offset) <= prog->sync_threshold);
 	local_sysmon_sync_done = !!(llabs(sysmon_offset) <= prog->sync_threshold);
-	remote_ptpmon_sync_done = !!(llabs(rcv_ptpmon_offset) <= prog->sync_threshold);
-	remote_sysmon_sync_done = !!(llabs(rcv_sysmon_offset) <= prog->sync_threshold);
+
+	ns_sprintf(now_buf, sysmon_ts);
+
+	if (have_remote_stats) {
+		rcv_sysmon_offset += NSEC_PER_SEC * rcv_utc_offset;
+
+		if (remote_port_state != prog->last_remote_port_state) {
+			printf("Remote port changed state to %s\n",
+			       port_state_to_string(remote_port_state));
+			prog->last_remote_port_state = remote_port_state;
+		}
+		remote_port_transient_state = remote_port_state != PS_MASTER &&
+					      remote_port_state != PS_SLAVE;
+
+		remote_ptpmon_sync_done = !!(llabs(rcv_ptpmon_offset) <= prog->sync_threshold);
+		remote_sysmon_sync_done = !!(llabs(rcv_sysmon_offset) <= prog->sync_threshold);
+
+		printf("isochron[%s]: local ptpmon %10lld sysmon %10lld remote ptpmon %10lld sysmon %lld\n",
+		       now_buf, ptpmon_offset, sysmon_offset, rcv_ptpmon_offset,
+		       rcv_sysmon_offset);
+	} else {
+		remote_port_transient_state = false;
+		remote_ptpmon_sync_done = true;
+		remote_sysmon_sync_done = true;
+
+		printf("isochron[%s]: ptpmon %10lld sysmon %10lld\n",
+		       now_buf, ptpmon_offset, sysmon_offset);
+	}
 
 	return !local_port_transient_state && !remote_port_transient_state &&
 	       local_ptpmon_sync_done && local_sysmon_sync_done &&
