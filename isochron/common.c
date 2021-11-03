@@ -809,7 +809,7 @@ static const char * const trace_marker_paths[] = {
 	"/debugfs/tracing/trace_marker",
 };
 
-int trace_mark_open()
+int trace_mark_open(void)
 {
 	struct stat st;
 	unsigned int i;
@@ -847,7 +847,7 @@ int set_utc_tai_offset(int offset)
 	return adjtimex(&tx);
 }
 
-int get_utc_tai_offset()
+int get_utc_tai_offset(void)
 {
 	struct timex tx;
 

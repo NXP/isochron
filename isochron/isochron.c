@@ -13,7 +13,7 @@ enum isochron_func {
 	ISOCHRON_STATS,
 };
 
-static void isochron_usage()
+static void isochron_usage(void)
 {
 	fprintf(stderr, "isochron usage:\n");
 	fprintf(stderr, "isochron send ...\n");

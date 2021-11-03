@@ -398,11 +398,11 @@ static inline bool is_zero_ether_addr(const unsigned char *addr)
 	return ((*(const __u32 *)addr) | (*(const __u16 *)(addr + 4))) == 0;
 }
 
-int trace_mark_open();
+int trace_mark_open(void);
 void trace_mark_close(int fd);
 
 int set_utc_tai_offset(int offset);
-int get_utc_tai_offset();
+int get_utc_tai_offset(void);
 void isochron_fixup_kernel_utc_offset(int ptp_utc_offset);
 
 static inline __s64 utc_to_tai(__s64 utc, __s64 offset)
