@@ -8,6 +8,7 @@
 #define _PTPMON_H
 
 #include <stdbool.h>
+#include "endian.h"
 
 #define MAX_IFACE_LEN					255
 
@@ -172,7 +173,7 @@ static inline void portid_set(struct port_identity *portid,
 			      unsigned int port_number)
 {
 	memcpy(&portid->clock_identity, clockid, sizeof(*clockid));
-	portid->port_number = htons(port_number);
+	portid->port_number = __cpu_to_be16(port_number);
 }
 
 #define CLOCKID_BUFSIZE			64

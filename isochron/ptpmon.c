@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <linux/un.h>
 #include <unistd.h>
+#include "endian.h"
 #include "ptpmon.h"
 
 #define ARRAY_SIZE(array) \
@@ -133,7 +134,7 @@ static const struct port_identity target_all_ports = {
 	.clock_identity = {
 		.id = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 	},
-	.port_number = 0xffff,
+	.port_number = (__force __be16 )0xffff,
 };
 
 static const char *ps_str[] = {
@@ -221,8 +222,8 @@ static int ptpmon_management_error(struct management_error_status *mgt)
 	enum ptp_management_error_id err;
 	enum ptp_management_id mid;
 
-	mid = ntohs(mgt->id);
-	err = ntohs(mgt->error);
+	mid = __be16_to_cpu(mgt->id);
+	err = __be16_to_cpu(mgt->error);
 
 	fprintf(stderr, "Server returned error code %d (%s) for MID %d\n",
 		err, mgt_err_code_to_string(err), mid);
@@ -240,11 +241,11 @@ static void *ptp_message_add_management_tlv(struct ptp_message *msg,
 	if (msg->len + sizeof(*tlv) + mid_size >= PTP_MSGSIZE)
 		return NULL;
 
-	tlv->tlv_type = htons(TLV_MANAGEMENT);
-	tlv->length_field = htons(2 + mid_size);
-	tlv->management_id = htons(mid);
+	tlv->tlv_type = __cpu_to_be16(TLV_MANAGEMENT);
+	tlv->length_field = __cpu_to_be16(2 + mid_size);
+	tlv->management_id = __cpu_to_be16(mid);
 	msg->len += sizeof(*tlv) + mid_size;
-	header->message_length = htons(msg->len);
+	header->message_length = __cpu_to_be16(msg->len);
 
 	return ptp_management_tlv_data(tlv);
 }
@@ -350,10 +351,10 @@ static void ptpmon_message_init(struct ptpmon *ptpmon, struct ptp_message *msg,
 
 	header->tsmt = PTP_MSGTYPE_MANAGEMENT | ptpmon->transport_specific;
 	header->ver = PTP_VERSION;
-	header->message_length = htons(msg->len);
+	header->message_length = __cpu_to_be16(msg->len);
 	header->domain_number = ptpmon->domain_number;
 	header->source_port_identity = ptpmon->port_identity;
-	header->sequence_id = htons(ptpmon->sequence_id++);
+	header->sequence_id = __cpu_to_be16(ptpmon->sequence_id++);
 	header->control = CTL_MANAGEMENT;
 	header->log_message_interval = 0x7f;
 
@@ -366,7 +367,7 @@ static void ptpmon_message_init(struct ptpmon *ptpmon, struct ptp_message *msg,
 
 static void ptp_management_tlv_next(struct ptp_tlv **tlv, size_t *len)
 {
-	size_t tlv_size_bytes = ntohs((*tlv)->length_field) + sizeof(**tlv);
+	size_t tlv_size_bytes = __be16_to_cpu((*tlv)->length_field) + sizeof(**tlv);
 
 	*len += tlv_size_bytes;
 	*tlv = (struct ptp_tlv *)((unsigned char *)tlv + tlv_size_bytes);
@@ -381,18 +382,20 @@ struct ptpmon_tlv_parse_priv {
 static int ptpmon_copy_data_set(void *priv, struct ptp_tlv *tlv,
 				const void *tlv_data)
 {
+	enum ptp_management_id mid = __be16_to_cpu(tlv->management_id);
+	size_t tlv_length = __be16_to_cpu(tlv->length_field);
 	struct ptpmon_tlv_parse_priv *parse = priv;
 
-	if (ntohs(tlv->management_id) != parse->mid) {
+	if (mid != parse->mid) {
 		fprintf(stderr, "unknown management id 0x%x, expected 0x%x\n",
-			ntohs(tlv->management_id), parse->mid);
+			mid, parse->mid);
 		return -EINVAL;
 	}
 
-	if (ntohs(tlv->length_field) != parse->dest_len + 2) {
+	if (tlv_length != parse->dest_len + 2) {
 		fprintf(stderr,
-			"unexpected TLV length %d for management id %d, expected %zu\n",
-			ntohs(tlv->length_field), parse->mid, parse->dest_len + 2);
+			"unexpected TLV length %zu for management id %d, expected %zu\n",
+			tlv_length, parse->mid, parse->dest_len + 2);
 		return -EINVAL;
 	}
 
@@ -409,12 +412,14 @@ static __u8 *ptp_management_tlv_extra_len_field(__u8 *tlv_data, size_t dest_len)
 static int ptpmon_copy_variable_len_data_set(void *priv, struct ptp_tlv *tlv,
 					     const void *tlv_data)
 {
+	enum ptp_management_id mid = __be16_to_cpu(tlv->management_id);
+	size_t tlv_length = __be16_to_cpu(tlv->length_field);
 	struct ptpmon_tlv_parse_priv *parse = priv;
 	size_t extra_len, expected_len;
 
-	if (ntohs(tlv->management_id) != parse->mid) {
+	if (mid != parse->mid) {
 		fprintf(stderr, "unknown management id 0x%x, expected 0x%x\n",
-			ntohs(tlv->management_id), parse->mid);
+			mid, parse->mid);
 		return -EINVAL;
 	}
 
@@ -425,10 +430,10 @@ static int ptpmon_copy_variable_len_data_set(void *priv, struct ptp_tlv *tlv,
 	if (expected_len & 1)
 		expected_len++;
 
-	if (ntohs(tlv->length_field) != expected_len) {
+	if (tlv_length != expected_len) {
 		fprintf(stderr,
-			"unexpected TLV length %d for management id %d, expected %zu\n",
-			ntohs(tlv->length_field), parse->mid, expected_len);
+			"unexpected TLV length %zu for management id %d, expected %zu\n",
+			tlv_length, parse->mid, expected_len);
 		return -EINVAL;
 	}
 
@@ -445,7 +450,9 @@ static int ptp_management_message_for_each_tlv(struct ptp_message *msg,
 	int err = -EBADMSG;
 
 	while (len < msg->len) {
-		switch (ntohs(tlv->tlv_type)) {
+		enum ptp_tlv_type tlv_type = __be16_to_cpu(tlv->tlv_type);
+
+		switch (tlv_type) {
 		case TLV_MANAGEMENT:
 			err = cb(priv, tlv, ptp_management_tlv_data(tlv));
 			if (err)
@@ -454,7 +461,7 @@ static int ptp_management_message_for_each_tlv(struct ptp_message *msg,
 		case TLV_MANAGEMENT_ERROR_STATUS:
 			return ptpmon_management_error(ptp_management_tlv_data(tlv));
 		default:
-			printf("unknown TLV type %d\n", ntohs(tlv->tlv_type));
+			printf("unknown TLV type %d\n", tlv_type);
 		}
 
 		ptp_management_tlv_next(&tlv, &len);
@@ -610,7 +617,7 @@ struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
 	ptpmon->transport_specific = transport_specific;
 	strncpy(ptpmon->uds_local, uds_local, UNIX_PATH_MAX);
 	strncpy(ptpmon->uds_remote, uds_remote, UNIX_PATH_MAX);
-	ptpmon->port_identity.port_number = htons(getpid());
+	ptpmon->port_identity.port_number = __cpu_to_be16(getpid());
 
 	return ptpmon;
 }
