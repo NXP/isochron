@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <poll.h>
 #include "common.h"
+#include "isochron.h"
 #include "ptpmon.h"
 #include "sysmon.h"
 

@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "missing.h"
+#include "sysmon.h"
 
 #define NSEC_PER_SEC 1000000000LL
 

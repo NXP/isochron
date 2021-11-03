@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <math.h>
 #include "common.h"
+#include "isochron.h"
 #include "ptpmon.h"
 #include "sysmon.h"
 #include <linux/net_tstamp.h>
