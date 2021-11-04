@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 #include <sys/timerfd.h>
 #include <net/if.h>
 #include <signal.h>
@@ -242,9 +243,7 @@ static int prog_data_event(struct prog_data *prog)
 		return -errno;
 	}
 
-	if (prog->l2 &&
-	    ether_addr_to_u64(prog->dest_mac) &&
-	    ether_addr_to_u64(prog->dest_mac) != ether_addr_to_u64(eth_hdr->h_dest))
+	if (prog->l2 && !ether_addr_equal(prog->dest_mac, eth_hdr->h_dest))
 		return 0;
 
 	return app_loop(prog, prog->rcvbuf, len, &tstamp);
@@ -460,6 +459,25 @@ static int prog_forward_gm_clock_identity(struct prog_data *prog)
 	return 0;
 }
 
+static int prog_forward_destination_mac(struct prog_data *prog)
+{
+	struct isochron_destination_mac mac;
+	int rc;
+
+	memset(&mac, 0, sizeof(mac));
+	ether_addr_copy(mac.addr, prog->dest_mac);
+
+	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_DESTINATION_MAC,
+			       sizeof(mac));
+	if (rc)
+		return 0;
+
+	write_exact(prog->stats_fd, &mac, sizeof(mac));
+
+	return 0;
+}
+
 static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 {
 	size_t tlv_size_bytes;
@@ -566,6 +584,8 @@ static int isochron_get_parse_one_tlv(struct prog_data *prog,
 		return prog_forward_port_state(prog);
 	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
 		return prog_forward_gm_clock_identity(prog);
+	case ISOCHRON_MID_DESTINATION_MAC:
+		return prog_forward_destination_mac(prog);
 	default:
 		isochron_send_empty_tlv(prog->stats_fd, mid);
 		return 0;
@@ -908,7 +928,21 @@ static int prog_init_data_fd(struct prog_data *prog)
 		goto out;
 	}
 
-	if (ether_addr_to_u64(prog->dest_mac)) {
+	if (is_zero_ether_addr(prog->dest_mac)) {
+		struct ifreq if_mac;
+
+		memset(&if_mac, 0, sizeof(struct ifreq));
+		strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
+		if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
+			perror("SIOCGIFHWADDR");
+			goto out;
+		}
+
+		ether_addr_copy(prog->dest_mac,
+			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
+	}
+
+	if (is_multicast_ether_addr(prog->dest_mac)) {
 		rc = multicast_listen(fd, prog->if_index, prog->dest_mac, true);
 		if (rc) {
 			perror("multicast_listen");
@@ -933,7 +967,7 @@ out:
 
 static void prog_teardown_data_fd(struct prog_data *prog)
 {
-	if (ether_addr_to_u64(prog->dest_mac))
+	if (is_multicast_ether_addr(prog->dest_mac))
 		multicast_listen(prog->data_fd, prog->if_index,
 				 prog->dest_mac, false);
 

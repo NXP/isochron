@@ -919,6 +919,38 @@ static int prog_query_utc_offset(struct prog_data *prog)
 	return 0;
 }
 
+static int prog_query_dest_mac(struct prog_data *prog)
+{
+	struct isochron_destination_mac mac;
+	char mac_buf[MACADDR_BUFSIZ];
+	int rc;
+
+	if (!prog->l2)
+		return 0;
+
+	if (!is_zero_ether_addr(prog->dest_mac))
+		return 0;
+
+	if (!prog->stats_srv.family) {
+		fprintf(stderr, "Destination MAC address is only optional with --client\n");
+		return -EINVAL;
+	}
+
+	rc = isochron_query_mid(prog->stats_fd, ISOCHRON_MID_DESTINATION_MAC,
+				&mac, sizeof(mac));
+	if (rc) {
+		fprintf(stderr, "destination MAC missing from receiver reply\n");
+		return rc;
+	}
+
+	ether_addr_copy(prog->dest_mac, mac.addr);
+
+	mac_addr_sprintf(mac_buf, prog->dest_mac);
+	printf("Destination MAC address is %s\n", mac_buf);
+
+	return 0;
+}
+
 static int prog_prepare_receiver(struct prog_data *prog)
 {
 	struct isochron_packet_count packet_count = {
@@ -1219,6 +1251,10 @@ static int prog_init(struct prog_data *prog)
 	rc = prog_init_stats_socket(prog);
 	if (rc)
 		goto out;
+
+	rc = prog_query_dest_mac(prog);
+	if (rc)
+		goto out_stats_socket_teardown;
 
 	rc = prog_init_data_fd(prog);
 	if (rc)
@@ -1931,7 +1967,11 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (!prog->l2 && !prog->l4)
 		prog->l2 = true;
 
-	if (prog->l2 && is_zero_ether_addr(prog->dest_mac)) {
+	/* If we have a connection to the receiver, we can query it for the
+	 * destination MAC for this test
+	 */
+	if (prog->l2 && is_zero_ether_addr(prog->dest_mac) &&
+	    !prog->stats_srv.family) {
 		fprintf(stderr, "Please specify destination MAC address\n");
 		return -EINVAL;
 	}

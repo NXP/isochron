@@ -154,6 +154,7 @@ enum isochron_management_id {
 	ISOCHRON_MID_PORT_STATE,
 	ISOCHRON_MID_GM_CLOCK_IDENTITY,
 	ISOCHRON_MID_PACKET_COUNT,
+	ISOCHRON_MID_DESTINATION_MAC,
 };
 
 enum isochron_management_action {
@@ -211,6 +212,12 @@ struct isochron_gm_clock_identity {
 struct isochron_packet_count {
 	__be64			count;
 };
+
+/* ISOCHRON_MID_DESTINATION_MAC */
+struct isochron_destination_mac {
+	unsigned char		addr[ETH_ALEN];
+	__u8			reserved[2];
+} __attribute((packed));
 
 size_t isochron_log_buf_tlv_size(struct isochron_log *log);
 
@@ -396,6 +403,36 @@ static inline void ether_addr_copy(unsigned char *dst, const unsigned char *src)
 static inline bool is_zero_ether_addr(const unsigned char *addr)
 {
 	return ((*(const __u32 *)addr) | (*(const __u16 *)(addr + 4))) == 0;
+}
+
+/**
+ * is_multicast_ether_addr - Determine if the Ethernet address is a multicast.
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is a multicast address.
+ * By definition the broadcast address is also a multicast address.
+ */
+static inline bool is_multicast_ether_addr(const unsigned char *addr)
+{
+	return addr[0] & 0x01;
+}
+
+/**
+ * ether_addr_equal - Compare two Ethernet addresses
+ * @a: Pointer to a six-byte array containing the Ethernet address
+ * @b: Pointer other six-byte array containing the Ethernet address
+ *
+ * Compare two Ethernet addresses, returns true if equal
+ *
+ * Please note: a & b must both be aligned to u16.
+ */
+static inline bool ether_addr_equal(const unsigned char *a,
+				    const unsigned char *b)
+{
+	__u32 fold = ((*(const __u32 *)a) ^ (*(const __u32 *)b)) |
+		     ((*(const __u16 *)(a + 4)) ^ (*(const __u16 *)(b + 4)));
+
+	return fold == 0;
 }
 
 int trace_mark_open(void);
