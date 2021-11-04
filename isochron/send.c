@@ -1451,7 +1451,7 @@ out:
 	}
 }
 
-static int prog_teardown(struct prog_data *prog)
+static void prog_teardown(struct prog_data *prog)
 {
 	int rc;
 
@@ -1464,14 +1464,14 @@ static int prog_teardown(struct prog_data *prog)
 		if (rc) {
 			fprintf(stderr, "Failed to collect receiver stats: %s\n",
 				strerror(-rc));
-			return rc;
+		} else {
+			isochron_print_stats(&prog->log, &rcv_log,
+					     prog->omit_sync, prog->quiet,
+					     prog->taprio, prog->txtime,
+					     prog->advance_time);
+
+			isochron_log_teardown(&rcv_log);
 		}
-
-		isochron_print_stats(&prog->log, &rcv_log, prog->omit_sync,
-				     prog->quiet, prog->taprio, prog->txtime,
-				     prog->advance_time);
-
-		isochron_log_teardown(&rcv_log);
 	} else {
 		if (!prog->quiet)
 			isochron_send_log_print(&prog->log);
@@ -1489,8 +1489,6 @@ static int prog_teardown(struct prog_data *prog)
 		trace_mark_close(prog->trace_mark_fd);
 
 	close(prog->data_fd);
-
-	return rc;
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
@@ -1946,7 +1944,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 int isochron_send_main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
-	int rc_save, rc;
+	int rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
@@ -1960,12 +1958,10 @@ int isochron_send_main(int argc, char *argv[])
 	if (rc < 0)
 		goto out;
 
-	rc_save = run_nanosleep(&prog);
+	rc = run_nanosleep(&prog);
 
 out:
-	rc = prog_teardown(&prog);
-	if (rc < 0)
-		return rc;
+	prog_teardown(&prog);
 
-	return rc_save;
+	return rc;
 }
