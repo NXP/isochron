@@ -329,8 +329,8 @@ struct isochron_rcv_pkt_data {
 	__be32 seqid;
 };
 
-struct isochron_stat_entry {
-	LIST_ENTRY(isochron_stat_entry) list;
+struct isochron_packet_metrics {
+	LIST_ENTRY(isochron_packet_metrics) list;
 	__s64 wakeup_to_hw_ts;
 	__s64 hw_rx_deadline_delta;
 	__s64 latency_budget;
@@ -341,7 +341,7 @@ struct isochron_stat_entry {
 };
 
 struct isochron_stats {
-	LIST_HEAD(stats_head, isochron_stat_entry) entries;
+	LIST_HEAD(stats_head, isochron_packet_metrics) entries;
 	int frame_count;
 	int hw_tx_deadline_misses;
 	double tx_sync_offset_mean;
