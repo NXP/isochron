@@ -1415,7 +1415,8 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
  */
 static void isochron_metric_compute_stats(const struct isochron_stats *stats,
 					  struct isochron_metric_stats *ms,
-					  int metric_offset)
+					  int metric_offset,
+					  bool interpret_in_reverse)
 {
 	struct isochron_packet_metrics *entry;
 	double sumsqr = 0;
@@ -1428,23 +1429,25 @@ static void isochron_metric_compute_stats(const struct isochron_stats *stats,
 
 	LIST_FOREACH(entry, &stats->entries, list) {
 		__s64 *metric = (__s64 *)((char *)entry + metric_offset);
+		__s64 val = interpret_in_reverse ? -(*metric) : *metric;
 
-		if (*metric < ms->min) {
-			ms->min = *metric;
+		if (val < ms->min) {
+			ms->min = val;
 			ms->seqid_of_min = entry->seqid;
 		}
-		if (*metric > ms->max) {
-			ms->max = *metric;
+		if (val > ms->max) {
+			ms->max = val;
 			ms->seqid_of_max = entry->seqid;
 		}
-		ms->mean += *metric;
+		ms->mean += val;
 	}
 
 	ms->mean /= (double)stats->frame_count;
 
 	LIST_FOREACH(entry, &stats->entries, list) {
 		__s64 *metric = (__s64 *)((char *)entry + metric_offset);
-		double deviation = (double)*metric - ms->mean;
+		__s64 val = interpret_in_reverse ? -(*metric) : *metric;
+		double deviation = (double)val - ms->mean;
 
 		sumsqr += deviation * deviation;
 	}
@@ -1521,26 +1524,34 @@ void isochron_print_stats(struct isochron_log *send_log,
 	/* Path delay */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
-					       path_delay));
+					       path_delay), false);
 	isochron_print_metric_stats("Path delay", &ms);
 
 	/* Wakeup to HW TX timestamp */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
-					       wakeup_to_hw_ts));
+					       wakeup_to_hw_ts), false);
 	isochron_print_metric_stats("Wakeup to HW TX timestamp", &ms);
 
 	/* HW RX deadline delta (TX time to HW RX timestamp) */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
-					       hw_rx_deadline_delta));
-	isochron_print_metric_stats("HW RX deadline delta (TX time to HW RX timestamp)",
-				    &ms);
+					       hw_rx_deadline_delta), false);
+	if (ms.mean > 0) {
+		isochron_print_metric_stats("Packets arrived later than scheduled. TX time to HW RX timestamp",
+					    &ms);
+	} else {
+		isochron_metric_compute_stats(&stats, &ms,
+					      offsetof(struct isochron_packet_metrics,
+						       hw_rx_deadline_delta), true);
+		isochron_print_metric_stats("Packets arrived earlier than scheduled. HW RX timestamp to TX time",
+					    &ms);
+	}
 
 	/* Latency budget, interpreted differently depending on testing mode */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
-					       latency_budget));
+					       latency_budget), false);
 	if (taprio || txtime)
 		isochron_print_metric_stats("MAC latency (TX time to HW TX timestamp)",
 					    &ms);
@@ -1551,13 +1562,13 @@ void isochron_print_stats(struct isochron_log *send_log,
 	/* Wakeup latency */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
-					       wakeup_latency));
+					       wakeup_latency), false);
 	isochron_print_metric_stats("Wakeup latency", &ms);
 
 	/* Arrival latency */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
-					       arrival_latency));
+					       arrival_latency), false);
 	isochron_print_metric_stats("Arrival latency (HW RX timestamp to application)",
 				    &ms);
 
