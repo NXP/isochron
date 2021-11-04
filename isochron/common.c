@@ -938,5 +938,11 @@ int isochron_handle_signals(void (*handler)(int signo))
 		return -errno;
 	}
 
+	rc = sigaction(SIGPIPE, &sa, NULL);
+	if (rc < 0) {
+		fprintf(stderr, "can't catch SIGPIPE: %s\n", strerror(errno));
+		return -errno;
+	}
+
 	return 0;
 }
