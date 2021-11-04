@@ -1212,13 +1212,17 @@ static int prog_init(struct prog_data *prog)
 
 	rc = isochron_handle_signals(sig_handler);
 	if (rc)
-		return rc;
+		goto out;
 
 	prog->clkid = CLOCK_TAI;
 
+	rc = prog_init_stats_socket(prog);
+	if (rc)
+		goto out;
+
 	rc = prog_init_data_fd(prog);
 	if (rc)
-		return rc;
+		goto out_stats_socket_teardown;
 
 	prog_init_data_packet(prog);
 
@@ -1249,25 +1253,19 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		goto out_teardown_ptpmon;
 
-	rc = prog_init_stats_socket(prog);
-	if (rc)
-		goto out_teardown_sysmon;
-
 	/* Drain potentially old packets from the isochron receiver */
 	if (prog->stats_srv.family) {
 		struct isochron_log rcv_log;
 
 		rc = prog_collect_rcv_stats(prog, &rcv_log);
 		if (rc)
-			goto out_stats_socket_teardown;
+			goto out_teardown_sysmon;
 
 		isochron_log_teardown(&rcv_log);
 	}
 
 	return rc;
 
-out_stats_socket_teardown:
-	prog_teardown_stats_socket(prog);
 out_teardown_sysmon:
 	prog_teardown_sysmon(prog);
 out_teardown_ptpmon:
@@ -1280,6 +1278,9 @@ out_close_trace_mark_fd:
 	prog_teardown_trace_mark(prog);
 out_close_data_fd:
 	prog_teardown_data_fd(prog);
+out_stats_socket_teardown:
+	prog_teardown_stats_socket(prog);
+out:
 	return rc;
 }
 
@@ -1519,7 +1520,6 @@ static void prog_teardown(struct prog_data *prog)
 			isochron_send_log_print(&prog->log);
 	}
 
-	prog_teardown_stats_socket(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
 
@@ -1528,6 +1528,7 @@ static void prog_teardown(struct prog_data *prog)
 	isochron_log_teardown(&prog->log);
 	prog_teardown_trace_mark(prog);
 	prog_teardown_data_fd(prog);
+	prog_teardown_stats_socket(prog);
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
