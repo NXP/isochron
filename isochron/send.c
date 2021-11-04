@@ -1114,32 +1114,9 @@ static void prog_teardown_data_fd(struct prog_data *prog)
 	close(prog->data_fd);
 }
 
-static int prog_init(struct prog_data *prog)
+static void prog_init_data_packet(struct prog_data *prog)
 {
-	int i, rc;
-
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
-
-	prog->clkid = CLOCK_TAI;
-
-	rc = prog_init_data_fd(prog);
-	if (rc)
-		return rc;
-
-	if (prog->trace_mark) {
-		prog->trace_mark_fd = trace_mark_open();
-		if (prog->trace_mark_fd < 0) {
-			perror("trace_mark_open");
-			rc = prog->trace_mark_fd;
-			goto out_close_data_fd;
-		}
-
-		memset(prog->tracebuf, ' ', TIME_FMT_LEN + 1);
-		prog->tracebuf[0] = '[';
-		prog->tracebuf[TIME_FMT_LEN - 2] = ']';
-	}
+	int i;
 
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
@@ -1170,21 +1147,6 @@ static int prog_init(struct prog_data *prog)
 	if (prog->l4)
 		prog->tx_len -= sizeof(struct ethhdr) + prog->l4_header_len;
 
-	rc = isochron_log_init(&prog->log, prog->iterations *
-			       sizeof(struct isochron_send_pkt_data));
-	if (rc < 0)
-		goto out_close_trace_mark_fd;
-
-	/* Prevent the process's virtual memory from being swapped out, by
-	 * locking all current and future pages
-	 */
-	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
-	if (rc < 0) {
-		fprintf(stderr, "mlockall returned %d: %s\n",
-			errno, strerror(errno));
-		goto out_log_teardown;
-	}
-
 	i = sizeof(struct isochron_header) + prog->l2_header_len;
 
 	/* Packet data */
@@ -1212,6 +1174,51 @@ static int prog_init(struct prog_data *prog)
 		prog->cmsg->cmsg_level = SOL_SOCKET;
 		prog->cmsg->cmsg_type = SCM_TXTIME;
 		prog->cmsg->cmsg_len = CMSG_LEN(sizeof(__u64));
+	}
+}
+
+static int prog_init(struct prog_data *prog)
+{
+	int rc;
+
+	rc = isochron_handle_signals(sig_handler);
+	if (rc)
+		return rc;
+
+	prog->clkid = CLOCK_TAI;
+
+	rc = prog_init_data_fd(prog);
+	if (rc)
+		return rc;
+
+	prog_init_data_packet(prog);
+
+	if (prog->trace_mark) {
+		prog->trace_mark_fd = trace_mark_open();
+		if (prog->trace_mark_fd < 0) {
+			perror("trace_mark_open");
+			rc = prog->trace_mark_fd;
+			goto out_close_data_fd;
+		}
+
+		memset(prog->tracebuf, ' ', TIME_FMT_LEN + 1);
+		prog->tracebuf[0] = '[';
+		prog->tracebuf[TIME_FMT_LEN - 2] = ']';
+	}
+
+	rc = isochron_log_init(&prog->log, prog->iterations *
+			       sizeof(struct isochron_send_pkt_data));
+	if (rc < 0)
+		goto out_close_trace_mark_fd;
+
+	/* Prevent the process's virtual memory from being swapped out, by
+	 * locking all current and future pages
+	 */
+	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
+	if (rc < 0) {
+		fprintf(stderr, "mlockall returned %d: %s\n",
+			errno, strerror(errno));
+		goto out_log_teardown;
 	}
 
 	rc = prog_init_ptpmon(prog);
