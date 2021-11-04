@@ -1410,9 +1410,9 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 	LIST_INSERT_HEAD(&stats->entries, entry, list);
 }
 
-static void isochron_print_one_stat(struct isochron_stats *stats,
-				    int stat_offset,
-				    const char *name)
+static void isochron_print_one_metric(struct isochron_stats *stats,
+				      int metric_offset,
+				      const char *name)
 {
 	int seqid_of_max = 1, seqid_of_min = 1;
 	__s64 min = LONG_MAX, max = LONG_MIN;
@@ -1420,24 +1420,24 @@ static void isochron_print_one_stat(struct isochron_stats *stats,
 	struct isochron_stat_entry *entry;
 
 	LIST_FOREACH(entry, &stats->entries, list) {
-		__s64 *stat = (__s64 *)((char *)entry + stat_offset);
+		__s64 *metric = (__s64 *)((char *)entry + metric_offset);
 
-		if (*stat < min) {
-			min = *stat;
+		if (*metric < min) {
+			min = *metric;
 			seqid_of_min = entry->seqid;
 		}
-		if (*stat > max) {
-			max = *stat;
+		if (*metric > max) {
+			max = *metric;
 			seqid_of_max = entry->seqid;
 		}
-		mean += *stat;
+		mean += *metric;
 	}
 
 	mean /= (double)stats->frame_count;
 
 	LIST_FOREACH(entry, &stats->entries, list) {
-		__s64 *stat = (__s64 *)((char *)entry + stat_offset);
-		double deviation = (double)*stat - mean;
+		__s64 *metric = (__s64 *)((char *)entry + metric_offset);
+		double deviation = (double)*metric - mean;
 
 		sumsqr += deviation * deviation;
 	}
@@ -1504,23 +1504,23 @@ void isochron_print_stats(struct isochron_log *send_log,
 	}
 
 	printf("Summary:\n");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				path_delay), "Path delay");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				hw_rx_deadline_delta), "HW RX deadline delta (TX time to HW RX timestamp)");
+	isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+				  path_delay), "Path delay");
+	isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+				  wakeup_to_hw_ts), "Wakeup to HW TX timestamp");
+	isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+				  hw_rx_deadline_delta), "HW RX deadline delta (TX time to HW RX timestamp)");
 	if (taprio || txtime)
-		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-					latency_budget), "MAC latency (TX time to HW TX timestamp)");
+		isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+					  latency_budget), "MAC latency (TX time to HW TX timestamp)");
 	else
-		isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-					latency_budget), "Application latency budget (HW TX timestamp to TX time)");
+		isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+					  latency_budget), "Application latency budget (HW TX timestamp to TX time)");
 
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				wakeup_latency), "Wakeup latency");
-	isochron_print_one_stat(&stats, offsetof(struct isochron_stat_entry,
-				arrival_latency), "Arrival latency (HW RX timestamp to application)");
+	isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+				  wakeup_latency), "Wakeup latency");
+	isochron_print_one_metric(&stats, offsetof(struct isochron_stat_entry,
+				  arrival_latency), "Arrival latency (HW RX timestamp to application)");
 	if (!taprio && !txtime)
 		printf("HW TX deadline misses: %d (%.3lf%%)\n",
 		       stats.hw_tx_deadline_misses,
