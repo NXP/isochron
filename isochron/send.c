@@ -38,13 +38,6 @@
 #define BUF_SIZ		10000
 #define TIME_FMT_LEN	27 /* "[%s] " */
 
-struct port {
-	LIST_ENTRY(port) list;
-	struct port_identity portid;
-	enum port_state state;
-	bool active;
-};
-
 struct prog_data {
 	unsigned char dest_mac[ETH_ALEN];
 	unsigned char src_mac[ETH_ALEN];
