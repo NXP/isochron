@@ -765,9 +765,9 @@ void isochron_send_log_print(struct isochron_log *log)
 	}
 }
 
-void isochron_log_remove(struct isochron_log *log, void *p, int len)
+void isochron_log_remove(struct isochron_log *log, void *p, size_t len)
 {
-	memcpy(p, p + len, log->buf_len - len);
+	memmove(p, p + len, log->buf_len - len);
 	log->buf_len -= len;
 }
 

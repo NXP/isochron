@@ -144,7 +144,7 @@ int isochron_log_recv(struct isochron_log *log, int fd);
 void isochron_log_teardown(struct isochron_log *log);
 void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);
-void isochron_log_remove(struct isochron_log *log, void *p, int len);
+void isochron_log_remove(struct isochron_log *log, void *p, size_t len);
 
 enum isochron_management_id {
 	ISOCHRON_MID_LOG,
