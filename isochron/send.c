@@ -636,31 +636,13 @@ static int run_nanosleep(struct prog_data *prog)
 {
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
+	char wakeup_buf[TIMESPEC_BUFSIZ];
 	__u32 sched_policy = SCHED_OTHER;
 	char now_buf[TIMESPEC_BUFSIZ];
 	__s64 wakeup, scheduled, now;
 	struct timespec now_ts;
 	int rc;
 	long i;
-
-	rc = clock_gettime(prog->clkid, &now_ts);
-	if (rc < 0) {
-		perror("clock_gettime");
-		return -errno;
-	}
-
-	now = timespec_to_ns(&now_ts);
-	prog->base_time += prog->shift_time;
-	prog->base_time -= prog->advance_time;
-
-	/* Make sure we get enough sleep at the beginning */
-	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
-					   now + NSEC_PER_SEC);
-
-	wakeup = prog->base_time;
-
-	ns_sprintf(now_buf, now);
-	fprintf(stderr, "%10s: %s\n", "Now", now_buf);
 
 	if (prog->sched_fifo)
 		sched_policy = SCHED_FIFO;
@@ -681,10 +663,30 @@ static int run_nanosleep(struct prog_data *prog)
 		}
 	}
 
+	rc = clock_gettime(prog->clkid, &now_ts);
+	if (rc < 0) {
+		perror("clock_gettime");
+		rc = -errno;
+		goto restore;
+	}
+
+	now = timespec_to_ns(&now_ts);
+	prog->base_time += prog->shift_time;
+
+	/* Make sure we get enough sleep at the beginning */
+	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
+					   now + NSEC_PER_SEC);
+
+	wakeup = prog->base_time - prog->advance_time;
+
+	ns_sprintf(now_buf, now);
 	ns_sprintf(base_time_buf, prog->base_time);
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
-	fprintf(stderr, "%10s: %s\n", "Base time", base_time_buf);
-	fprintf(stderr, "%10s: %s\n", "Cycle time", cycle_time_buf);
+	ns_sprintf(wakeup_buf, wakeup);
+	fprintf(stderr, "%12s: %*s\n", "Now", TIMESPEC_BUFSIZ, now_buf);
+	fprintf(stderr, "%12s: %*s\n", "First wakeup", TIMESPEC_BUFSIZ, wakeup_buf);
+	fprintf(stderr, "%12s: %*s\n", "Base time", TIMESPEC_BUFSIZ, base_time_buf);
+	fprintf(stderr, "%12s: %*s\n", "Cycle time", TIMESPEC_BUFSIZ, cycle_time_buf);
 
 	/* Play nice with awk's array indexing */
 	for (i = 1; !prog->iterations || i <= prog->iterations; i++) {
@@ -716,6 +718,7 @@ static int run_nanosleep(struct prog_data *prog)
 
 	prog->sent = i - 1;
 
+restore:
 	/* Restore scheduling policy */
 	if (sched_policy != SCHED_OTHER) {
 		struct sched_attr attr = {

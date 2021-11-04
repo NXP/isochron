@@ -93,8 +93,8 @@ struct isochron_header {
 #define NSEC_PER_SEC	1000000000LL
 #define ETH_P_ISOCHRON	0xdead
 
-#define TIMESPEC_BUFSIZ	32
-#define MACADDR_BUFSIZ	32
+#define TIMESPEC_BUFSIZ	22
+#define MACADDR_BUFSIZ	18
 
 #define TXTSTAMP_TIMEOUT_MS	10
 
@@ -336,6 +336,7 @@ struct isochron_packet_metrics {
 	__s64 latency_budget;
 	__s64 path_delay;
 	__s64 wakeup_latency;
+	__s64 sender_latency;
 	__s64 arrival_latency;
 	__u32 seqid;
 };
