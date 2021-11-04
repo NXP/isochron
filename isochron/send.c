@@ -999,6 +999,8 @@ static int prog_init_sysmon(struct prog_data *prog)
 	if (!prog->sysmon)
 		return -ENOMEM;
 
+	sysmon_print_method(prog->sysmon);
+
 	return 0;
 }
 

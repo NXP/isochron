@@ -150,10 +150,9 @@ static int sysoff_precise(int fd, __s64 *result, __u64 *ts)
 {
 	struct ptp_sys_offset_precise pso;
 	memset(&pso, 0, sizeof(pso));
-	if (ioctl(fd, PTP_SYS_OFFSET_PRECISE, &pso)) {
-		printf("ioctl PTP_SYS_OFFSET_PRECISE: %m\n");
+	if (ioctl(fd, PTP_SYS_OFFSET_PRECISE, &pso))
 		return SYSOFF_RUN_TIME_MISSING;
-	}
+
 	*result = pct_to_ns(&pso.sys_realtime) - pct_to_ns(&pso.device);
 	*ts = pct_to_ns(&pso.sys_realtime);
 	return SYSOFF_PRECISE;
@@ -210,10 +209,9 @@ static int sysoff_extended(int fd, int n_samples, __s64 *result, __u64 *ts,
 	struct ptp_sys_offset_extended pso;
 	memset(&pso, 0, sizeof(pso));
 	pso.n_samples = n_samples;
-	if (ioctl(fd, PTP_SYS_OFFSET_EXTENDED, &pso)) {
-		printf("ioctl PTP_SYS_OFFSET_EXTENDED: %m\n");
+	if (ioctl(fd, PTP_SYS_OFFSET_EXTENDED, &pso))
 		return SYSOFF_RUN_TIME_MISSING;
-	}
+
 	*result = sysoff_estimate(&pso.ts[0][0], 1, n_samples, ts, delay);
 	return SYSOFF_EXTENDED;
 }
@@ -224,10 +222,9 @@ static int sysoff_basic(int fd, int n_samples, __s64 *result, __u64 *ts,
 	struct ptp_sys_offset pso;
 	memset(&pso, 0, sizeof(pso));
 	pso.n_samples = n_samples;
-	if (ioctl(fd, PTP_SYS_OFFSET, &pso)) {
-		perror("ioctl PTP_SYS_OFFSET");
+	if (ioctl(fd, PTP_SYS_OFFSET, &pso))
 		return SYSOFF_RUN_TIME_MISSING;
-	}
+
 	*result = sysoff_estimate(pso.ts, 0, n_samples, ts, delay);
 	return SYSOFF_BASIC;
 }
@@ -331,6 +328,26 @@ int sysmon_get_offset(struct sysmon *sysmon, __s64 *offset, __u64 *ts,
 	}
 
 	return 0;
+}
+
+void sysmon_print_method(struct sysmon *sysmon)
+{
+	switch (sysmon->sysoff_method) {
+	case SYSOFF_BASIC:
+		printf("Using PTP_SYS_OFFSET for measuring the offset from %s to CLOCK_REALTIME\n",
+		       sysmon->name);
+		break;
+	case SYSOFF_EXTENDED:
+		printf("Using PTP_SYS_OFFSET_EXTENDED for measuring the offset from %s to CLOCK_REALTIME\n",
+		       sysmon->name);
+		break;
+	case SYSOFF_PRECISE:
+		printf("Using PTP_SYS_OFFSET_PRECISE for measuring the offset from %s to CLOCK_REALTIME\n",
+		       sysmon->name);
+		break;
+	default:
+		break;
+	}
 }
 
 struct sysmon *sysmon_create(const char *iface, int num_readings)

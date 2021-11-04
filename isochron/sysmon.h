@@ -11,5 +11,6 @@ struct sysmon *sysmon_create(const char *iface, int num_readings);
 void sysmon_destroy(struct sysmon *sysmon);
 int sysmon_get_offset(struct sysmon *sysmon, __s64 *offset, __u64 *ts,
 		      __s64 *delay);
+void sysmon_print_method(struct sysmon *sysmon);
 
 #endif
