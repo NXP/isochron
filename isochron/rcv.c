@@ -1232,7 +1232,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	return 0;
 }
 
-static int prog_teardown(struct prog_data *prog)
+static void prog_teardown(struct prog_data *prog)
 {
 	if (!prog->quiet)
 		isochron_rcv_log_print(&prog->log);
@@ -1243,14 +1243,12 @@ static int prog_teardown(struct prog_data *prog)
 	prog_teardown_stats_listenfd(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
-
-	return 0;
 }
 
 int isochron_rcv_main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
-	int rc, rc_save;
+	int rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
@@ -1260,11 +1258,9 @@ int isochron_rcv_main(int argc, char *argv[])
 	if (rc < 0)
 		return rc;
 
-	rc_save = server_loop(&prog);
+	rc = server_loop(&prog);
 
-	rc = prog_teardown(&prog);
-	if (rc < 0)
-		return rc;
+	prog_teardown(&prog);
 
-	return rc_save;
+	return rc;
 }
