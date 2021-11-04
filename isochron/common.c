@@ -18,6 +18,7 @@
 #include <sys/timex.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -914,4 +915,28 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 	}
 
 	return -ENODEV;
+}
+
+int isochron_handle_signals(void (*handler)(int signo))
+{
+	struct sigaction sa;
+	int rc;
+
+	sa.sa_handler = handler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+
+	rc = sigaction(SIGTERM, &sa, NULL);
+	if (rc < 0) {
+		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
+		return -errno;
+	}
+
+	rc = sigaction(SIGINT, &sa, NULL);
+	if (rc < 0) {
+		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
+		return -errno;
+	}
+
+	return 0;
 }

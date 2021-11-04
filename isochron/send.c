@@ -1014,25 +1014,13 @@ static void prog_teardown_sysmon(struct prog_data *prog)
 
 static int prog_init(struct prog_data *prog)
 {
-	struct sigaction sa;
 	struct ifreq if_idx;
 	struct ifreq if_mac;
 	int i, rc;
 
-	sa.sa_handler = sig_handler;
-	sa.sa_flags = 0;
-	sigemptyset(&sa.sa_mask);
-
-	rc = sigaction(SIGTERM, &sa, NULL);
-	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
-		return -errno;
-	}
-	rc = sigaction(SIGINT, &sa, NULL);
-	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
-		return -errno;
-	}
+	rc = isochron_handle_signals(sig_handler);
+	if (rc)
+		return rc;
 
 	prog->clkid = CLOCK_TAI;
 

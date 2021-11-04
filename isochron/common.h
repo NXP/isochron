@@ -421,4 +421,6 @@ master_offset_from_current_ds(const struct current_ds *current_ds)
 int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 				    enum port_state *port_state);
 
+int isochron_handle_signals(void (*handler)(int signo));
+
 #endif

@@ -963,8 +963,11 @@ static void prog_teardown_data_timeout_fd(struct prog_data *prog)
 
 static int prog_init(struct prog_data *prog)
 {
-	struct sigaction sa;
 	int rc;
+
+	rc = isochron_handle_signals(sig_handler);
+	if (rc)
+		return rc;
 
 	rc = prog_init_ptpmon(prog);
 	if (rc)
@@ -977,23 +980,6 @@ static int prog_init(struct prog_data *prog)
 	prog->clkid = CLOCK_TAI;
 	/* Convert negative logic from cmdline to positive */
 	prog->do_ts = !prog->do_ts;
-
-	sa.sa_handler = sig_handler;
-	sa.sa_flags = 0;
-	sigemptyset(&sa.sa_mask);
-
-	rc = sigaction(SIGTERM, &sa, NULL);
-	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
-		rc = -errno;
-		goto out_teardown_sysmon;
-	}
-	rc = sigaction(SIGINT, &sa, NULL);
-	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
-		rc = -errno;
-		goto out_teardown_sysmon;
-	}
 
 	prog->if_index = if_nametoindex(prog->if_name);
 	if (!prog->if_index) {
