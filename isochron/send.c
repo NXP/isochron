@@ -1177,6 +1177,35 @@ static void prog_init_data_packet(struct prog_data *prog)
 	}
 }
 
+static int prog_init_trace_mark(struct prog_data *prog)
+{
+	int fd;
+
+	if (!prog->trace_mark)
+		return 0;
+
+	fd = trace_mark_open();
+	if (fd < 0) {
+		perror("trace_mark_open");
+		return -errno;
+	}
+
+	memset(prog->tracebuf, ' ', TIME_FMT_LEN + 1);
+	prog->tracebuf[0] = '[';
+	prog->tracebuf[TIME_FMT_LEN - 2] = ']';
+	prog->trace_mark_fd = fd;
+
+	return 0;
+}
+
+static void prog_teardown_trace_mark(struct prog_data *prog)
+{
+	if (!prog->trace_mark)
+		return;
+
+	trace_mark_close(prog->trace_mark_fd);
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	int rc;
@@ -1193,18 +1222,9 @@ static int prog_init(struct prog_data *prog)
 
 	prog_init_data_packet(prog);
 
-	if (prog->trace_mark) {
-		prog->trace_mark_fd = trace_mark_open();
-		if (prog->trace_mark_fd < 0) {
-			perror("trace_mark_open");
-			rc = prog->trace_mark_fd;
-			goto out_close_data_fd;
-		}
-
-		memset(prog->tracebuf, ' ', TIME_FMT_LEN + 1);
-		prog->tracebuf[0] = '[';
-		prog->tracebuf[TIME_FMT_LEN - 2] = ']';
-	}
+	rc = prog_init_trace_mark(prog);
+	if (rc)
+		goto out_close_data_fd;
 
 	rc = isochron_log_init(&prog->log, prog->iterations *
 			       sizeof(struct isochron_send_pkt_data));
@@ -1257,8 +1277,7 @@ out_munlock:
 out_log_teardown:
 	isochron_log_teardown(&prog->log);
 out_close_trace_mark_fd:
-	if (prog->trace_mark_fd)
-		trace_mark_close(prog->trace_mark_fd);
+	prog_teardown_trace_mark(prog);
 out_close_data_fd:
 	prog_teardown_data_fd(prog);
 	return rc;
@@ -1507,10 +1526,7 @@ static void prog_teardown(struct prog_data *prog)
 	munlockall();
 
 	isochron_log_teardown(&prog->log);
-
-	if (prog->trace_mark)
-		trace_mark_close(prog->trace_mark_fd);
-
+	prog_teardown_trace_mark(prog);
 	prog_teardown_data_fd(prog);
 }
 
