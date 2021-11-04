@@ -1012,36 +1012,49 @@ static void prog_teardown_sysmon(struct prog_data *prog)
 	sysmon_destroy(prog->sysmon);
 }
 
-static int prog_init(struct prog_data *prog)
+static int prog_init_data_fd(struct prog_data *prog)
 {
 	struct ifreq if_idx;
 	struct ifreq if_mac;
-	int i, rc;
-
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
-
-	prog->clkid = CLOCK_TAI;
+	int fd, rc;
 
 	/* Open socket to send on */
 	if (prog->l2)
-		prog->data_fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
+		fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
 	else
-		prog->data_fd = socket(prog->ip_destination.family, SOCK_DGRAM,
-				       IPPROTO_UDP);
-	if (prog->data_fd < 0) {
+		fd = socket(prog->ip_destination.family, SOCK_DGRAM,
+			    IPPROTO_UDP);
+	if (fd < 0) {
 		perror("socket");
-		rc = -EINVAL;
 		goto out;
 	}
 
-	rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
+	rc = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt");
-		goto out_close_data_fd;
+		goto out_close;
 	}
+
+	/* Get the index of the interface to send on */
+	memset(&if_idx, 0, sizeof(struct ifreq));
+	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
+	if (ioctl(fd, SIOCGIFINDEX, &if_idx) < 0) {
+		perror("SIOCGIFINDEX");
+		goto out_close;
+	}
+
+	/* Get the MAC address of the interface to send on */
+	memset(&if_mac, 0, sizeof(struct ifreq));
+	strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
+	if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
+		perror("SIOCGIFHWADDR");
+		goto out_close;
+	}
+
+	if (is_zero_ether_addr(prog->src_mac))
+		ether_addr_copy(prog->src_mac,
+			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
 
 	if (prog->txtime) {
 		static struct sock_txtime sk_txtime = {
@@ -1052,38 +1065,68 @@ static int prog_init(struct prog_data *prog)
 		if (prog->deadline)
 			sk_txtime.flags |= SOF_TXTIME_DEADLINE_MODE;
 
-		rc = setsockopt(prog->data_fd, SOL_SOCKET, SO_TXTIME,
+		rc = setsockopt(fd, SOL_SOCKET, SO_TXTIME,
 				&sk_txtime, sizeof(sk_txtime));
 		if (rc) {
 			perror("setsockopt");
-			goto out_close_data_fd;
+			close(fd);
+			return -errno;
 		}
 	}
 
-	/* Get the index of the interface to send on */
-	memset(&if_idx, 0, sizeof(struct ifreq));
-	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
-	if (ioctl(prog->data_fd, SIOCGIFINDEX, &if_idx) < 0) {
-		perror("SIOCGIFINDEX");
-		rc = -errno;
-		goto out_close_data_fd;
+	if (prog->do_ts) {
+		rc = sk_timestamping_init(fd, prog->if_name, true);
+		if (rc < 0)
+			goto out_close;
 	}
 
-	/* Get the MAC address of the interface to send on */
-	memset(&if_mac, 0, sizeof(struct ifreq));
-	strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
-	if (ioctl(prog->data_fd, SIOCGIFHWADDR, &if_mac) < 0) {
-		perror("SIOCGIFHWADDR");
-		rc = -errno;
-		goto out_close_data_fd;
+	if (prog->l2) {
+		/* Index of the network device */
+		prog->sockaddr.l2.sll_ifindex = if_idx.ifr_ifindex;
+		/* Address length */
+		prog->sockaddr.l2.sll_halen = ETH_ALEN;
+		/* Destination MAC */
+		ether_addr_copy(prog->sockaddr.l2.sll_addr, prog->dest_mac);
+		prog->sockaddr_size = sizeof(struct sockaddr_ll);
+	} else if (prog->ip_destination.family == AF_INET) {
+		prog->sockaddr.udp4.sin_addr = prog->ip_destination.addr;
+		prog->sockaddr.udp4.sin_port = htons(prog->data_port);
+		prog->sockaddr.udp4.sin_family = AF_INET;
+		prog->sockaddr_size = sizeof(struct sockaddr_in);
+	} else {
+		prog->sockaddr.udp6.sin6_addr = prog->ip_destination.addr6;
+		prog->sockaddr.udp6.sin6_port = htons(prog->data_port);
+		prog->sockaddr.udp6.sin6_family = AF_INET6;
+		prog->sockaddr_size = sizeof(struct sockaddr_in6);
 	}
 
-	if (!ether_addr_to_u64(prog->src_mac))
-		ether_addr_copy(prog->src_mac,
-			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
+	prog->data_fd = fd;
+	return 0;
 
-	if (!prog->etype)
-		prog->etype = ETH_P_ISOCHRON;
+out_close:
+	close(fd);
+out:
+	return -errno;
+}
+
+static void prog_teardown_data_fd(struct prog_data *prog)
+{
+	close(prog->data_fd);
+}
+
+static int prog_init(struct prog_data *prog)
+{
+	int i, rc;
+
+	rc = isochron_handle_signals(sig_handler);
+	if (rc)
+		return rc;
+
+	prog->clkid = CLOCK_TAI;
+
+	rc = prog_init_data_fd(prog);
+	if (rc)
+		return rc;
 
 	if (prog->trace_mark) {
 		prog->trace_mark_fd = trace_mark_open();
@@ -1119,26 +1162,6 @@ static int prog_init(struct prog_data *prog)
 		hdr->h_proto = __cpu_to_be16(prog->etype);
 	}
 
-	if (prog->l2) {
-		/* Index of the network device */
-		prog->sockaddr.l2.sll_ifindex = if_idx.ifr_ifindex;
-		/* Address length */
-		prog->sockaddr.l2.sll_halen = ETH_ALEN;
-		/* Destination MAC */
-		ether_addr_copy(prog->sockaddr.l2.sll_addr, prog->dest_mac);
-		prog->sockaddr_size = sizeof(struct sockaddr_ll);
-	} else if (prog->ip_destination.family == AF_INET) {
-		prog->sockaddr.udp4.sin_addr = prog->ip_destination.addr;
-		prog->sockaddr.udp4.sin_port = htons(prog->data_port);
-		prog->sockaddr.udp4.sin_family = AF_INET;
-		prog->sockaddr_size = sizeof(struct sockaddr_in);
-	} else {
-		prog->sockaddr.udp6.sin6_addr = prog->ip_destination.addr6;
-		prog->sockaddr.udp6.sin6_port = htons(prog->data_port);
-		prog->sockaddr.udp6.sin6_family = AF_INET6;
-		prog->sockaddr_size = sizeof(struct sockaddr_in6);
-	}
-
 	if (prog->ip_destination.family == AF_INET)
 		prog->l4_header_len = sizeof(struct iphdr) + sizeof(struct udphdr);
 	else if (prog->ip_destination.family == AF_INET6)
@@ -1160,12 +1183,6 @@ static int prog_init(struct prog_data *prog)
 		fprintf(stderr, "mlockall returned %d: %s\n",
 			errno, strerror(errno));
 		goto out_log_teardown;
-	}
-
-	if (prog->do_ts) {
-		rc = sk_timestamping_init(prog->data_fd, prog->if_name, true);
-		if (rc < 0)
-			goto out_munlock;
 	}
 
 	i = sizeof(struct isochron_header) + prog->l2_header_len;
@@ -1236,8 +1253,7 @@ out_close_trace_mark_fd:
 	if (prog->trace_mark_fd)
 		trace_mark_close(prog->trace_mark_fd);
 out_close_data_fd:
-	close(prog->data_fd);
-out:
+	prog_teardown_data_fd(prog);
 	return rc;
 }
 
@@ -1488,7 +1504,7 @@ static void prog_teardown(struct prog_data *prog)
 	if (prog->trace_mark)
 		trace_mark_close(prog->trace_mark_fd);
 
-	close(prog->data_fd);
+	prog_teardown_data_fd(prog);
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
@@ -1920,6 +1936,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	if (!prog->num_readings)
 		prog->num_readings = 5;
+
+	if (!prog->etype)
+		prog->etype = ETH_P_ISOCHRON;
 
 	if (prog->utc_tai_offset == -1) {
 		/* If we're using the ptpmon, we'll get the UTC offset
