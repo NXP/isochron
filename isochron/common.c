@@ -779,6 +779,8 @@ int isochron_send_tlv(int fd, enum isochron_management_action action,
 	struct isochron_tlv *tlv;
 	ssize_t len;
 
+	memset(buf, 0, sizeof(*msg) + sizeof(*tlv));
+
 	msg = (struct isochron_management_message *)buf;
 	msg->version = ISOCHRON_MANAGEMENT_VERSION;
 	msg->action = action;
