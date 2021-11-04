@@ -349,6 +349,15 @@ struct isochron_stats {
 	double path_delay_mean;
 };
 
+struct isochron_metric_stats {
+	int seqid_of_min;
+	int seqid_of_max;
+	__s64 min;
+	__s64 max;
+	double mean;
+	double stddev;
+};
+
 ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
 ssize_t read_exact(int fd, void *buf, size_t count);
 ssize_t write_exact(int fd, const void *buf, size_t count);
