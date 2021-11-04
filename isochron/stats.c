@@ -275,7 +275,8 @@ int isochron_stats_main(int argc, char *argv[])
 	}
 
 	isochron_print_stats(&prog.send_log, &prog.rcv_log, true, prog.quiet,
-			     prog.taprio, prog.txtime, prog.advance_time);
+			     prog.taprio, prog.txtime, prog.cycle_time,
+			     prog.advance_time);
 
 	isochron_log_teardown(&prog.rcv_log);
 out_rcv_log_failed:

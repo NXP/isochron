@@ -14,6 +14,6 @@ int isochron_stats_main(int argc, char *argv[]);
 void isochron_print_stats(struct isochron_log *send_log,
 			  struct isochron_log *rcv_log,
 			  bool omit_sync, bool quiet, bool taprio, bool txtime,
-			  __s64 cycle_time);
+			  __s64 cycle_time, __s64 advance_time);
 
 #endif

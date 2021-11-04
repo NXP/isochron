@@ -1400,6 +1400,7 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 		entry->latency_budget = tx_time - tx_hwts;
 	entry->path_delay = rx_hwts - tx_hwts;
 	entry->wakeup_latency = tx_wakeup - (tx_time - advance_time);
+	entry->sender_latency = tx_swts - tx_wakeup;
 	entry->arrival_latency = arrival - rx_hwts;
 
 	if (tx_hwts > tx_time)
@@ -1470,9 +1471,11 @@ static void isochron_print_metric_stats(const char *name,
 void isochron_print_stats(struct isochron_log *send_log,
 			  struct isochron_log *rcv_log,
 			  bool omit_sync, bool quiet, bool taprio, bool txtime,
-			  __s64 advance_time)
+			  __s64 cycle_time, __s64 advance_time)
 {
 	char *log_buf_end = send_log->buf + send_log->buf_len;
+	struct isochron_metric_stats sender_latency_ms;
+	struct isochron_metric_stats wakeup_latency_ms;
 	struct isochron_packet_metrics *entry, *tmp;
 	struct isochron_send_pkt_data *send_pkt;
 	struct isochron_stats stats = {0};
@@ -1556,24 +1559,37 @@ void isochron_print_stats(struct isochron_log *send_log,
 				      offsetof(struct isochron_packet_metrics,
 					       latency_budget), false);
 	if (taprio || txtime)
-		isochron_print_metric_stats("MAC latency (TX time to HW TX timestamp)",
-					    &ms);
+		isochron_print_metric_stats("MAC latency", &ms);
 	else
-		isochron_print_metric_stats("Application latency budget (HW TX timestamp to TX time)",
-					    &ms);
+		isochron_print_metric_stats("Application latency budget", &ms);
+
+	isochron_metric_compute_stats(&stats, &ms,
+				      offsetof(struct isochron_packet_metrics,
+					       sender_latency), false);
+	isochron_print_metric_stats("Sender latency", &ms);
+	sender_latency_ms = ms;
 
 	/* Wakeup latency */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
 					       wakeup_latency), false);
+	wakeup_latency_ms = ms;
 	isochron_print_metric_stats("Wakeup latency", &ms);
 
 	/* Arrival latency */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
 					       arrival_latency), false);
-	isochron_print_metric_stats("Arrival latency (HW RX timestamp to application)",
-				    &ms);
+	isochron_print_metric_stats("Arrival latency", &ms);
+
+	printf("Sending one packet takes on average %.3lf%% of the cycle time (min %.3lf%% max %.3lf%%)\n",
+	       100.0f * sender_latency_ms.mean / cycle_time,
+	       100.0f * sender_latency_ms.min / cycle_time,
+	       100.0f * sender_latency_ms.max / cycle_time);
+	printf("Waking up takes on average %.3lf%% of the cycle time (min %.3lf%% max %.3lf%%)\n",
+	       100.0f * wakeup_latency_ms.mean / cycle_time,
+	       100.0f * wakeup_latency_ms.min / cycle_time,
+	       100.0f * wakeup_latency_ms.max / cycle_time);
 
 	/* HW TX deadline misses */
 	if (!taprio && !txtime)
@@ -1605,6 +1621,7 @@ static void prog_teardown(struct prog_data *prog)
 			isochron_print_stats(&prog->log, &rcv_log,
 					     prog->omit_sync, prog->quiet,
 					     prog->taprio, prog->txtime,
+					     prog->cycle_time,
 					     prog->advance_time);
 
 			isochron_log_teardown(&rcv_log);
