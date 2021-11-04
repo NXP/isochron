@@ -969,10 +969,20 @@ static int prog_prepare_session(struct prog_data *prog)
 	int rc;
 
 	rc = prog_check_sync(prog);
-	if (rc)
+	if (rc) {
+		fprintf(stderr, "Failed to check sync status: %s\n",
+			strerror(-rc));
 		return rc;
+	}
 
-	return prog_prepare_receiver(prog);
+	rc = prog_prepare_receiver(prog);
+	if (rc) {
+		fprintf(stderr, "Failed to prepare receiver for the test: %s\n",
+			strerror(-rc));
+		return rc;
+	}
+
+	return 0;
 }
 
 static int prog_init_ptpmon(struct prog_data *prog)
