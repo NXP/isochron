@@ -1635,7 +1635,10 @@ static void prog_print_packet_log(struct prog_data *prog)
 	int rc;
 
 	if (prog->stats_srv.family) {
+		char diff_buf[TIMESPEC_BUFSIZ];
 		struct isochron_log rcv_log;
+		struct timespec t1, t2;
+		__s64 diff;
 
 		printf("Collecting receiver stats\n");
 
@@ -1644,11 +1647,20 @@ static void prog_print_packet_log(struct prog_data *prog)
 			fprintf(stderr, "Failed to collect receiver stats: %s\n",
 				strerror(-rc));
 		} else {
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+
 			isochron_print_stats(&prog->log, &rcv_log,
 					     prog->omit_sync, prog->quiet,
 					     prog->taprio, prog->txtime,
 					     prog->cycle_time,
 					     prog->advance_time);
+
+			clock_gettime(CLOCK_MONOTONIC, &t2);
+
+			diff = timespec_to_ns(&t2) - timespec_to_ns(&t1);
+			ns_sprintf(diff_buf, diff);
+
+			printf("Processing the stats took %s seconds\n", diff_buf);
 
 			isochron_log_teardown(&rcv_log);
 		}
