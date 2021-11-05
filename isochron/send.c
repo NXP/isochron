@@ -1027,6 +1027,31 @@ static int prog_prepare_session(struct prog_data *prog)
 	return 0;
 }
 
+static int prog_end_session(struct prog_data *prog)
+{
+	int retries = 3;
+
+	if (!prog->ptpmon)
+		return 0;
+
+	printf("Test ended, checking sync status again\n");
+
+	while (retries--) {
+		if (signal_received)
+			return -EINTR;
+
+		if (prog_sync_done(prog))
+			return 0;
+
+		sleep(1);
+	}
+
+	fprintf(stderr,
+		"Sync lost during the test, log data is invalid, aborting\n");
+
+	return -EINVAL;
+}
+
 static int prog_init_ptpmon(struct prog_data *prog)
 {
 	char uds_local[UNIX_PATH_MAX];
@@ -2179,6 +2204,10 @@ int isochron_send_main(int argc, char *argv[])
 		goto out;
 
 	rc = run_nanosleep(&prog);
+	if (rc < 0)
+		goto out;
+
+	rc = prog_end_session(&prog);
 	if (rc < 0)
 		goto out;
 
