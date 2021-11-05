@@ -139,6 +139,8 @@ struct isochron_log {
 
 int isochron_log_init(struct isochron_log *log, size_t size);
 void isochron_log_data(struct isochron_log *log, void *data, int len);
+void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
+			     int index);
 int isochron_log_xmit(struct isochron_log *log, int fd);
 int isochron_log_recv(struct isochron_log *log, int fd);
 void isochron_log_teardown(struct isochron_log *log);
@@ -306,8 +308,9 @@ void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
 struct isochron_timestamp {
-	struct timespec		hw;
-	struct timespec		sw;
+	struct timespec hw;
+	struct timespec sw;
+	__u32 tskey;
 };
 
 struct isochron_send_pkt_data {

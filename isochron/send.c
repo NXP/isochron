@@ -43,7 +43,7 @@ struct prog_data {
 	unsigned char src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
 	char uds_remote[UNIX_PATH_MAX];
-	char sendbuf[BUF_SIZ];
+	__u8 sendbuf[BUF_SIZ];
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
 	enum port_state last_local_port_state;
@@ -500,30 +500,8 @@ static void prog_teardown_stats_socket(struct prog_data *prog)
 	close(prog->stats_fd);
 }
 
-static void process_txtstamp(struct prog_data *prog, const __u8 *buf,
-			     struct isochron_timestamp *tstamp)
-{
-	struct isochron_send_pkt_data send_pkt = {0};
-	struct isochron_header *hdr;
-
-	if (prog->l2)
-		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
-	else
-		hdr = (struct isochron_header *)(buf + prog->l4_header_len);
-
-	send_pkt.tx_time = hdr->tx_time;
-	send_pkt.wakeup = hdr->wakeup;
-	send_pkt.seqid = hdr->seqid;
-	send_pkt.hwts = __cpu_to_be64(timespec_to_ns(&tstamp->hw));
-	send_pkt.swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp->sw),
-						 prog->utc_tai_offset));
-
-	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
-
-	prog->timestamped++;
-}
-
-static void log_no_tstamp(struct prog_data *prog, const char *buf)
+/* Timestamps will come later */
+static void prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
 {
 	struct isochron_send_pkt_data send_pkt = {0};
 	struct isochron_header *hdr;
@@ -535,18 +513,79 @@ static void log_no_tstamp(struct prog_data *prog, const char *buf)
 	if (prog->l2)
 		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
 	else
-		hdr = (struct isochron_header *)buf;
+		hdr = (struct isochron_header *)(buf + prog->l4_header_len);
 
 	send_pkt.tx_time = hdr->tx_time;
 	send_pkt.wakeup = hdr->wakeup;
 	send_pkt.seqid = hdr->seqid;
+	send_pkt.swts = 0;
+	send_pkt.hwts = 0;
 
 	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
 }
 
+static bool
+isochron_pkt_fully_timestamped(struct isochron_send_pkt_data *send_pkt)
+{
+	return send_pkt->hwts && send_pkt->swts;
+}
+
+/* Propagates the return code from sk_receive, i.e. the number of bytes
+ * read from the socket (if we could successfully read a timestamp),
+ * or a negative error code.
+ */
+static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
+{
+	struct isochron_send_pkt_data *send_pkt;
+	struct isochron_timestamp tstamp = {};
+	__be64 hwts, swts, swts_utc;
+	__u8 err_pkt[BUF_SIZ];
+	int rc;
+
+	rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE,
+			timeout);
+	if (rc <= 0)
+		return rc;
+
+	/* Since we log the packets in the same order as the kernel keeps
+	 * track of timestamps using SOF_TIMESTAMPING_OPT_ID on the data
+	 * socket, finding packets by timestamp key and patching their
+	 * timestamp is a cheap hack to avoid a linear lookup.
+	 */
+	send_pkt = isochron_log_get_entry(&prog->log, sizeof(*send_pkt),
+					  tstamp.tskey);
+	if (!send_pkt) {
+		fprintf(stderr,
+			"received timestamp for unknown key %u\n",
+			tstamp.tskey);
+		return -EINVAL;
+	}
+
+	if (isochron_pkt_fully_timestamped(send_pkt)) {
+		fprintf(stderr,
+			"received duplicate timestamp for packet key %u already fully timestamped\n",
+			tstamp.tskey);
+		return -EINVAL;
+	}
+
+	swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp.sw),
+					prog->utc_tai_offset));
+	swts_utc = __cpu_to_be64(timespec_to_ns(&tstamp.sw));
+	hwts = __cpu_to_be64(timespec_to_ns(&tstamp.hw));
+
+	if (swts_utc)
+		send_pkt->swts = swts;
+	if (hwts)
+		send_pkt->hwts = hwts;
+
+	if (isochron_pkt_fully_timestamped(send_pkt))
+		prog->timestamped++;
+
+	return rc;
+}
+
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 {
-	struct isochron_timestamp tstamp = {0};
 	struct isochron_header *hdr;
 	struct timespec now_ts;
 	__u8 err_pkt[BUF_SIZ];
@@ -583,38 +622,30 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 
 	trace(prog, "send seqid %d end\n", iteration);
 
-	if (prog->do_ts) {
-		rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp,
-				MSG_ERRQUEUE, 0);
-		if (rc == -EAGAIN)
-			return 0;
-		if (rc < 0)
-			return rc;
+	prog_log_packet_no_tstamp(prog, prog->sendbuf);
 
-		/* If a timestamp becomes available, process it now
-		 * (don't wait for later)
-		 */
-		process_txtstamp(prog, err_pkt, &tstamp);
-	} else {
-		log_no_tstamp(prog, prog->sendbuf);
+	if (prog->do_ts) {
+		do {
+			/* Break on errors and on no immediate availability
+			 * of timestamps
+			 */
+			rc = prog_poll_txtstamps(prog, 0);
+		} while (rc > 0);
 	}
 
-	return 0;
+	return rc;
 }
 
 static int wait_for_txtimestamps(struct prog_data *prog)
 {
-	unsigned char err_pkt[BUF_SIZ];
-	struct isochron_timestamp tstamp;
 	int rc;
 
 	if (!prog->do_ts)
 		return 0;
 
 	while (prog->timestamped < prog->sent) {
-		rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp,
-				MSG_ERRQUEUE, TXTSTAMP_TIMEOUT_MS);
-		if (rc < 0) {
+		rc = prog_poll_txtstamps(prog, TXTSTAMP_TIMEOUT_MS);
+		if (rc <= 0) {
 			fprintf(stderr,
 				"Timed out waiting for TX timestamp: %d (%s)\n",
 				rc, strerror(-rc));
@@ -622,11 +653,6 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 				prog->sent - prog->timestamped);
 			return rc;
 		}
-
-		/* If a timestamp becomes available, process it now
-		 * (don't wait for later)
-		 */
-		process_txtstamp(prog, err_pkt, &tstamp);
 	}
 
 	return 0;

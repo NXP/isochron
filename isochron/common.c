@@ -433,12 +433,15 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 int sk_timestamping_init(int fd, const char *if_name, bool on)
 {
 	int rc, filter, flags, tx_type;
-	int enabled = on ? 1 : 0;
 
 	flags = SOF_TIMESTAMPING_TX_HARDWARE |
 		SOF_TIMESTAMPING_RX_HARDWARE |
+		SOF_TIMESTAMPING_TX_SOFTWARE |
+		SOF_TIMESTAMPING_RX_SOFTWARE |
+		SOF_TIMESTAMPING_SOFTWARE |
 		SOF_TIMESTAMPING_RAW_HARDWARE |
-		SOF_TIMESTAMPING_OPT_TX_SWHW;
+		SOF_TIMESTAMPING_OPT_TX_SWHW |
+		SOF_TIMESTAMPING_OPT_ID;
 
 	filter = HWTSTAMP_FILTER_ALL;
 
@@ -457,14 +460,6 @@ int sk_timestamping_init(int fd, const char *if_name, bool on)
 		fprintf(stderr, "ioctl SO_TIMESTAMPING failed: %s\n",
 			strerror(errno));
 		return -1;
-	}
-
-	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPNS, &enabled,
-			sizeof(enabled));
-	if (rc < 0) {
-		fprintf(stderr, "ioctl SO_TIMESTAMPNS failed: %s\n",
-			strerror(errno));
-		return rc;
 	}
 
 	flags = 1;
@@ -502,8 +497,7 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 
 		rc = poll(&pfd, 1, timeout);
 		if (rc == 0) {
-			/* Timed out waiting for TX timestamp */
-			return -EAGAIN;
+			return 0;
 		} else if (rc < 0) {
 			fprintf(stderr, "poll for tx timestamp failed: %s\n",
 				strerror(rc));
@@ -526,22 +520,20 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 		int level = cm->cmsg_level;
 		int type  = cm->cmsg_type;
 
-		if (level == SOL_SOCKET && type == SO_TIMESTAMPING) {
+		if (level == SOL_SOCKET && type == SCM_TIMESTAMPING) {
+			struct scm_timestamping *tss;
+
 			if (cm->cmsg_len < sizeof(*ts) * 3) {
 				fprintf(stderr, "short SO_TIMESTAMPING message\n");
 				return -1;
 			}
-			ts = (struct timespec *) CMSG_DATA(cm);
-			if (tstamp)
-				tstamp->hw = ts[2];
-		} else if (level == SOL_SOCKET && type == SO_TIMESTAMPNS) {
-			if (cm->cmsg_len < sizeof(*ts)) {
-				fprintf(stderr, "short SO_TIMESTAMPNS message\n");
-				return -1;
+
+			tss = (struct scm_timestamping *)CMSG_DATA(cm);
+
+			if (tstamp) {
+				tstamp->sw = tss->ts[0];
+				tstamp->hw = tss->ts[2];
 			}
-			ts = (struct timespec *) CMSG_DATA(cm);
-			if (tstamp)
-				tstamp->sw = ts[0];
 		} else if (level == SOL_PACKET && type == PACKET_TX_TIMESTAMP) {
 			struct sock_extended_err *sock_err;
 			char txtime_buf[TIMESPEC_BUFSIZ];
@@ -553,7 +545,8 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 
 			switch (sock_err->ee_origin) {
 			case SO_EE_ORIGIN_TIMESTAMPING:
-				/* Normal cmsg received for TX timestamping */
+				if (tstamp)
+					tstamp->tskey = sock_err->ee_data;
 				break;
 			case SO_EE_ORIGIN_TXTIME:
 				txtime = ((__u64)sock_err->ee_data << 32) +
@@ -622,6 +615,16 @@ void isochron_log_data(struct isochron_log *log, void *data, int len)
 
 	memcpy(p, data, len);
 	log->buf_len += len;
+}
+
+/* Get a reference to an existing log entry */
+void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
+			     int index)
+{
+	if (index * entry_size > log->buf_len)
+		return NULL;
+
+	return log->buf + entry_size * index;
 }
 
 int isochron_log_xmit(struct isochron_log *log, int fd)
