@@ -1630,7 +1630,7 @@ out:
 	}
 }
 
-static void prog_teardown(struct prog_data *prog)
+static void prog_print_packet_log(struct prog_data *prog)
 {
 	int rc;
 
@@ -1656,7 +1656,10 @@ static void prog_teardown(struct prog_data *prog)
 		if (!prog->quiet)
 			isochron_send_log_print(&prog->log);
 	}
+}
 
+static void prog_teardown(struct prog_data *prog)
+{
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
 
@@ -2143,6 +2146,10 @@ int isochron_send_main(int argc, char *argv[])
 		goto out;
 
 	rc = run_nanosleep(&prog);
+	if (rc < 0)
+		goto out;
+
+	prog_print_packet_log(&prog);
 
 out:
 	prog_teardown(&prog);
