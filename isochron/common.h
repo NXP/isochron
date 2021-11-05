@@ -132,13 +132,11 @@ struct vlan_ethhdr {
 };
 
 struct isochron_log {
-	size_t		buf_total_size;
-	size_t		buf_len;
+	size_t		size;
 	char		*buf;
 };
 
 int isochron_log_init(struct isochron_log *log, size_t size);
-void isochron_log_data(struct isochron_log *log, void *data, int len);
 void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
 			     int index);
 int isochron_log_xmit(struct isochron_log *log, int fd);
@@ -146,7 +144,6 @@ int isochron_log_recv(struct isochron_log *log, int fd);
 void isochron_log_teardown(struct isochron_log *log);
 void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);
-void isochron_log_remove(struct isochron_log *log, void *p, size_t len);
 
 enum isochron_management_id {
 	ISOCHRON_MID_LOG,
@@ -361,6 +358,11 @@ struct isochron_metric_stats {
 	double mean;
 	double stddev;
 };
+
+int isochron_log_send_pkt(struct isochron_log *log,
+			  const struct isochron_send_pkt_data *send_pkt);
+int isochron_log_rcv_pkt(struct isochron_log *log,
+			 const struct isochron_rcv_pkt_data *rcv_pkt);
 
 ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
 ssize_t read_exact(int fd, void *buf, size_t count);

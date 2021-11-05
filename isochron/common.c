@@ -591,8 +591,7 @@ int isochron_log_init(struct isochron_log *log, size_t size)
 	if (!log->buf)
 		return -ENOMEM;
 
-	log->buf_total_size = size;
-	log->buf_len = 0;
+	log->size = size;
 
 	return 0;
 }
@@ -602,35 +601,56 @@ void isochron_log_teardown(struct isochron_log *log)
 	free(log->buf);
 }
 
-void isochron_log_data(struct isochron_log *log, void *data, int len)
-{
-	char *p = log->buf + log->buf_len;
-
-	if (log->buf_len + len > log->buf_total_size) {
-		fprintf(stderr,
-			"Not logging event, buffer size of %lu exceeded\n",
-			log->buf_total_size);
-		return;
-	}
-
-	memcpy(p, data, len);
-	log->buf_len += len;
-}
-
 /* Get a reference to an existing log entry */
 void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
 			     int index)
 {
-	if (index * entry_size > log->buf_len)
+	if (index * entry_size > log->size)
 		return NULL;
 
 	return log->buf + entry_size * index;
 }
 
+int isochron_log_send_pkt(struct isochron_log *log,
+			  const struct isochron_send_pkt_data *send_pkt)
+{
+	__u32 index = __be32_to_cpu(send_pkt->seqid) - 1;
+	struct isochron_send_pkt_data *dest;
+
+	dest = isochron_log_get_entry(log, sizeof(*send_pkt), index);
+	if (!dest) {
+		fprintf(stderr, "cannot log send packet with index %u\n",
+			index);
+		return -EINVAL;
+	}
+
+	memcpy(dest, send_pkt, sizeof(*send_pkt));
+
+	return 0;
+}
+
+int isochron_log_rcv_pkt(struct isochron_log *log,
+			 const struct isochron_rcv_pkt_data *rcv_pkt)
+{
+	__u32 index = __be32_to_cpu(rcv_pkt->seqid) - 1;
+	struct isochron_rcv_pkt_data *dest;
+
+	dest = isochron_log_get_entry(log, sizeof(*rcv_pkt), index);
+	if (!dest) {
+		fprintf(stderr, "cannot log rcv packet with index %u\n",
+			index);
+		return -EINVAL;
+	}
+
+	memcpy(dest, rcv_pkt, sizeof(*rcv_pkt));
+
+	return 0;
+}
+
 int isochron_log_xmit(struct isochron_log *log, int fd)
 {
 	__be32 log_version = __cpu_to_be32(ISOCHRON_LOG_VERSION);
-	__be32 buf_len = __cpu_to_be32(log->buf_len);
+	__be32 buf_len = __cpu_to_be32(log->size);
 	ssize_t len;
 
 	len = write_exact(fd, &log_version, sizeof(log_version));
@@ -647,8 +667,8 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 		return -errno;
 	}
 
-	if (log->buf_len) {
-		len = write_exact(fd, log->buf, log->buf_len);
+	if (log->size) {
+		len = write_exact(fd, log->buf, log->size);
 		if (len <= 0) {
 			fprintf(stderr, "write returned %d: %s\n",
 				errno, strerror(errno));
@@ -691,14 +711,12 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 	if (rc)
 		return rc;
 
-	log->buf_total_size = __be32_to_cpu(buf_len);
-	log->buf_len = log->buf_total_size;
-
-	if (log->buf_len) {
-		len = read_exact(fd, log->buf, log->buf_len);
+	log->size = __be32_to_cpu(buf_len);
+	if (log->size) {
+		len = read_exact(fd, log->buf, log->size);
 		if (len <= 0) {
 			fprintf(stderr, "read of %zu bytes returned %d: %s\n",
-				log->buf_len, errno, strerror(errno));
+				log->size, errno, strerror(errno));
 			isochron_log_teardown(log);
 			return -errno;
 		}
@@ -709,7 +727,7 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 
 void isochron_rcv_log_print(struct isochron_log *log)
 {
-	char *log_buf_end = log->buf + log->buf_len;
+	char *log_buf_end = log->buf + log->size;
 	struct isochron_rcv_pkt_data *rcv_pkt;
 
 	for (rcv_pkt = (struct isochron_rcv_pkt_data *)log->buf;
@@ -746,7 +764,7 @@ void isochron_rcv_log_print(struct isochron_log *log)
 
 void isochron_send_log_print(struct isochron_log *log)
 {
-	char *log_buf_end = log->buf + log->buf_len;
+	char *log_buf_end = log->buf + log->size;
 	struct isochron_send_pkt_data *send_pkt;
 
 	for (send_pkt = (struct isochron_send_pkt_data *)log->buf;
@@ -766,12 +784,6 @@ void isochron_send_log_print(struct isochron_log *log)
 		       scheduled_buf, __be32_to_cpu(send_pkt->seqid),
 		       hwts_buf, swts_buf);
 	}
-}
-
-void isochron_log_remove(struct isochron_log *log, void *p, size_t len)
-{
-	memmove(p, p + len, log->buf_len - len);
-	log->buf_len -= len;
 }
 
 int isochron_send_tlv(int fd, enum isochron_management_action action,
@@ -806,7 +818,7 @@ size_t isochron_log_buf_tlv_size(struct isochron_log *log)
 {
 	return sizeof(__be32) + /* log_version */
 	       sizeof(__be32) + /* buf_len */
-	       log->buf_len;
+	       log->size;
 }
 
 static const char * const trace_marker_paths[] = {

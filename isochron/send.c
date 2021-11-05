@@ -501,27 +501,45 @@ static void prog_teardown_stats_socket(struct prog_data *prog)
 }
 
 /* Timestamps will come later */
-static void prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
+static int prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
 {
-	struct isochron_send_pkt_data send_pkt = {0};
+	struct isochron_send_pkt_data *send_pkt;
 	struct isochron_header *hdr;
+	__u32 index;
 
 	/* Don't log if we're running indefinitely, there's no point */
 	if (!prog->iterations)
-		return;
+		return 0;
 
 	if (prog->l2)
 		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
 	else
 		hdr = (struct isochron_header *)(buf + prog->l4_header_len);
 
-	send_pkt.tx_time = hdr->tx_time;
-	send_pkt.wakeup = hdr->wakeup;
-	send_pkt.seqid = hdr->seqid;
-	send_pkt.swts = 0;
-	send_pkt.hwts = 0;
+	index = __be32_to_cpu(hdr->seqid) - 1;
 
-	isochron_log_data(&prog->log, &send_pkt, sizeof(send_pkt));
+	send_pkt = isochron_log_get_entry(&prog->log, sizeof(*send_pkt),
+					  index);
+	if (!send_pkt) {
+		fprintf(stderr, "Could not log send packet at index %u\n",
+			index);
+		return -EINVAL;
+	}
+
+	if (send_pkt->seqid) {
+		fprintf(stderr,
+			"There already exists a packet logged at index %u\n",
+			index);
+		return -EINVAL;
+	}
+
+	send_pkt->tx_time = hdr->tx_time;
+	send_pkt->wakeup = hdr->wakeup;
+	send_pkt->seqid = hdr->seqid;
+	send_pkt->swts = 0;
+	send_pkt->hwts = 0;
+
+	return 0;
 }
 
 static bool
@@ -622,7 +640,9 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 
 	trace(prog, "send seqid %d end\n", iteration);
 
-	prog_log_packet_no_tstamp(prog, prog->sendbuf);
+	rc = prog_log_packet_no_tstamp(prog, prog->sendbuf);
+	if (rc)
+		return rc;
 
 	if (prog->do_ts) {
 		do {
@@ -1355,16 +1375,18 @@ out:
 static struct isochron_rcv_pkt_data
 *isochron_rcv_log_find(struct isochron_log *rcv_log, __be32 seqid, __be64 tx_time)
 {
-	char *log_buf_end = rcv_log->buf + rcv_log->buf_len;
 	struct isochron_rcv_pkt_data *rcv_pkt;
+	__u32 index;
 
-	for (rcv_pkt = (struct isochron_rcv_pkt_data *)rcv_log->buf;
-	     (char *)rcv_pkt < log_buf_end; rcv_pkt++)
-		if (rcv_pkt->seqid == seqid &&
-		    rcv_pkt->tx_time == tx_time)
-			return rcv_pkt;
+	index = __be32_to_cpu(seqid) - 1;
+	rcv_pkt = isochron_log_get_entry(rcv_log, sizeof(*rcv_pkt), index);
+	if (!rcv_pkt)
+		return NULL;
 
-	return NULL;
+	if (rcv_pkt->seqid != seqid || rcv_pkt->tx_time != tx_time)
+		return NULL;
+
+	return rcv_pkt;
 }
 
 static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
@@ -1499,7 +1521,7 @@ void isochron_print_stats(struct isochron_log *send_log,
 			  bool omit_sync, bool quiet, bool taprio, bool txtime,
 			  __s64 cycle_time, __s64 advance_time)
 {
-	char *log_buf_end = send_log->buf + send_log->buf_len;
+	char *log_buf_end = send_log->buf + send_log->size;
 	struct isochron_metric_stats sender_latency_ms;
 	struct isochron_metric_stats wakeup_latency_ms;
 	struct isochron_packet_metrics *entry, *tmp;
@@ -1522,7 +1544,6 @@ void isochron_print_stats(struct isochron_log *send_log,
 
 		isochron_process_stat(send_pkt, rcv_pkt, &stats,
 				      quiet, taprio, txtime, advance_time);
-		isochron_log_remove(rcv_log, rcv_pkt, sizeof(*rcv_pkt));
 	}
 
 	stats.tx_sync_offset_mean /= stats.frame_count;

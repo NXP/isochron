@@ -263,21 +263,25 @@ int isochron_stats_main(int argc, char *argv[])
 		while (p) {
 			rc = isochron_parse_word(&prog, p, &send_pkt, &rcv_pkt);
 			if (rc)
-				break;
+				goto out_log_teardown;
 
 			p = strtok(NULL, " \n");
 		}
 
-		isochron_log_data(&prog.send_log, &send_pkt,
-				  sizeof(send_pkt));
-		isochron_log_data(&prog.rcv_log, &rcv_pkt,
-				  sizeof(rcv_pkt));
+		rc = isochron_log_send_pkt(&prog.send_log, &send_pkt);
+		if (rc)
+			goto out_log_teardown;
+
+		rc = isochron_log_rcv_pkt(&prog.rcv_log, &rcv_pkt);
+		if (rc)
+			goto out_log_teardown;
 	}
 
 	isochron_print_stats(&prog.send_log, &prog.rcv_log, true, prog.quiet,
 			     prog.taprio, prog.txtime, prog.cycle_time,
 			     prog.advance_time);
 
+out_log_teardown:
 	isochron_log_teardown(&prog.rcv_log);
 out_rcv_log_failed:
 	isochron_log_teardown(&prog.send_log);

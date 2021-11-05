@@ -168,7 +168,10 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 		return -1;
 	}
 
-	isochron_log_data(&prog->log, &rcv_pkt, sizeof(rcv_pkt));
+	rc = isochron_log_rcv_pkt(&prog->log, &rcv_pkt);
+	if (rc)
+		return rc;
+
 	prog->received_pkt_count++;
 
 	/* Expedite the log transmission if we're late */
