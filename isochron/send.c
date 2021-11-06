@@ -1041,7 +1041,7 @@ static int prog_prepare_session(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_end_session(struct prog_data *prog)
+static int prog_check_final_sync_status(struct prog_data *prog)
 {
 	int retries = 3;
 
@@ -1064,6 +1064,45 @@ static int prog_end_session(struct prog_data *prog)
 		"Sync lost during the test, log data is invalid, aborting\n");
 
 	return -EINVAL;
+}
+
+static int prog_end_session(struct prog_data *prog)
+{
+	struct isochron_log rcv_log;
+	int rc;
+
+	rc = prog_check_final_sync_status(prog);
+	if (rc)
+		return rc;
+
+	if (!prog->stats_srv.family) {
+		if (!prog->quiet)
+			isochron_send_log_print(&prog->log);
+		return 0;
+	}
+
+	printf("Collecting receiver stats\n");
+
+	rc = prog_collect_rcv_stats(prog, &rcv_log);
+	if (rc) {
+		fprintf(stderr, "Failed to collect receiver stats: %s\n",
+			strerror(-rc));
+		return rc;
+	}
+
+	if (strlen(prog->output_file)) {
+		rc = isochron_log_save(prog->output_file, &prog->log, &rcv_log,
+				       prog->iterations, prog->tx_len,
+				       prog->omit_sync, prog->do_ts,
+				       prog->taprio, prog->txtime,
+				       prog->deadline, prog->base_time,
+				       prog->advance_time, prog->shift_time,
+				       prog->cycle_time, prog->window_size);
+	}
+
+	isochron_log_teardown(&rcv_log);
+
+	return rc;
 }
 
 static int prog_init_ptpmon(struct prog_data *prog)
@@ -1408,66 +1447,6 @@ out_close_data_fd:
 out_stats_socket_teardown:
 	prog_teardown_stats_socket(prog);
 out:
-	return rc;
-}
-
-static int prog_print_packet_log(struct prog_data *prog)
-{
-	int rc = 0;
-
-	if (prog->stats_srv.family) {
-		char diff_buf[TIMESPEC_BUFSIZ];
-		struct isochron_log rcv_log;
-		struct timespec t1, t2;
-		__s64 diff;
-
-		printf("Collecting receiver stats\n");
-
-		rc = prog_collect_rcv_stats(prog, &rcv_log);
-		if (rc) {
-			fprintf(stderr, "Failed to collect receiver stats: %s\n",
-				strerror(-rc));
-			return rc;
-		} else {
-			clock_gettime(CLOCK_MONOTONIC, &t1);
-
-			isochron_print_stats(&prog->log, &rcv_log,
-					     prog->omit_sync, prog->quiet,
-					     prog->taprio, prog->txtime,
-					     prog->cycle_time,
-					     prog->advance_time);
-
-			clock_gettime(CLOCK_MONOTONIC, &t2);
-
-			diff = timespec_to_ns(&t2) - timespec_to_ns(&t1);
-			ns_sprintf(diff_buf, diff);
-
-			printf("Processing the stats took %s seconds\n", diff_buf);
-
-			if (strlen(prog->output_file)) {
-				rc = isochron_log_save(prog->output_file,
-						       &prog->log, &rcv_log,
-						       prog->iterations,
-						       prog->tx_len,
-						       prog->omit_sync,
-						       prog->do_ts,
-						       prog->taprio,
-						       prog->txtime,
-						       prog->deadline,
-						       prog->base_time,
-						       prog->advance_time,
-						       prog->shift_time,
-						       prog->cycle_time,
-						       prog->window_size);
-			}
-
-			isochron_log_teardown(&rcv_log);
-		}
-	} else {
-		if (!prog->quiet)
-			isochron_send_log_print(&prog->log);
-	}
-
 	return rc;
 }
 
@@ -1980,8 +1959,6 @@ int isochron_send_main(int argc, char *argv[])
 	rc = prog_end_session(&prog);
 	if (rc < 0)
 		goto out;
-
-	rc = prog_print_packet_log(&prog);
 
 out:
 	prog_teardown(&prog);
