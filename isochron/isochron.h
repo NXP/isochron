@@ -9,5 +9,6 @@
 int isochron_send_main(int argc, char *argv[]);
 int isochron_rcv_main(int argc, char *argv[]);
 int isochron_stats_main(int argc, char *argv[]);
+int isochron_report_main(int argc, char *argv[]);
 
 #endif

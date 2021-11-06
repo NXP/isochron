@@ -1,17 +1,50 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright 2019-2021 NXP */
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "common.h"
 #include "endian.h"
 #include "log.h"
 
 #define ISOCHRON_LOG_VERSION	4
+
+#define FILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP) /*0660*/
+
+#define BIT(nr)			(1UL << (nr))
+
+#define ISOCHRON_FLAG_OMIT_SYNC		BIT(0)
+#define ISOCHRON_FLAG_DO_TS		BIT(1)
+#define ISOCHRON_FLAG_TAPRIO		BIT(2)
+#define ISOCHRON_FLAG_TXTIME		BIT(3)
+#define ISOCHRON_FLAG_DEADLINE		BIT(4)
+
+struct isochron_log_file_header {
+	char		magic[8];
+	__be32		version;
+	__be32		packet_count;
+	__be16		frame_size;
+	__be16		flags;
+	__be32		reserved;
+	__be64		base_time;
+	__be64		advance_time;
+	__be64		shift_time;
+	__be64		cycle_time;
+	__be64		window_size;
+	__be64		send_log_start;
+	__be64		rcv_log_start;
+	__be32		send_log_size;
+	__be32		rcv_log_size;
+	__be64		reserved2;
+} __attribute((packed));
 
 struct isochron_packet_metrics {
 	LIST_ENTRY(isochron_packet_metrics) list;
@@ -532,4 +565,171 @@ int isochron_log_init(struct isochron_log *log, size_t size)
 void isochron_log_teardown(struct isochron_log *log)
 {
 	free(log->buf);
+}
+
+int isochron_log_load(const char *file, struct isochron_log *send_log,
+		      struct isochron_log *rcv_log, long *packet_count,
+		      long *frame_size, bool *omit_sync, bool *do_ts,
+		      bool *taprio, bool *txtime, bool *deadline,
+		      __s64 *base_time, __s64 *advance_time, __s64 *shift_time,
+		      __s64 *cycle_time, __s64 *window_size)
+{
+	struct isochron_log_file_header header;
+	size_t len;
+	int fd, rc;
+	int flags;
+
+	fd = open(file, O_RDONLY);
+	if (fd < 0) {
+		perror("open");
+		rc = fd;
+		goto out;
+	}
+
+	len = read_exact(fd, &header, sizeof(header));
+	if (len <= 0) {
+		perror("isochron log header write");
+		rc = len;
+		goto out_close;
+	}
+
+	if (strcmp(header.magic, "ISOCHRON")) {
+		fprintf(stderr, "Unrecognized file format\n");
+		rc = -EINVAL;
+		goto out_close;
+	}
+
+	flags = __be16_to_cpu(header.flags);
+	*omit_sync = !!(flags & ISOCHRON_FLAG_OMIT_SYNC);
+	*do_ts = !!(flags & ISOCHRON_FLAG_DO_TS);
+	*taprio = !!(flags & ISOCHRON_FLAG_TAPRIO);
+	*txtime = !!(flags & ISOCHRON_FLAG_TXTIME);
+	*deadline = !!(flags & ISOCHRON_FLAG_DEADLINE);
+
+	*packet_count = __be32_to_cpu(header.packet_count);
+	*frame_size = __be16_to_cpu(header.frame_size);
+	*base_time = (__s64 )__be64_to_cpu(header.base_time);
+	*advance_time = (__s64 )__be64_to_cpu(header.advance_time);
+	*shift_time = (__s64 )__be64_to_cpu(header.shift_time);
+	*cycle_time = (__s64 )__be64_to_cpu(header.cycle_time);
+	*window_size = (__s64 )__be64_to_cpu(header.window_size);
+
+	if (lseek(fd, __be64_to_cpu(header.send_log_start), SEEK_SET) < 0) {
+		perror("isochron send log lseek");
+		rc = -errno;
+		goto out_close;
+	}
+
+	rc = isochron_log_init(send_log, __be32_to_cpu(header.send_log_size));
+	if (rc) {
+		fprintf(stderr, "failed to allocate memory for send log\n");
+		goto out_close;
+	}
+
+	len = read_exact(fd, send_log->buf, send_log->size);
+	if (len <= 0) {
+		perror("isochron send log read");
+		rc = len;
+		goto out_send_log_teardown;
+	}
+
+	if (lseek(fd, __be64_to_cpu(header.rcv_log_start), SEEK_SET) < 0) {
+		perror("isochron rcv log lseek");
+		rc = -errno;
+		goto out_send_log_teardown;
+	}
+
+	rc = isochron_log_init(rcv_log, __be32_to_cpu(header.rcv_log_size));
+	if (rc) {
+		fprintf(stderr, "failed to allocate memory for rcv log\n");
+		goto out_send_log_teardown;
+	}
+
+	len = read_exact(fd, rcv_log->buf, rcv_log->size);
+	if (len <= 0) {
+		perror("isochron rcv log read");
+		rc = len;
+		goto out_rcv_log_teardown;
+	}
+
+	close(fd);
+
+	return 0;
+
+out_rcv_log_teardown:
+	isochron_log_teardown(rcv_log);
+out_send_log_teardown:
+	isochron_log_teardown(send_log);
+out_close:
+	close(fd);
+out:
+	return rc;
+}
+
+int isochron_log_save(const char *file, const struct isochron_log *send_log,
+		      const struct isochron_log *rcv_log, long packet_count,
+		      long frame_size, bool omit_sync, bool do_ts, bool taprio,
+		      bool txtime, bool deadline, __s64 base_time,
+		      __s64 advance_time, __s64 shift_time, __s64 cycle_time,
+		      __s64 window_size)
+{
+	struct isochron_log_file_header header = {
+		.version	= __cpu_to_be32(ISOCHRON_LOG_VERSION),
+		.packet_count	= __cpu_to_be32(packet_count),
+		.frame_size	= __cpu_to_be16(frame_size),
+		.base_time	= __cpu_to_be64(base_time),
+		.advance_time	= __cpu_to_be64(advance_time),
+		.shift_time	= __cpu_to_be64(shift_time),
+		.cycle_time	= __cpu_to_be64(cycle_time),
+		.window_size	= __cpu_to_be64(window_size),
+	};
+	int flags = 0;
+	size_t len;
+	int fd;
+
+	if (omit_sync)
+		flags |= ISOCHRON_FLAG_OMIT_SYNC;
+	if (do_ts)
+		flags |= ISOCHRON_FLAG_DO_TS;
+	if (taprio)
+		flags |= ISOCHRON_FLAG_TAPRIO;
+	if (txtime)
+		flags |= ISOCHRON_FLAG_TXTIME;
+	if (deadline)
+		flags |= ISOCHRON_FLAG_DEADLINE;
+
+	strcpy(header.magic, "ISOCHRON");
+	header.flags = __cpu_to_be16(flags);
+	header.send_log_start = __cpu_to_be64(sizeof(header));
+	header.send_log_size = __cpu_to_be32(send_log->size);
+	header.rcv_log_start = __cpu_to_be64(sizeof(header) + send_log->size);
+	header.rcv_log_size = __cpu_to_be32(rcv_log->size);
+
+	fd = open(file, O_CREAT | O_WRONLY | O_TRUNC, FILEMODE);
+	if (fd < 0) {
+		perror("open");
+		return fd;
+	}
+
+	len = write_exact(fd, &header, sizeof(header));
+	if (len <= 0) {
+		perror("isochron log header write");
+		return len;
+	}
+
+	len = write_exact(fd, send_log->buf, send_log->size);
+	if (len <= 0) {
+		perror("isochron send log write");
+		return len;
+	}
+
+	len = write_exact(fd, rcv_log->buf, rcv_log->size);
+	if (len <= 0) {
+		perror("isochron rcv log write");
+		return len;
+	}
+
+	close(fd);
+
+	return 0;
 }

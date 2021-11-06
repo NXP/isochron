@@ -11,6 +11,7 @@
 #include <time.h>
 #include <linux/errqueue.h>
 #include <linux/if_packet.h>
+#include <linux/limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -100,6 +101,7 @@ struct prog_data {
 	long transport_specific;
 	long sync_threshold;
 	long num_readings;
+	char output_file[PATH_MAX];
 };
 
 static int signal_received;
@@ -1409,9 +1411,9 @@ out:
 	return rc;
 }
 
-static void prog_print_packet_log(struct prog_data *prog)
+static int prog_print_packet_log(struct prog_data *prog)
 {
-	int rc;
+	int rc = 0;
 
 	if (prog->stats_srv.family) {
 		char diff_buf[TIMESPEC_BUFSIZ];
@@ -1425,6 +1427,7 @@ static void prog_print_packet_log(struct prog_data *prog)
 		if (rc) {
 			fprintf(stderr, "Failed to collect receiver stats: %s\n",
 				strerror(-rc));
+			return rc;
 		} else {
 			clock_gettime(CLOCK_MONOTONIC, &t1);
 
@@ -1441,12 +1444,31 @@ static void prog_print_packet_log(struct prog_data *prog)
 
 			printf("Processing the stats took %s seconds\n", diff_buf);
 
+			if (strlen(prog->output_file)) {
+				rc = isochron_log_save(prog->output_file,
+						       &prog->log, &rcv_log,
+						       prog->iterations,
+						       prog->tx_len,
+						       prog->omit_sync,
+						       prog->do_ts,
+						       prog->taprio,
+						       prog->txtime,
+						       prog->deadline,
+						       prog->base_time,
+						       prog->advance_time,
+						       prog->shift_time,
+						       prog->cycle_time,
+						       prog->window_size);
+			}
+
 			isochron_log_teardown(&rcv_log);
 		}
 	} else {
 		if (!prog->quiet)
 			isochron_send_log_print(&prog->log);
 	}
+
+	return rc;
 }
 
 static void prog_teardown(struct prog_data *prog)
@@ -1758,6 +1780,15 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.ptr = &prog->num_readings,
 			},
 			.optional = true,
+		}, {
+			.short_opt = "-F",
+			.long_opt = "--output-file",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->output_file,
+				.size = PATH_MAX - 1,
+			},
+			.optional = true,
 		},
 	};
 	int rc;
@@ -1845,6 +1876,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (prog->tx_len > BUF_SIZ) {
 		fprintf(stderr,
 			"Frame size cannot exceed %d octets\n", BUF_SIZ);
+		return -EINVAL;
+	}
+
+	if (strlen(prog->output_file) && !prog->stats_srv.family) {
+		fprintf(stderr,
+			"--client is mandatory when --output-file is used\n");
 		return -EINVAL;
 	}
 
@@ -1944,7 +1981,7 @@ int isochron_send_main(int argc, char *argv[])
 	if (rc < 0)
 		goto out;
 
-	prog_print_packet_log(&prog);
+	rc = prog_print_packet_log(&prog);
 
 out:
 	prog_teardown(&prog);

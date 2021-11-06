@@ -53,4 +53,18 @@ void isochron_print_stats(struct isochron_log *send_log,
 
 size_t isochron_log_buf_tlv_size(struct isochron_log *log);
 
+int isochron_log_load(const char *file, struct isochron_log *send_log,
+		      struct isochron_log *rcv_log, long *packet_count,
+		      long *frame_size, bool *omit_sync, bool *do_ts,
+		      bool *taprio, bool *txtime, bool *deadline,
+		      __s64 *base_time, __s64 *advance_time, __s64 *shift_time,
+		      __s64 *cycle_time, __s64 *window_size);
+
+int isochron_log_save(const char *file, const struct isochron_log *send_log,
+		      const struct isochron_log *rcv_log, long packet_count,
+		      long frame_size, bool omit_sync, bool do_ts, bool taprio,
+		      bool txtime, bool deadline, __s64 base_time,
+		      __s64 advance_time, __s64 shift_time, __s64 cycle_time,
+		      __s64 window_size);
+
 #endif

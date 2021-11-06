@@ -5,9 +5,10 @@ bindir ?= ${exec_prefix}/bin
 src := \
 	isochron.o \
 	common.o \
-	rcv.o \
 	log.o \
 	ptpmon.o \
+	rcv.o \
+	report.o \
 	send.o \
 	stats.o \
 	sysmon.o
