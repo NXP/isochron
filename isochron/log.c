@@ -182,18 +182,10 @@ void isochron_rcv_log_print(struct isochron_log *log)
 
 	for (rcv_pkt = (struct isochron_rcv_pkt_data *)log->buf;
 	     (char *)rcv_pkt < log_buf_end; rcv_pkt++) {
-		__s64 tx_time = (__s64 )__be64_to_cpu(rcv_pkt->tx_time);
 		__s64 rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
 		__s64 rx_swts = (__s64 )__be64_to_cpu(rcv_pkt->swts);
-		char scheduled_buf[TIMESPEC_BUFSIZ];
-		char smac_buf[MACADDR_BUFSIZ];
-		char dmac_buf[MACADDR_BUFSIZ];
 
 		/* Print packet */
-		ns_sprintf(scheduled_buf, tx_time);
-		mac_addr_sprintf(smac_buf, rcv_pkt->smac);
-		mac_addr_sprintf(dmac_buf, rcv_pkt->dmac);
-
 		if (rcv_pkt->hwts) {
 			char hwts_buf[TIMESPEC_BUFSIZ];
 			char swts_buf[TIMESPEC_BUFSIZ];
@@ -201,13 +193,11 @@ void isochron_rcv_log_print(struct isochron_log *log)
 			ns_sprintf(hwts_buf, rx_hwts);
 			ns_sprintf(swts_buf, rx_swts);
 
-			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d rxtstamp %s swts %s\n",
-			       scheduled_buf, smac_buf, dmac_buf, __be16_to_cpu(rcv_pkt->etype),
-			       __be32_to_cpu(rcv_pkt->seqid), hwts_buf, swts_buf);
+			printf("seqid %d rxtstamp %s swts %s\n",
+			       __be32_to_cpu(rcv_pkt->seqid),
+			       hwts_buf, swts_buf);
 		} else {
-			printf("[%s] src %s dst %s ethertype 0x%04x seqid %d\n",
-			       scheduled_buf, smac_buf, dmac_buf, __be16_to_cpu(rcv_pkt->etype),
-			       __be32_to_cpu(rcv_pkt->seqid));
+			printf("seqid %d\n", __be32_to_cpu(rcv_pkt->seqid));
 		}
 	}
 }
@@ -237,7 +227,7 @@ void isochron_send_log_print(struct isochron_log *log)
 }
 
 static struct isochron_rcv_pkt_data
-*isochron_rcv_log_find(struct isochron_log *rcv_log, __be32 seqid, __be64 tx_time)
+*isochron_rcv_log_find(struct isochron_log *rcv_log, __be32 seqid)
 {
 	struct isochron_rcv_pkt_data *rcv_pkt;
 	__u32 index;
@@ -247,7 +237,7 @@ static struct isochron_rcv_pkt_data
 	if (!rcv_pkt)
 		return NULL;
 
-	if (rcv_pkt->seqid != seqid || rcv_pkt->tx_time != tx_time)
+	if (rcv_pkt->seqid != seqid)
 		return NULL;
 
 	return rcv_pkt;
@@ -402,8 +392,7 @@ void isochron_print_stats(struct isochron_log *send_log,
 	     (char *)send_pkt < log_buf_end; send_pkt++) {
 		struct isochron_rcv_pkt_data *rcv_pkt;
 
-		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid,
-						send_pkt->tx_time);
+		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
 		if (!rcv_pkt) {
 			printf("seqid %d lost\n", __be32_to_cpu(send_pkt->seqid));
 			continue;

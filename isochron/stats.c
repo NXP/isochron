@@ -83,7 +83,6 @@ static int isochron_parse_word(struct prog_data *prog, char *word,
 				word, strerror(rc));
 			return rc;
 		}
-		rcv_pkt->tx_time = send_pkt->tx_time;
 		prog->state = STATE_UNKNOWN;
 		break;
 	case STATE_WAKEUP:

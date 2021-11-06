@@ -19,13 +19,9 @@ struct isochron_send_pkt_data {
 };
 
 struct isochron_rcv_pkt_data {
-	unsigned char smac[ETH_ALEN];
-	unsigned char dmac[ETH_ALEN];
-	__be64 tx_time;
 	__be64 arrival;
 	__be64 hwts;
 	__be64 swts;
-	__be16 etype;
 	__be32 seqid;
 };
 

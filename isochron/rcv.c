@@ -137,10 +137,6 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 			return -1;
 		}
 
-		rcv_pkt.tx_time = hdr->tx_time;
-		rcv_pkt.etype = eth_hdr->h_proto;
-		ether_addr_copy(rcv_pkt.smac, eth_hdr->h_source);
-		ether_addr_copy(rcv_pkt.dmac, eth_hdr->h_dest);
 		rcv_pkt.seqid = hdr->seqid;
 		rcv_pkt.hwts = __cpu_to_be64(timespec_to_ns(&tstamp->hw));
 		rcv_pkt.swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp->sw),
@@ -154,7 +150,6 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 			return -1;
 		}
 
-		rcv_pkt.tx_time = hdr->tx_time;
 		rcv_pkt.seqid = hdr->seqid;
 		rcv_pkt.hwts = __cpu_to_be64(timespec_to_ns(&tstamp->hw));
 		rcv_pkt.swts = __cpu_to_be64(utc_to_tai(timespec_to_ns(&tstamp->sw),
