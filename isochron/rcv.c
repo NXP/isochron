@@ -19,6 +19,7 @@
 #include <poll.h>
 #include "common.h"
 #include "isochron.h"
+#include "log.h"
 #include "ptpmon.h"
 #include "sysmon.h"
 

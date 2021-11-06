@@ -14,7 +14,6 @@
 #include <sched.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <sys/queue.h>
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
@@ -131,20 +130,6 @@ struct vlan_ethhdr {
 	__be16		h_vlan_encapsulated_proto;
 };
 
-struct isochron_log {
-	size_t		size;
-	char		*buf;
-};
-
-int isochron_log_init(struct isochron_log *log, size_t size);
-void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
-			     int index);
-int isochron_log_xmit(struct isochron_log *log, int fd);
-int isochron_log_recv(struct isochron_log *log, int fd);
-void isochron_log_teardown(struct isochron_log *log);
-void isochron_rcv_log_print(struct isochron_log *log);
-void isochron_send_log_print(struct isochron_log *log);
-
 enum isochron_management_id {
 	ISOCHRON_MID_LOG,
 	ISOCHRON_MID_SYSMON_OFFSET,
@@ -218,14 +203,11 @@ struct isochron_destination_mac {
 	__u8			reserved[2];
 } __attribute((packed));
 
-size_t isochron_log_buf_tlv_size(struct isochron_log *log);
-
 int isochron_send_tlv(int fd, enum isochron_management_action action,
 		      enum isochron_management_id mid, size_t size);
 
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
-#define ISOCHRON_LOG_VERSION	3
 #define ISOCHRON_MANAGEMENT_VERSION 2
 
 #define VLAN_PRIO_MASK		0xe000 /* Priority Code Point */
@@ -309,60 +291,6 @@ struct isochron_timestamp {
 	struct timespec sw;
 	__u32 tskey;
 };
-
-struct isochron_send_pkt_data {
-	__be64 tx_time;
-	__be64 wakeup;
-	__be64 hwts;
-	__be64 swts;
-	__be32 seqid;
-};
-
-struct isochron_rcv_pkt_data {
-	unsigned char smac[ETH_ALEN];
-	unsigned char dmac[ETH_ALEN];
-	__be64 tx_time;
-	__be64 arrival;
-	__be64 hwts;
-	__be64 swts;
-	__be16 etype;
-	__be32 seqid;
-};
-
-struct isochron_packet_metrics {
-	LIST_ENTRY(isochron_packet_metrics) list;
-	__s64 wakeup_to_hw_ts;
-	__s64 hw_rx_deadline_delta;
-	__s64 latency_budget;
-	__s64 path_delay;
-	__s64 wakeup_latency;
-	__s64 sender_latency;
-	__s64 arrival_latency;
-	__u32 seqid;
-};
-
-struct isochron_stats {
-	LIST_HEAD(stats_head, isochron_packet_metrics) entries;
-	int frame_count;
-	int hw_tx_deadline_misses;
-	double tx_sync_offset_mean;
-	double rx_sync_offset_mean;
-	double path_delay_mean;
-};
-
-struct isochron_metric_stats {
-	int seqid_of_min;
-	int seqid_of_max;
-	__s64 min;
-	__s64 max;
-	double mean;
-	double stddev;
-};
-
-int isochron_log_send_pkt(struct isochron_log *log,
-			  const struct isochron_send_pkt_data *send_pkt);
-int isochron_log_rcv_pkt(struct isochron_log *log,
-			 const struct isochron_rcv_pkt_data *rcv_pkt);
 
 ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
 ssize_t read_exact(int fd, void *buf, size_t count);

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include "common.h"
 #include "isochron.h"
+#include "log.h"
 
 #define BUF_SIZ		10000
 #define MAX_NUM_LINES	10000
