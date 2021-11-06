@@ -10,21 +10,21 @@
 #include <sys/types.h>
 
 struct isochron_send_pkt_data {
+	__be32 seqid;
+	__be32 reserved;
 	__be64 tx_time;
 	__be64 wakeup;
 	__be64 hwts;
 	__be64 swts;
 	__be64 sched_ts;
-	__be32 seqid;
-	__be32 reserved;
 } __attribute((packed));
 
 struct isochron_rcv_pkt_data {
+	__be32 seqid;
+	__be32 reserved;
 	__be64 arrival;
 	__be64 hwts;
 	__be64 swts;
-	__be32 seqid;
-	__be32 reserved;
 } __attribute((packed));
 
 struct isochron_log {
