@@ -7,7 +7,11 @@
 #ifndef _PTPMON_H
 #define _PTPMON_H
 
+#include <arpa/inet.h>
+#include <linux/types.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 #include "endian.h"
 
 #define MAX_IFACE_LEN					255
