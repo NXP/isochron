@@ -261,6 +261,7 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 {
 	__s64 tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
 	__s64 tx_wakeup = (__s64 )__be64_to_cpu(send_pkt->wakeup);
+	__s64 tx_sched = (__s64 )__be64_to_cpu(send_pkt->sched_ts);
 	__s64 tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
 	__s64 tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
 	__s64 rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
@@ -313,6 +314,7 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 	entry->path_delay = rx_hwts - tx_hwts;
 	entry->wakeup_latency = tx_wakeup - (tx_time - advance_time);
 	entry->sender_latency = tx_swts - tx_wakeup;
+	entry->driver_latency = tx_swts - tx_sched;
 	entry->arrival_latency = arrival - rx_hwts;
 
 	if (tx_hwts > tx_time)
@@ -388,6 +390,7 @@ void isochron_print_stats(struct isochron_log *send_log,
 	char *log_buf_end = send_log->buf + send_log->size;
 	struct isochron_metric_stats sender_latency_ms;
 	struct isochron_metric_stats wakeup_latency_ms;
+	struct isochron_metric_stats driver_latency_ms;
 	struct isochron_packet_metrics *entry, *tmp;
 	struct isochron_send_pkt_data *send_pkt;
 	struct isochron_stats stats = {0};
@@ -487,6 +490,13 @@ void isochron_print_stats(struct isochron_log *send_log,
 	wakeup_latency_ms = ms;
 	isochron_print_metric_stats("Wakeup latency", &ms);
 
+	/* Driver latency */
+	isochron_metric_compute_stats(&stats, &ms,
+				      offsetof(struct isochron_packet_metrics,
+					       driver_latency), false);
+	driver_latency_ms = ms;
+	isochron_print_metric_stats("Driver latency", &ms);
+
 	/* Arrival latency */
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
@@ -501,6 +511,10 @@ void isochron_print_stats(struct isochron_log *send_log,
 	       100.0f * wakeup_latency_ms.mean / cycle_time,
 	       100.0f * wakeup_latency_ms.min / cycle_time,
 	       100.0f * wakeup_latency_ms.max / cycle_time);
+	printf("Driver takes on average %.3lf%% of the cycle time to send a packet (min %.3lf%% max %.3lf%%)\n",
+	       100.0f * driver_latency_ms.mean / cycle_time,
+	       100.0f * driver_latency_ms.min / cycle_time,
+	       100.0f * driver_latency_ms.max / cycle_time);
 
 	/* HW TX deadline misses */
 	if (!taprio && !txtime)

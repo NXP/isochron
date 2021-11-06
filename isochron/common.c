@@ -438,6 +438,7 @@ int sk_timestamping_init(int fd, const char *if_name, bool on)
 		SOF_TIMESTAMPING_RX_HARDWARE |
 		SOF_TIMESTAMPING_TX_SOFTWARE |
 		SOF_TIMESTAMPING_RX_SOFTWARE |
+		SOF_TIMESTAMPING_TX_SCHED |
 		SOF_TIMESTAMPING_SOFTWARE |
 		SOF_TIMESTAMPING_RAW_HARDWARE |
 		SOF_TIMESTAMPING_OPT_TX_SWHW |
@@ -545,8 +546,11 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 
 			switch (sock_err->ee_origin) {
 			case SO_EE_ORIGIN_TIMESTAMPING:
-				if (tstamp)
-					tstamp->tskey = sock_err->ee_data;
+				if (!tstamp)
+					break;
+
+				tstamp->tskey = sock_err->ee_data;
+				tstamp->tstype = sock_err->ee_info;
 				break;
 			case SO_EE_ORIGIN_TXTIME:
 				txtime = ((__u64)sock_err->ee_data << 32) +

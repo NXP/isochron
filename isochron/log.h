@@ -14,6 +14,7 @@ struct isochron_send_pkt_data {
 	__be64 wakeup;
 	__be64 hwts;
 	__be64 swts;
+	__be64 sched_ts;
 	__be32 seqid;
 };
 

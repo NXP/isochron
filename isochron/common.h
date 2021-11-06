@@ -289,7 +289,9 @@ void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 struct isochron_timestamp {
 	struct timespec hw;
 	struct timespec sw;
+	struct timespec sched;
 	__u32 tskey;
+	__u32 tstype;
 };
 
 ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);

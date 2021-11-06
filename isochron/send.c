@@ -8,6 +8,8 @@
  * https://sourceforge.net/p/linuxptp/mailman/message/31998404/
  */
 #include <inttypes.h>
+#include <time.h>
+#include <linux/errqueue.h>
 #include <linux/if_packet.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -534,6 +536,7 @@ static int prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
 	send_pkt->tx_time = hdr->tx_time;
 	send_pkt->wakeup = hdr->wakeup;
 	send_pkt->seqid = hdr->seqid;
+	send_pkt->sched_ts = 0;
 	send_pkt->swts = 0;
 	send_pkt->hwts = 0;
 
@@ -543,7 +546,7 @@ static int prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
 static bool
 isochron_pkt_fully_timestamped(struct isochron_send_pkt_data *send_pkt)
 {
-	return send_pkt->hwts && send_pkt->swts;
+	return send_pkt->hwts && send_pkt->swts && send_pkt->sched_ts;
 }
 
 /* Propagates the return code from sk_receive, i.e. the number of bytes
@@ -589,8 +592,19 @@ static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
 	swts_utc = __cpu_to_be64(timespec_to_ns(&tstamp.sw));
 	hwts = __cpu_to_be64(timespec_to_ns(&tstamp.hw));
 
-	if (swts_utc)
-		send_pkt->swts = swts;
+	switch (tstamp.tstype) {
+	case SCM_TSTAMP_SCHED:
+		if (swts_utc)
+			send_pkt->sched_ts = swts;
+		break;
+	case SCM_TSTAMP_SND:
+		if (swts_utc)
+			send_pkt->swts = swts;
+		break;
+	default:
+		break;
+	}
+
 	if (hwts)
 		send_pkt->hwts = hwts;
 
