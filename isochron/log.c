@@ -11,7 +11,7 @@
 #include "endian.h"
 #include "log.h"
 
-#define ISOCHRON_LOG_VERSION	3
+#define ISOCHRON_LOG_VERSION	4
 
 struct isochron_packet_metrics {
 	LIST_ENTRY(isochron_packet_metrics) list;
