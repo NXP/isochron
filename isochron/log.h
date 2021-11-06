@@ -16,14 +16,16 @@ struct isochron_send_pkt_data {
 	__be64 swts;
 	__be64 sched_ts;
 	__be32 seqid;
-};
+	__be32 reserved;
+} __attribute((packed));
 
 struct isochron_rcv_pkt_data {
 	__be64 arrival;
 	__be64 hwts;
 	__be64 swts;
 	__be32 seqid;
-};
+	__be32 reserved;
+} __attribute((packed));
 
 struct isochron_log {
 	size_t		size;
