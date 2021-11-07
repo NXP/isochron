@@ -844,6 +844,7 @@ static int prog_init_stats_listenfd(struct prog_data *prog)
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
 		.sin_port = htons(prog->stats_port),
+		.sin_zero = {0},
 	};
 	int sockopt = 1;
 	int fd, rc;
@@ -895,6 +896,7 @@ static int prog_init_data_fd(struct prog_data *prog)
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_ANY),
 		.sin_port = htons(prog->data_port),
+		.sin_zero = {0},
 	};
 	int sockopt = 1;
 	int fd, rc;
