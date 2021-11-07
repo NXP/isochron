@@ -8,6 +8,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <linux/ethtool.h>
 #include <linux/if.h>
 #include <linux/ptp_clock.h>
