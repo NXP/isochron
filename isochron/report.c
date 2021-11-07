@@ -24,6 +24,8 @@ struct prog_data {
 	__s64 cycle_time;
 	__s64 window_size;
 	bool quiet;
+	long start;
+	long stop;
 	char input_file[PATH_MAX];
 };
 
@@ -53,6 +55,22 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->quiet,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-s",
+			.long_opt = "--start",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->start,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-S",
+			.long_opt = "--stop",
+			.type = PROG_ARG_LONG,
+			.long_ptr = {
+				.ptr = &prog->stop,
 			},
 			.optional = true,
 		},
@@ -99,9 +117,14 @@ int isochron_report_main(int argc, char *argv[])
 	if (rc)
 		return rc;
 
-	isochron_print_stats(&prog.send_log, &prog.rcv_log, prog.omit_sync,
-			     prog.quiet, prog.taprio, prog.txtime,
-			     prog.cycle_time, prog.advance_time);
+	if (!prog.start)
+		prog.start = 1;
+	if (!prog.stop)
+		prog.stop = prog.packet_count;
+
+	isochron_print_stats(&prog.send_log, &prog.rcv_log, prog.start,
+			     prog.stop, prog.omit_sync, prog.quiet, prog.taprio,
+			     prog.txtime, prog.cycle_time, prog.advance_time);
 
 	isochron_log_teardown(&prog.send_log);
 	isochron_log_teardown(&prog.rcv_log);

@@ -47,7 +47,7 @@ int isochron_log_rcv_pkt(struct isochron_log *log,
 			 const struct isochron_rcv_pkt_data *rcv_pkt);
 
 void isochron_print_stats(struct isochron_log *send_log,
-			  struct isochron_log *rcv_log,
+			  struct isochron_log *rcv_log, long start, long stop,
 			  bool omit_sync, bool quiet, bool taprio, bool txtime,
 			  __s64 cycle_time, __s64 advance_time);
 

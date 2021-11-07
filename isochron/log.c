@@ -406,7 +406,7 @@ static void isochron_print_metric_stats(const char *name,
 }
 
 void isochron_print_stats(struct isochron_log *send_log,
-			  struct isochron_log *rcv_log,
+			  struct isochron_log *rcv_log, long start, long stop,
 			  bool omit_sync, bool quiet, bool taprio, bool txtime,
 			  __s64 cycle_time, __s64 advance_time)
 {
@@ -423,7 +423,11 @@ void isochron_print_stats(struct isochron_log *send_log,
 
 	for (send_pkt = (struct isochron_send_pkt_data *)send_log->buf;
 	     (char *)send_pkt < log_buf_end; send_pkt++) {
+		__u32 seqid = __be32_to_cpu(send_pkt->seqid);
 		struct isochron_rcv_pkt_data *rcv_pkt;
+
+		if (seqid < start || seqid > stop)
+			continue;
 
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
 		if (!rcv_pkt) {
