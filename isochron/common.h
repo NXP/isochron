@@ -136,76 +136,6 @@ struct vlan_ethhdr {
 #define VLAN_VID_MASK		0x0fff /* VLAN Identifier */
 #define VLAN_N_VID		4096
 
-struct ip_address {
-	int family;
-	union {
-		struct in_addr addr;
-		struct in6_addr addr6;
-	};
-};
-
-enum prog_arg_type {
-	PROG_ARG_MAC_ADDR,
-	PROG_ARG_LONG,
-	PROG_ARG_TIME,
-	PROG_ARG_STRING,
-	PROG_ARG_BOOL,
-	PROG_ARG_IP,
-	PROG_ARG_HELP,
-};
-
-struct prog_arg_string {
-	char *buf;
-	int size;
-};
-
-struct prog_arg_time {
-	clockid_t clkid;
-	__s64 *ns;
-};
-
-struct prog_arg_long {
-	long *ptr;
-};
-
-struct prog_arg_mac_addr {
-	unsigned char *buf;
-};
-
-struct prog_arg_boolean {
-	bool *ptr;
-};
-
-struct prog_arg_ip {
-	struct ip_address *ptr;
-};
-
-struct prog_arg_help {
-	bool *ptr;
-};
-
-struct prog_arg {
-	const char *short_opt;
-	const char *long_opt;
-	bool optional;
-	enum prog_arg_type type;
-	union {
-		struct prog_arg_string string;
-		struct prog_arg_time time;
-		struct prog_arg_long long_ptr;
-		struct prog_arg_mac_addr mac;
-		struct prog_arg_boolean boolean_ptr;
-		struct prog_arg_ip ip_ptr;
-		struct prog_arg_help help_ptr;
-	};
-};
-
-int prog_parse_np_args(int argc, char **argv,
-		       struct prog_arg *prog_args,
-		       int prog_args_size);
-void prog_usage(const char *prog_name, struct prog_arg *prog_args,
-		int prog_args_size);
-
 struct isochron_timestamp {
 	struct timespec hw;
 	struct timespec sw;
@@ -218,7 +148,6 @@ ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
 ssize_t read_exact(int fd, void *buf, size_t count);
 ssize_t write_exact(int fd, const void *buf, size_t count);
 
-int mac_addr_from_string(unsigned char *to, char *from);
 int sk_timestamping_init(int fd, const char *if_name, bool on);
 int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout);
@@ -311,8 +240,6 @@ static inline __s64 utc_to_tai(__s64 utc, __s64 offset)
 {
 	return utc + offset * NSEC_PER_SEC;
 }
-
-int get_time_from_string(clockid_t clkid, __s64 *to, char *from);
 
 static inline __s64
 master_offset_from_current_ds(const struct current_ds *current_ds)

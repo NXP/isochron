@@ -22,13 +22,11 @@
 #include <sys/socket.h>
 #include <linux/un.h>
 #include <net/if.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
 #include <netinet/udp.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <signal.h>
+#include "argparser.h"
 #include "common.h"
 #include "isochron.h"
 #include "log.h"

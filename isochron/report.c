@@ -3,6 +3,7 @@
 #include <linux/limits.h>
 #include <stdio.h>
 #include <string.h>
+#include "argparser.h"
 #include "common.h"
 #include "isochron.h"
 #include "log.h"

@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <poll.h>
+#include "argparser.h"
 #include "common.h"
 #include "isochron.h"
 #include "log.h"

@@ -3,8 +3,9 @@ exec_prefix ?= ${prefix}
 bindir ?= ${exec_prefix}/bin
 
 src := \
-	isochron.o \
+	argparser.o \
 	common.o \
+	isochron.o \
 	log.o \
 	management.o \
 	ptpmon.o \
