@@ -189,7 +189,15 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 		break;
 	case PROG_ARG_STRING:
 		string = match->string;
-		strncpy(string.buf, val, string.size);
+
+		if (strlen(val) >= string.size) {
+			fprintf(stderr,
+				"String \"%s\" too large, please limit to %zu bytes\n",
+				val, string.size);
+			return -ERANGE;
+		}
+
+		strcpy(string.buf, val);
 		break;
 	case PROG_ARG_HELP:
 		help_ptr = match->help_ptr.ptr;

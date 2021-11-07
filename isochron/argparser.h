@@ -31,7 +31,7 @@ enum prog_arg_type {
 
 struct prog_arg_string {
 	char *buf;
-	int size;
+	size_t size;
 };
 
 struct prog_arg_time {
