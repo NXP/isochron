@@ -20,6 +20,7 @@
 #include "common.h"
 #include "isochron.h"
 #include "log.h"
+#include "management.h"
 #include "ptpmon.h"
 #include "sysmon.h"
 
@@ -304,11 +305,6 @@ static int prog_client_connect_event(struct prog_data *prog)
 	prog->have_client = true;
 
 	return 0;
-}
-
-static void isochron_send_empty_tlv(int fd, enum isochron_management_id mid)
-{
-	isochron_send_tlv(fd, ISOCHRON_RESPONSE, mid, 0);
 }
 
 static int prog_forward_sysmon_offset(struct prog_data *prog)

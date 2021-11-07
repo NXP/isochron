@@ -6,6 +6,7 @@ src := \
 	isochron.o \
 	common.o \
 	log.o \
+	management.o \
 	ptpmon.o \
 	rcv.o \
 	report.o \
