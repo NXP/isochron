@@ -4,7 +4,6 @@
 #define _ISOCHRON_H
 
 #include <stdbool.h>
-#include <linux/types.h>
 
 int isochron_send_main(int argc, char *argv[]);
 int isochron_rcv_main(int argc, char *argv[]);
