@@ -10,7 +10,6 @@
 enum isochron_func {
 	ISOCHRON_SEND,
 	ISOCHRON_RCV,
-	ISOCHRON_STATS,
 	ISOCHRON_REPORT,
 };
 
@@ -19,11 +18,9 @@ static void isochron_usage(void)
 	fprintf(stderr, "isochron usage:\n");
 	fprintf(stderr, "isochron send ...\n");
 	fprintf(stderr, "isochron rcv ...\n");
-	fprintf(stderr, "isochron stats ...\n");
 	fprintf(stderr, "isochron report ...\n");
 	fprintf(stderr, "Run \"isochron send --help\" or ");
 	fprintf(stderr, "\"isochron rcv --help\" or ");
-	fprintf(stderr, "\"isochron stats --help\" or ");
 	fprintf(stderr, "\"isochron report --help\" for more details.\n");
 }
 
@@ -46,9 +43,6 @@ static int isochron_parse_args(int *argc, char ***argv,
 		return 0;
 	} else if (strcmp(prog_name, "isochron-rcv") == 0) {
 		*func = ISOCHRON_RCV;
-		return 0;
-	} else if (strcmp(prog_name, "isochron-stats") == 0) {
-		*func = ISOCHRON_STATS;
 		return 0;
 	} else if (strcmp(prog_name, "isochron-report") == 0) {
 		*func = ISOCHRON_REPORT;
@@ -75,16 +69,13 @@ static int isochron_parse_args(int *argc, char ***argv,
 	} else if (strcmp(prog_func, "rcv") == 0) {
 		*func = ISOCHRON_RCV;
 		return 0;
-	} else if (strcmp(prog_func, "stats") == 0) {
-		*func = ISOCHRON_STATS;
-		return 0;
 	} else if (strcmp(prog_func, "report") == 0) {
 		*func = ISOCHRON_REPORT;
 		return 0;
 	}
 
 	fprintf(stderr,
-		"%s: unknown function %s, expected \"send\", \"rcv\", \"stats\" or \"report\"\n",
+		"%s: unknown function %s, expected \"send\", \"rcv\" or \"report\"\n",
 		prog_name, prog_func);
 
 	return -EINVAL;
@@ -105,9 +96,6 @@ int main(int argc, char *argv[])
 		break;
 	case ISOCHRON_RCV:
 		rc = isochron_rcv_main(argc, argv);
-		break;
-	case ISOCHRON_STATS:
-		rc = isochron_stats_main(argc, argv);
 		break;
 	case ISOCHRON_REPORT:
 		rc = isochron_report_main(argc, argv);
