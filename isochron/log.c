@@ -77,6 +77,161 @@ struct isochron_metric_stats {
 	double stddev;
 };
 
+#define ISOCHRON_FMT_TIME		BIT(0)
+#define ISOCHRON_FMT_SIGNED		BIT(1)
+#define ISOCHRON_FMT_UNSIGNED		BIT(2)
+#define ISOCHRON_FMT_HEX		BIT(3)
+
+struct isochron_printf_variables {
+	__s64 advance_time;	/* A */
+	__s64 base_time;	/* B */
+	__s64 cycle_time;	/* C */
+	__s64 shift_time;	/* H */
+	__s64 window_size;	/* W */
+	__s64 tx_time;		/* S */
+	__s64 tx_wakeup;	/* w */
+	__s64 tx_hwts;		/* T */
+	__s64 tx_swts;		/* t */
+	__s64 tx_sched;		/* s */
+	__u32 seqid;		/* q */
+	__s64 arrival;		/* a */
+	__s64 rx_hwts;		/* R */
+	__s64 rx_swts;		/* r */
+};
+
+struct isochron_variable_code {
+	size_t offset;
+	size_t size;
+	unsigned long valid_formats;
+};
+
+static const struct isochron_variable_code variable_codes[256] = {
+	['A'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   advance_time),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['B'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   base_time),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['C'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   cycle_time),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['H'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   shift_time),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['W'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   window_size),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['S'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   tx_time),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['w'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   tx_wakeup),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['T'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   tx_hwts),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['t'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   tx_swts),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['s'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   tx_sched),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['q'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   seqid),
+		.size = sizeof(__u32),
+		.valid_formats = ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['a'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   arrival),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['R'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   rx_hwts),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+	['r'] = {
+		.offset = offsetof(struct isochron_printf_variables,
+				   rx_swts),
+		.size = sizeof(__s64),
+		.valid_formats = ISOCHRON_FMT_TIME |
+				 ISOCHRON_FMT_SIGNED |
+				 ISOCHRON_FMT_UNSIGNED |
+				 ISOCHRON_FMT_HEX,
+	},
+};
+
 size_t isochron_log_buf_tlv_size(struct isochron_log *log)
 {
 	return sizeof(__be32) + /* log_version */
@@ -276,45 +431,313 @@ static struct isochron_rcv_pkt_data
 	return rcv_pkt;
 }
 
-static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
-				  struct isochron_rcv_pkt_data *rcv_pkt,
-				  struct isochron_stats *stats,
-				  bool quiet, bool taprio, bool txtime,
-				  __s64 advance_time)
+static void
+isochron_printf_vars_get(const struct isochron_send_pkt_data *send_pkt,
+			 const struct isochron_rcv_pkt_data *rcv_pkt,
+			 __s64 base_time, __s64 advance_time, __s64 shift_time,
+			 __s64 cycle_time, __s64 window_size,
+			 struct isochron_printf_variables *v)
 {
-	__s64 tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
-	__s64 tx_wakeup = (__s64 )__be64_to_cpu(send_pkt->wakeup);
-	__s64 tx_sched = (__s64 )__be64_to_cpu(send_pkt->sched_ts);
-	__s64 tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
-	__s64 tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
-	__s64 rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
-	__s64 rx_swts = (__s64 )__be64_to_cpu(rcv_pkt->swts);
-	__s64 arrival = (__s64 )__be64_to_cpu(rcv_pkt->arrival);
+	v->base_time = base_time;
+	v->advance_time = advance_time;
+	v->shift_time = shift_time;
+	v->cycle_time = cycle_time;
+	v->window_size = window_size;
+	v->tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
+	v->tx_wakeup = (__s64 )__be64_to_cpu(send_pkt->wakeup);
+	v->tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
+	v->tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
+	v->tx_sched = (__s64 )__be64_to_cpu(send_pkt->sched_ts);
+	v->rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
+	v->rx_swts = (__s64 )__be64_to_cpu(rcv_pkt->swts);
+	v->arrival = (__s64 )__be64_to_cpu(rcv_pkt->arrival);
+	v->seqid = (__u32 )__be32_to_cpu(send_pkt->seqid);
+}
+
+static int
+isochron_printf_signed_int(char *buf, const char *buf_end_ptr,
+			   const struct isochron_variable_code *vc,
+			   const struct isochron_printf_variables *v)
+{
+	__s64 *var64 = (__s64 *)((char *)v + vc->offset);
+	__s32 *var32 = (__s32 *)((char *)v + vc->offset);
+	char tmp[30];
+
+	switch (vc->size) {
+	case sizeof(__s64):
+		sprintf(tmp, "%lld", *var64);
+		break;
+	case sizeof(__s32):
+		sprintf(tmp, "%d", *var32);
+		break;
+	default:
+		fprintf(stderr,
+			"Unrecognized variable size %zu for a signed int\n",
+			vc->size);
+		return -EINVAL;
+	}
+
+	if (buf + strlen(tmp) >= buf_end_ptr) {
+		fprintf(stderr,
+			"Destination buffer not large enough to print signed int\n");
+		return -EINVAL;
+	}
+
+	strcpy(buf, tmp);
+
+	return strlen(tmp);
+}
+
+static int
+isochron_printf_unsigned_int(char *buf, const char *buf_end_ptr,
+			     const struct isochron_variable_code *vc,
+			     const struct isochron_printf_variables *v)
+{
+	__u64 *var64 = (__u64 *)((char *)v + vc->offset);
+	__u32 *var32 = (__u32 *)((char *)v + vc->offset);
+	char tmp[30];
+
+	switch (vc->size) {
+	case sizeof(__u64):
+		sprintf(tmp, "%llu", *var64);
+		break;
+	case sizeof(__u32):
+		sprintf(tmp, "%u", *var32);
+		break;
+	default:
+		fprintf(stderr,
+			"Unrecognized variable size %zu for a signed int\n",
+			vc->size);
+		return -EINVAL;
+	}
+
+	if (buf + strlen(tmp) >= buf_end_ptr) {
+		fprintf(stderr,
+			"Destination buffer not large enough to print unsigned int\n");
+		return -EINVAL;
+	}
+
+	strcpy(buf, tmp);
+
+	return strlen(tmp);
+}
+
+static int
+isochron_printf_hex_int(char *buf, const char *buf_end_ptr,
+			const struct isochron_variable_code *vc,
+			const struct isochron_printf_variables *v)
+{
+	__u64 *var64 = (__u64 *)((char *)v + vc->offset);
+	__u32 *var32 = (__u32 *)((char *)v + vc->offset);
+	char tmp[30];
+
+	switch (vc->size) {
+	case sizeof(__u64):
+		sprintf(tmp, "%llx", *var64);
+		break;
+	case sizeof(__u32):
+		sprintf(tmp, "%x", *var32);
+		break;
+	default:
+		fprintf(stderr,
+			"Unrecognized variable size %zu for a signed int\n",
+			vc->size);
+		return -EINVAL;
+	}
+
+	if (buf + strlen(tmp) >= buf_end_ptr) {
+		fprintf(stderr,
+			"Destination buffer not large enough to print hex int\n");
+		return -EINVAL;
+	}
+
+	strcpy(buf, tmp);
+
+	return strlen(tmp);
+}
+
+static int
+isochron_printf_time(char *buf, const char *buf_end_ptr,
+		     const struct isochron_variable_code *vc,
+		     const struct isochron_printf_variables *v)
+{
+	__u64 *var64 = (__u64 *)((char *)v + vc->offset);
+	char tmp[TIMESPEC_BUFSIZ];
+
+	if (vc->size != sizeof(__s64)) {
+		fprintf(stderr, "Unexpected size %zu for a time format\n",
+			vc->size);
+		return -EINVAL;
+	}
+
+	ns_sprintf(tmp, *var64);
+
+	if (buf + strlen(tmp) >= buf_end_ptr) {
+		fprintf(stderr,
+			"Destination buffer not large enough to print time\n");
+		return -EINVAL;
+	}
+
+	strcpy(buf, tmp);
+
+	return strlen(tmp);
+}
+
+static int
+isochron_printf_one_var(char *buf_ptr, const char *buf_end_ptr,
+			const struct isochron_printf_variables *v,
+			char var_code, char printf_code)
+{
+	const struct isochron_variable_code *vc = &variable_codes[(__u8 )var_code];
+
+	if (!vc->valid_formats) {
+		fprintf(stderr, "Unknown variable code '%c'\n", var_code);
+		return -EINVAL;
+	}
+
+	switch (printf_code) {
+	case 'd':
+		if (!(vc->valid_formats & ISOCHRON_FMT_SIGNED)) {
+			fprintf(stderr,
+				"Variable '%c' cannot be printed as signed int\n",
+				var_code);
+			return -EINVAL;
+		}
+
+		return isochron_printf_signed_int(buf_ptr, buf_end_ptr, vc, v);
+	case 'u':
+		if (!(vc->valid_formats & ISOCHRON_FMT_UNSIGNED)) {
+			fprintf(stderr,
+				"Variable '%c' cannot be printed as signed int\n",
+				var_code);
+			return -EINVAL;
+		}
+
+		return isochron_printf_unsigned_int(buf_ptr, buf_end_ptr, vc, v);
+	case 'x':
+		if (!(vc->valid_formats & ISOCHRON_FMT_HEX)) {
+			fprintf(stderr,
+				"Variable '%c' cannot be printed as hexadecimal\n",
+				var_code);
+			return -EINVAL;
+		}
+
+		return isochron_printf_hex_int(buf_ptr, buf_end_ptr, vc, v);
+	case 'T':
+		if (!(vc->valid_formats & ISOCHRON_FMT_TIME)) {
+			fprintf(stderr,
+				"Variable '%c' cannot be printed as time\n",
+				var_code);
+			return -EINVAL;
+		}
+
+		return isochron_printf_time(buf_ptr, buf_end_ptr, vc, v);
+	default:
+		fprintf(stderr, "Unknown printf code '%c'\n", printf_code);
+		return -EINVAL;
+	}
+}
+
+static int buf_copy_verbatim(char *dest, const char *dest_end, const char *src,
+			     size_t size)
+{
+	if (dest + size >= dest_end) {
+		fprintf(stderr,
+			"Buffer not large enough for printf format\n");
+		return -EINVAL;
+	}
+
+	strncpy(dest, src, size);
+	return size;
+}
+
+static int
+isochron_printf_one_packet(const struct isochron_printf_variables *v,
+			   const char *printf_fmt, const char *printf_args)
+{
+	const char *fmt_end_ptr = printf_fmt + strlen(printf_fmt);
+	char buf[ISOCHRON_LOG_PRINTF_BUF_SIZE];
+	const char *args_ptr = printf_args;
+	const char *fmt_ptr = printf_fmt;
+	const char *args_end_ptr;
+	char *buf_ptr = buf;
+	char *percent, code;
+	char *buf_end_ptr;
+	int rc;
+
+	buf_end_ptr = buf + ISOCHRON_LOG_PRINTF_BUF_SIZE - 1;
+	args_end_ptr = printf_args + strlen(printf_args);
+	/* Avoid uselessly memsetting the whole buffer to zero */
+	buf[0] = 0;
+
+	do {
+		percent = strchr(fmt_ptr, '%');
+		if (!percent) {
+			rc = buf_copy_verbatim(buf_ptr, buf_end_ptr, fmt_ptr,
+					       strlen(fmt_ptr));
+			if (rc < 0)
+				return rc;
+		} else {
+			if (percent + 1 >= fmt_end_ptr) {
+				fprintf(stderr,
+					"Illegal percent placement at the end of the printf format\n");
+				return -EINVAL;
+			}
+
+			if (args_ptr >= args_end_ptr) {
+				fprintf(stderr,
+					"Not enough arguments for format\n");
+				return -EINVAL;
+			}
+
+			/* First copy verbatim up to the percent sign */
+			rc = buf_copy_verbatim(buf_ptr, buf_end_ptr, fmt_ptr,
+					       (percent - fmt_ptr));
+			if (rc < 0)
+				return rc;
+			buf_ptr += rc;
+
+			code = *(percent + 1);
+			rc = isochron_printf_one_var(buf_ptr, buf_end_ptr,
+						     v, *args_ptr, code);
+			if (rc < 0)
+				return rc;
+
+			/* Advance past what we've just printed */
+			buf_ptr += rc;
+
+			/* Jump past the percent and past the code character */
+			fmt_ptr = percent + 2;
+
+			/* Consume one argument */
+			args_ptr++;
+		}
+	} while (percent);
+
+	if (args_ptr < args_end_ptr) {
+		fprintf(stderr, "printf arguments left unconsumed\n");
+		return -EINVAL;
+	}
+
+	if (buf[0])
+		puts(buf);
+
+	return 0;
+}
+
+static void isochron_process_stat(const struct isochron_printf_variables *v,
+				  struct isochron_stats *stats,
+				  bool taprio, bool txtime)
+{
 	struct isochron_packet_metrics *entry;
-	char scheduled_buf[TIMESPEC_BUFSIZ];
-	char tx_hwts_buf[TIMESPEC_BUFSIZ];
-	char rx_hwts_buf[TIMESPEC_BUFSIZ];
-	char arrival_buf[TIMESPEC_BUFSIZ];
-	char wakeup_buf[TIMESPEC_BUFSIZ];
-
-	ns_sprintf(scheduled_buf, tx_time);
-	ns_sprintf(tx_hwts_buf, tx_hwts);
-	ns_sprintf(rx_hwts_buf, rx_hwts);
-	ns_sprintf(arrival_buf, arrival);
-	ns_sprintf(wakeup_buf, tx_wakeup);
-
-	if (!quiet)
-		printf("seqid %d gate %s wakeup %s tx %s rx %s arrival %s\n",
-		       __be32_to_cpu(send_pkt->seqid), scheduled_buf, wakeup_buf,
-		       tx_hwts_buf, rx_hwts_buf, arrival_buf);
 
 	entry = calloc(1, sizeof(*entry));
 	if (!entry)
 		return;
 
-	entry->seqid = __be32_to_cpu(send_pkt->seqid);
-	entry->wakeup_to_hw_ts = tx_hwts - tx_wakeup;
-	entry->hw_rx_deadline_delta = rx_hwts - tx_time;
+	entry->seqid = v->seqid;
+	entry->wakeup_to_hw_ts = v->tx_hwts - v->tx_wakeup;
+	entry->hw_rx_deadline_delta = v->rx_hwts - v->tx_time;
 	/* When tc-taprio or tc-etf offload is enabled, we know that the
 	 * MAC TX timestamp will be larger than the gate event, because the
 	 * application's schedule should be the same as the NIC's schedule.
@@ -331,21 +754,22 @@ static void isochron_process_stat(struct isochron_send_pkt_data *send_pkt,
 	 * losing deadlines".
 	 */
 	if (taprio || txtime)
-		entry->latency_budget = tx_hwts - tx_time;
+		entry->latency_budget = v->tx_hwts - v->tx_time;
 	else
-		entry->latency_budget = tx_time - tx_hwts;
-	entry->path_delay = rx_hwts - tx_hwts;
-	entry->wakeup_latency = tx_wakeup - (tx_time - advance_time);
-	entry->sender_latency = tx_swts - tx_wakeup;
-	entry->driver_latency = tx_swts - tx_sched;
-	entry->arrival_latency = arrival - rx_hwts;
+		entry->latency_budget = v->tx_time - v->tx_hwts;
+	entry->path_delay = v->rx_hwts - v->tx_hwts;
+	entry->wakeup_latency = v->tx_wakeup -
+				(v->tx_time - v->advance_time);
+	entry->sender_latency = v->tx_swts - v->tx_wakeup;
+	entry->driver_latency = v->tx_swts - v->tx_sched;
+	entry->arrival_latency = v->arrival - v->rx_hwts;
 
-	if (tx_hwts > tx_time)
+	if (v->tx_hwts > v->tx_time)
 		stats->hw_tx_deadline_misses++;
 
 	stats->frame_count++;
-	stats->tx_sync_offset_mean += tx_hwts - tx_swts;
-	stats->rx_sync_offset_mean += rx_hwts - rx_swts;
+	stats->tx_sync_offset_mean += v->tx_hwts - v->tx_swts;
+	stats->rx_sync_offset_mean += v->rx_hwts - v->rx_swts;
 	stats->path_delay_mean += entry->path_delay;
 
 	LIST_INSERT_HEAD(&stats->entries, entry, list);
@@ -405,10 +829,13 @@ static void isochron_print_metric_stats(const char *name,
 	       ms->seqid_of_min, ms->seqid_of_max);
 }
 
-void isochron_print_stats(struct isochron_log *send_log,
-			  struct isochron_log *rcv_log, long start, long stop,
-			  bool omit_sync, bool quiet, bool taprio, bool txtime,
-			  __s64 cycle_time, __s64 advance_time)
+int isochron_print_stats(struct isochron_log *send_log,
+			 struct isochron_log *rcv_log,
+			 const char *printf_fmt, const char *printf_args,
+			 long start, long stop,
+			 bool omit_sync, bool quiet, bool taprio, bool txtime,
+			 __s64 base_time, __s64 advance_time, __s64 shift_time,
+			 __s64 cycle_time, __s64 window_size)
 {
 	char *log_buf_end = send_log->buf + send_log->size;
 	struct isochron_metric_stats sender_latency_ms;
@@ -418,6 +845,7 @@ void isochron_print_stats(struct isochron_log *send_log,
 	struct isochron_send_pkt_data *send_pkt;
 	struct isochron_stats stats = {0};
 	struct isochron_metric_stats ms;
+	int rc = 0;
 
 	LIST_INIT(&stats.entries);
 
@@ -425,6 +853,7 @@ void isochron_print_stats(struct isochron_log *send_log,
 	     (char *)send_pkt < log_buf_end; send_pkt++) {
 		__u32 seqid = __be32_to_cpu(send_pkt->seqid);
 		struct isochron_rcv_pkt_data *rcv_pkt;
+		struct isochron_printf_variables v;
 
 		if (seqid < start || seqid > stop)
 			continue;
@@ -435,8 +864,17 @@ void isochron_print_stats(struct isochron_log *send_log,
 			continue;
 		}
 
-		isochron_process_stat(send_pkt, rcv_pkt, &stats,
-				      quiet, taprio, txtime, advance_time);
+		isochron_printf_vars_get(send_pkt, rcv_pkt, base_time,
+					 advance_time, shift_time, cycle_time,
+					 window_size, &v);
+
+		if (!quiet) {
+			rc = isochron_printf_one_packet(&v, printf_fmt, printf_args);
+			if (rc)
+				goto out;
+		}
+
+		isochron_process_stat(&v, &stats, taprio, txtime);
 	}
 
 	stats.tx_sync_offset_mean /= stats.frame_count;
@@ -553,6 +991,8 @@ out:
 		LIST_REMOVE(entry, list);
 		free(entry);
 	}
+
+	return rc;
 }
 
 int isochron_log_init(struct isochron_log *log, size_t size)

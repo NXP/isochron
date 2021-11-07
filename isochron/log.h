@@ -9,6 +9,9 @@
 #include <sys/queue.h>
 #include <sys/types.h>
 
+#define ISOCHRON_LOG_PRINTF_MAX_NUM_ARGS		256
+#define ISOCHRON_LOG_PRINTF_BUF_SIZE			4096
+
 struct isochron_send_pkt_data {
 	__be32 seqid;
 	__be32 reserved;
@@ -46,10 +49,13 @@ int isochron_log_send_pkt(struct isochron_log *log,
 int isochron_log_rcv_pkt(struct isochron_log *log,
 			 const struct isochron_rcv_pkt_data *rcv_pkt);
 
-void isochron_print_stats(struct isochron_log *send_log,
-			  struct isochron_log *rcv_log, long start, long stop,
-			  bool omit_sync, bool quiet, bool taprio, bool txtime,
-			  __s64 cycle_time, __s64 advance_time);
+int isochron_print_stats(struct isochron_log *send_log,
+			 struct isochron_log *rcv_log,
+			 const char *printf_fmt, const char *printf_args,
+			 long start, long stop,
+			 bool omit_sync, bool quiet, bool taprio, bool txtime,
+			 __s64 base_time, __s64 advance_time, __s64 shift_time,
+			 __s64 cycle_time, __s64 window_size);
 
 size_t isochron_log_buf_tlv_size(struct isochron_log *log);
 

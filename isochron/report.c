@@ -27,6 +27,8 @@ struct prog_data {
 	long start;
 	long stop;
 	char input_file[PATH_MAX];
+	char printf_fmt[ISOCHRON_LOG_PRINTF_BUF_SIZE];
+	char printf_args[ISOCHRON_LOG_PRINTF_MAX_NUM_ARGS];
 };
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
@@ -71,6 +73,24 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
 				.ptr = &prog->stop,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-f",
+			.long_opt = "--printf-format",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->printf_fmt,
+				.size = ISOCHRON_LOG_PRINTF_BUF_SIZE - 1,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-a",
+			.long_opt = "--printf-args",
+			.type = PROG_ARG_STRING,
+			.string = {
+				.buf = prog->printf_args,
+				.size = ISOCHRON_LOG_PRINTF_MAX_NUM_ARGS - 1,
 			},
 			.optional = true,
 		},
@@ -122,9 +142,13 @@ int isochron_report_main(int argc, char *argv[])
 	if (!prog.stop)
 		prog.stop = prog.packet_count;
 
-	isochron_print_stats(&prog.send_log, &prog.rcv_log, prog.start,
-			     prog.stop, prog.omit_sync, prog.quiet, prog.taprio,
-			     prog.txtime, prog.cycle_time, prog.advance_time);
+	rc = isochron_print_stats(&prog.send_log, &prog.rcv_log,
+				  prog.printf_fmt, prog.printf_args,
+				  prog.start, prog.stop,
+				  prog.omit_sync, prog.quiet, prog.taprio,
+				  prog.txtime, prog.base_time,
+				  prog.advance_time, prog.shift_time,
+				  prog.cycle_time, prog.window_size);
 
 	isochron_log_teardown(&prog.send_log);
 	isochron_log_teardown(&prog.rcv_log);
