@@ -93,6 +93,7 @@ static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 
 static const char * const prog_arg_type_str[] = {
 	[PROG_ARG_MAC_ADDR] = "MAC address",
+	[PROG_ARG_UNSIGNED] = "Unsigned integer",
 	[PROG_ARG_LONG] = "Long integer",
 	[PROG_ARG_TIME] = "Time in sec.nsec format",
 	[PROG_ARG_STRING] = "String",
@@ -103,6 +104,7 @@ static const char * const prog_arg_type_str[] = {
 
 static int required_args[] = {
 	[PROG_ARG_MAC_ADDR] = 1,
+	[PROG_ARG_UNSIGNED] = 1,
 	[PROG_ARG_LONG] = 1,
 	[PROG_ARG_TIME] = 1,
 	[PROG_ARG_STRING] = 1,
@@ -128,6 +130,7 @@ void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 {
 	struct prog_arg_string string;
+	unsigned long *unsigned_ptr;
 	struct prog_arg_time time;
 	struct ip_address *ip_ptr;
 	bool *boolean_ptr;
@@ -142,6 +145,17 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 			fprintf(stderr, "Could not read %s: %s\n",
 				match->long_opt, strerror(-rc));
 			return rc;
+		}
+		break;
+	case PROG_ARG_UNSIGNED:
+		unsigned_ptr = match->unsigned_ptr.ptr;
+
+		errno = 0;
+		*unsigned_ptr = strtoul(val, NULL, 0);
+		if (errno) {
+			fprintf(stderr, "Could not read %s: %s\n",
+				match->long_opt, strerror(errno));
+			return -1;
 		}
 		break;
 	case PROG_ARG_LONG:

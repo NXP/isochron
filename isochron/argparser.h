@@ -21,6 +21,7 @@ struct ip_address {
 
 enum prog_arg_type {
 	PROG_ARG_MAC_ADDR,
+	PROG_ARG_UNSIGNED,
 	PROG_ARG_LONG,
 	PROG_ARG_TIME,
 	PROG_ARG_STRING,
@@ -37,6 +38,10 @@ struct prog_arg_string {
 struct prog_arg_time {
 	clockid_t clkid;
 	__s64 *ns;
+};
+
+struct prog_arg_unsigned {
+	unsigned long *ptr;
 };
 
 struct prog_arg_long {
@@ -67,6 +72,7 @@ struct prog_arg {
 	union {
 		struct prog_arg_string string;
 		struct prog_arg_time time;
+		struct prog_arg_unsigned unsigned_ptr;
 		struct prog_arg_long long_ptr;
 		struct prog_arg_mac_addr mac;
 		struct prog_arg_boolean boolean_ptr;
