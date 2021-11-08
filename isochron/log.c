@@ -88,7 +88,7 @@ struct isochron_printf_variables {
 	__s64 cycle_time;	/* C */
 	__s64 shift_time;	/* H */
 	__s64 window_size;	/* W */
-	__s64 tx_time;		/* S */
+	__s64 tx_scheduled;	/* S */
 	__s64 tx_wakeup;	/* w */
 	__s64 tx_hwts;		/* T */
 	__s64 tx_swts;		/* t */
@@ -153,7 +153,7 @@ static const struct isochron_variable_code variable_codes[256] = {
 	},
 	['S'] = {
 		.offset = offsetof(struct isochron_printf_variables,
-				   tx_time),
+				   tx_scheduled),
 		.size = sizeof(__s64),
 		.valid_formats = ISOCHRON_FMT_TIME |
 				 ISOCHRON_FMT_SIGNED |
@@ -397,14 +397,14 @@ void isochron_send_log_print(struct isochron_log *log)
 
 	for (send_pkt = (struct isochron_send_pkt_data *)log->buf;
 	     (char *)send_pkt < log_buf_end; send_pkt++) {
-		__s64 tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
+		__s64 tx_scheduled = (__s64 )__be64_to_cpu(send_pkt->scheduled);
 		__s64 tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
 		__s64 tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
 		char scheduled_buf[TIMESPEC_BUFSIZ];
 		char hwts_buf[TIMESPEC_BUFSIZ];
 		char swts_buf[TIMESPEC_BUFSIZ];
 
-		ns_sprintf(scheduled_buf, tx_time);
+		ns_sprintf(scheduled_buf, tx_scheduled);
 		ns_sprintf(hwts_buf, tx_hwts);
 		ns_sprintf(swts_buf, tx_swts);
 
@@ -443,7 +443,7 @@ isochron_printf_vars_get(const struct isochron_send_pkt_data *send_pkt,
 	v->shift_time = shift_time;
 	v->cycle_time = cycle_time;
 	v->window_size = window_size;
-	v->tx_time = (__s64 )__be64_to_cpu(send_pkt->tx_time);
+	v->tx_scheduled = (__s64 )__be64_to_cpu(send_pkt->scheduled);
 	v->tx_wakeup = (__s64 )__be64_to_cpu(send_pkt->wakeup);
 	v->tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
 	v->tx_swts = (__s64 )__be64_to_cpu(send_pkt->swts);
@@ -737,7 +737,7 @@ static void isochron_process_stat(const struct isochron_printf_variables *v,
 
 	entry->seqid = v->seqid;
 	entry->wakeup_to_hw_ts = v->tx_hwts - v->tx_wakeup;
-	entry->hw_rx_deadline_delta = v->rx_hwts - v->tx_time;
+	entry->hw_rx_deadline_delta = v->rx_hwts - v->tx_scheduled;
 	/* When tc-taprio or tc-etf offload is enabled, we know that the
 	 * MAC TX timestamp will be larger than the gate event, because the
 	 * application's schedule should be the same as the NIC's schedule.
@@ -754,17 +754,17 @@ static void isochron_process_stat(const struct isochron_printf_variables *v,
 	 * losing deadlines".
 	 */
 	if (taprio || txtime)
-		entry->latency_budget = v->tx_hwts - v->tx_time;
+		entry->latency_budget = v->tx_hwts - v->tx_scheduled;
 	else
-		entry->latency_budget = v->tx_time - v->tx_hwts;
+		entry->latency_budget = v->tx_scheduled - v->tx_hwts;
 	entry->path_delay = v->rx_hwts - v->tx_hwts;
 	entry->wakeup_latency = v->tx_wakeup -
-				(v->tx_time - v->advance_time);
+				(v->tx_scheduled - v->advance_time);
 	entry->sender_latency = v->tx_swts - v->tx_wakeup;
 	entry->driver_latency = v->tx_swts - v->tx_sched;
 	entry->arrival_latency = v->arrival - v->rx_hwts;
 
-	if (v->tx_hwts > v->tx_time)
+	if (v->tx_hwts > v->tx_scheduled)
 		stats->hw_tx_deadline_misses++;
 
 	stats->frame_count++;

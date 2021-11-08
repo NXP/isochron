@@ -309,7 +309,7 @@ static int prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
 		return -EINVAL;
 	}
 
-	send_pkt->tx_time = hdr->tx_time;
+	send_pkt->scheduled = hdr->scheduled;
 	send_pkt->wakeup = hdr->wakeup;
 	send_pkt->seqid = hdr->seqid;
 	send_pkt->sched_ts = 0;
@@ -410,7 +410,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 		hdr = (struct isochron_header *)prog->sendbuf;
 	}
 
-	hdr->tx_time = __cpu_to_be64(scheduled);
+	hdr->scheduled = __cpu_to_be64(scheduled);
 	hdr->wakeup = __cpu_to_be64(now);
 	hdr->seqid = __cpu_to_be32(iteration);
 

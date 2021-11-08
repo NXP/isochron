@@ -84,7 +84,7 @@ enum txtime_flags {
 #endif
 
 struct isochron_header {
-	__be64			tx_time;
+	__be64			scheduled;
 	__be64			wakeup;
 	__be32			seqid;
 }  __attribute__((packed));
