@@ -17,7 +17,9 @@ src := \
 objs := $(addprefix isochron/, $(src))
 deps := $(patsubst %.o, %.d, $(objs))
 
-all: isochron/isochron
+TARGET := isochron/isochron
+
+all: $(TARGET)
 
 # include all .d files
 -include $(deps)
@@ -32,7 +34,7 @@ ifeq ($(C),1)
 endif
 
 clean:
-	rm -f $(objs) $(deps)
+	rm -f $(objs) $(deps) $(TARGET)
 
 install: isochron/isochron
 	install -m 0755 -D isochron/isochron $(DESTDIR)${bindir}/isochron
