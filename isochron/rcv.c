@@ -118,6 +118,7 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 {
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct timespec now_ts;
+	__u32 seqid;
 	__s64 now;
 	int rc;
 
@@ -158,11 +159,10 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 							prog->utc_tai_offset));
 	}
 
-	if (__be32_to_cpu(rcv_pkt.seqid) > prog->iterations) {
-		if (!prog->quiet) {
-			printf("Discarding seqid %d\n",
-			       __be32_to_cpu(rcv_pkt.seqid));
-		}
+	seqid = __be32_to_cpu(rcv_pkt.seqid);
+	if (seqid > prog->iterations) {
+		if (!prog->quiet)
+			printf("Discarding seqid %u\n", seqid);
 		return -1;
 	}
 
