@@ -60,9 +60,9 @@ struct prog_data {
 	} sockaddr;
 	size_t sockaddr_size;
 	struct isochron_log log;
-	long timestamped;
-	long iterations;
-	long sent;
+	unsigned long timestamped;
+	unsigned long iterations;
+	unsigned long sent;
 	clockid_t clkid;
 	__s64 advance_time;
 	__s64 shift_time;
@@ -475,8 +475,8 @@ static int run_nanosleep(struct prog_data *prog)
 	char now_buf[TIMESPEC_BUFSIZ];
 	__s64 wakeup, scheduled, now;
 	struct timespec now_ts;
+	unsigned long i;
 	int rc;
-	long i;
 
 	if (prog->sched_fifo)
 		sched_policy = SCHED_FIFO;
@@ -1336,8 +1336,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-n",
 			.long_opt = "--num-frames",
-			.type = PROG_ARG_LONG,
-			.long_ptr = {
+			.type = PROG_ARG_UNSIGNED,
+			.unsigned_ptr = {
 				.ptr = &prog->iterations,
 			},
 			.optional = true,
