@@ -462,6 +462,7 @@ isochron_printf_signed_int(char *buf, const char *buf_end_ptr,
 	__s64 *var64 = (__s64 *)((char *)v + vc->offset);
 	__s32 *var32 = (__s32 *)((char *)v + vc->offset);
 	char tmp[30];
+	size_t size;
 
 	switch (vc->size) {
 	case sizeof(__s64):
@@ -477,7 +478,9 @@ isochron_printf_signed_int(char *buf, const char *buf_end_ptr,
 		return -EINVAL;
 	}
 
-	if (buf + strlen(tmp) >= buf_end_ptr) {
+	size = strlen(tmp);
+
+	if (buf + size >= buf_end_ptr) {
 		fprintf(stderr,
 			"Destination buffer not large enough to print signed int\n");
 		return -EINVAL;
@@ -485,7 +488,7 @@ isochron_printf_signed_int(char *buf, const char *buf_end_ptr,
 
 	strcpy(buf, tmp);
 
-	return strlen(tmp);
+	return size;
 }
 
 static int
@@ -496,6 +499,7 @@ isochron_printf_unsigned_int(char *buf, const char *buf_end_ptr,
 	__u64 *var64 = (__u64 *)((char *)v + vc->offset);
 	__u32 *var32 = (__u32 *)((char *)v + vc->offset);
 	char tmp[30];
+	size_t size;
 
 	switch (vc->size) {
 	case sizeof(__u64):
@@ -511,7 +515,9 @@ isochron_printf_unsigned_int(char *buf, const char *buf_end_ptr,
 		return -EINVAL;
 	}
 
-	if (buf + strlen(tmp) >= buf_end_ptr) {
+	size = strlen(tmp);
+
+	if (buf + size >= buf_end_ptr) {
 		fprintf(stderr,
 			"Destination buffer not large enough to print unsigned int\n");
 		return -EINVAL;
@@ -519,7 +525,7 @@ isochron_printf_unsigned_int(char *buf, const char *buf_end_ptr,
 
 	strcpy(buf, tmp);
 
-	return strlen(tmp);
+	return size;
 }
 
 static int
@@ -530,6 +536,7 @@ isochron_printf_hex_int(char *buf, const char *buf_end_ptr,
 	__u64 *var64 = (__u64 *)((char *)v + vc->offset);
 	__u32 *var32 = (__u32 *)((char *)v + vc->offset);
 	char tmp[30];
+	size_t size;
 
 	switch (vc->size) {
 	case sizeof(__u64):
@@ -545,7 +552,9 @@ isochron_printf_hex_int(char *buf, const char *buf_end_ptr,
 		return -EINVAL;
 	}
 
-	if (buf + strlen(tmp) >= buf_end_ptr) {
+	size = strlen(tmp);
+
+	if (buf + size >= buf_end_ptr) {
 		fprintf(stderr,
 			"Destination buffer not large enough to print hex int\n");
 		return -EINVAL;
@@ -553,7 +562,7 @@ isochron_printf_hex_int(char *buf, const char *buf_end_ptr,
 
 	strcpy(buf, tmp);
 
-	return strlen(tmp);
+	return size;
 }
 
 static int
