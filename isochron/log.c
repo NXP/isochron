@@ -833,7 +833,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 			 struct isochron_log *rcv_log,
 			 const char *printf_fmt, const char *printf_args,
 			 long start, long stop,
-			 bool omit_sync, bool quiet, bool taprio, bool txtime,
+			 bool omit_sync, bool taprio, bool txtime,
 			 __s64 base_time, __s64 advance_time, __s64 shift_time,
 			 __s64 cycle_time, __s64 window_size)
 {
@@ -868,11 +868,9 @@ int isochron_print_stats(struct isochron_log *send_log,
 					 advance_time, shift_time, cycle_time,
 					 window_size, &v);
 
-		if (!quiet) {
-			rc = isochron_printf_one_packet(&v, printf_fmt, printf_args);
-			if (rc)
-				goto out;
-		}
+		rc = isochron_printf_one_packet(&v, printf_fmt, printf_args);
+		if (rc)
+			goto out;
 
 		isochron_process_stat(&v, &stats, taprio, txtime);
 	}
