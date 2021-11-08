@@ -47,8 +47,8 @@ struct prog_data {
 	bool quiet;
 	long etype;
 	long stats_port;
-	long iterations;
-	long received_pkt_count;
+	unsigned long iterations;
+	unsigned long received_pkt_count;
 	bool sched_fifo;
 	bool sched_rr;
 	long sched_priority;
@@ -261,7 +261,7 @@ static int prog_data_fd_timeout(struct prog_data *prog)
 	prog_disarm_data_timeout_fd(prog);
 
 	fprintf(stderr,
-		"Timed out waiting for data packets, received %ld out of %ld expected\n",
+		"Timed out waiting for data packets, received %lu out of %lu expected\n",
 		prog->received_pkt_count, prog->iterations);
 
 	return prog_forward_isochron_log(prog);
