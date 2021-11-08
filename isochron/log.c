@@ -860,7 +860,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
 		if (!rcv_pkt) {
-			printf("seqid %d lost\n", __be32_to_cpu(send_pkt->seqid));
+			fprintf(stderr, "seqid %u lost\n", seqid);
 			continue;
 		}
 
