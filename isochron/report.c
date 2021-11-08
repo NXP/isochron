@@ -24,8 +24,8 @@ struct prog_data {
 	__s64 cycle_time;
 	__s64 window_size;
 	bool summary;
-	long start;
-	long stop;
+	unsigned long start;
+	unsigned long stop;
 	char input_file[PATH_MAX];
 	char printf_fmt[ISOCHRON_LOG_PRINTF_BUF_SIZE];
 	char printf_args[ISOCHRON_LOG_PRINTF_MAX_NUM_ARGS];
@@ -62,16 +62,16 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-s",
 			.long_opt = "--start",
-			.type = PROG_ARG_LONG,
-			.long_ptr = {
+			.type = PROG_ARG_UNSIGNED,
+			.unsigned_ptr = {
 				.ptr = &prog->start,
 			},
 			.optional = true,
 		}, {
 			.short_opt = "-S",
 			.long_opt = "--stop",
-			.type = PROG_ARG_LONG,
-			.long_ptr = {
+			.type = PROG_ARG_UNSIGNED,
+			.unsigned_ptr = {
 				.ptr = &prog->stop,
 			},
 			.optional = true,
