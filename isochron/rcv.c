@@ -1167,14 +1167,6 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			},
 			.optional = true,
 		}, {
-			.short_opt = "-X",
-			.long_opt = "--sync-threshold",
-			.type = PROG_ARG_LONG,
-			.long_ptr = {
-				.ptr = &prog->sync_threshold,
-			},
-			.optional = true,
-		}, {
 			.short_opt = "-R",
 			.long_opt = "--num-readings",
 			.type = PROG_ARG_LONG,
