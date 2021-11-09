@@ -43,7 +43,6 @@ struct prog_data {
 	int data_timeout_fd;
 	bool have_client;
 	bool client_waiting_for_log;
-	bool do_ts;
 	bool quiet;
 	long etype;
 	long stats_port;
@@ -948,11 +947,9 @@ static int prog_init_data_fd(struct prog_data *prog)
 		}
 	}
 
-	if (prog->do_ts) {
-		rc = sk_timestamping_init(fd, prog->if_name, true);
-		if (rc)
-			goto out;
-	}
+	rc = sk_timestamping_init(fd, prog->if_name, true);
+	if (rc)
+		goto out;
 
 	prog->data_fd = fd;
 
@@ -1010,8 +1007,6 @@ static int prog_init(struct prog_data *prog)
 		goto out_teardown_ptpmon;
 
 	prog->clkid = CLOCK_TAI;
-	/* Convert negative logic from cmdline to positive */
-	prog->do_ts = !prog->do_ts;
 
 	prog->if_index = if_nametoindex(prog->if_name);
 	if (!prog->if_index) {
@@ -1072,14 +1067,6 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_MAC_ADDR,
 			.mac = {
 				.buf = prog->dest_mac,
-			},
-			.optional = true,
-		}, {
-			.short_opt = "-T",
-			.long_opt = "--no-ts",
-			.type = PROG_ARG_BOOL,
-			.boolean_ptr = {
-			        .ptr = &prog->do_ts,
 			},
 			.optional = true,
 		}, {
