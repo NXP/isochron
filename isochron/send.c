@@ -277,20 +277,15 @@ static void prog_teardown_stats_socket(struct prog_data *prog)
 }
 
 /* Timestamps will come later */
-static int prog_log_packet_no_tstamp(struct prog_data *prog, const __u8 *buf)
+static int prog_log_packet_no_tstamp(struct prog_data *prog,
+				     const struct isochron_header *hdr)
 {
 	struct isochron_send_pkt_data *send_pkt;
-	struct isochron_header *hdr;
 	__u32 index;
 
 	/* Don't log if we're running indefinitely, there's no point */
 	if (!prog->iterations)
 		return 0;
-
-	if (prog->l2)
-		hdr = (struct isochron_header *)(buf + prog->l2_header_len);
-	else
-		hdr = (struct isochron_header *)(buf + prog->l4_header_len);
 
 	index = __be32_to_cpu(hdr->seqid) - 1;
 
@@ -390,9 +385,9 @@ static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
 	return rc;
 }
 
-static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
+static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
+		   struct isochron_header *hdr)
 {
-	struct isochron_header *hdr;
 	struct timespec now_ts;
 	__u8 err_pkt[BUF_SIZ];
 	__s64 now;
@@ -402,13 +397,6 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 	now = timespec_to_ns(&now_ts);
 
 	trace(prog, "send seqid %d start\n", iteration);
-
-	if (prog->l2) {
-		hdr = (struct isochron_header *)(prog->sendbuf +
-						 prog->l2_header_len);
-	} else {
-		hdr = (struct isochron_header *)prog->sendbuf;
-	}
 
 	hdr->scheduled = __cpu_to_be64(scheduled);
 	hdr->wakeup = __cpu_to_be64(now);
@@ -428,7 +416,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled)
 
 	trace(prog, "send seqid %d end\n", iteration);
 
-	rc = prog_log_packet_no_tstamp(prog, prog->sendbuf);
+	rc = prog_log_packet_no_tstamp(prog, hdr);
 	if (rc)
 		return rc;
 
@@ -474,9 +462,17 @@ static int run_nanosleep(struct prog_data *prog)
 	__u32 sched_policy = SCHED_OTHER;
 	char now_buf[TIMESPEC_BUFSIZ];
 	__s64 wakeup, scheduled, now;
+	struct isochron_header *hdr;
 	struct timespec now_ts;
 	unsigned long i;
 	int rc;
+
+	if (prog->l2) {
+		hdr = (struct isochron_header *)(prog->sendbuf +
+						 prog->l2_header_len);
+	} else {
+		hdr = (struct isochron_header *)prog->sendbuf;
+	}
 
 	if (prog->sched_fifo)
 		sched_policy = SCHED_FIFO;
@@ -532,7 +528,7 @@ static int run_nanosleep(struct prog_data *prog)
 		case 0:
 			scheduled = wakeup + prog->advance_time;
 
-			rc = do_work(prog, i, scheduled);
+			rc = do_work(prog, i, scheduled, hdr);
 			if (rc < 0)
 				break;
 
