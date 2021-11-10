@@ -20,20 +20,26 @@ to run on other distributions as well.
 Copy this folder to the home directory of the root user on two boards and run
 as follows:
 
+```
 [user@pc]# for board in 10.0.0.101 10.0.0.102 103; do rsync -avr ./ root@${board}:tsn-scripts/; done
+```
 
 Hint:
 The openil-community images have a command called "passwordless-ssh-login"
 which can simplify the SSH login process, at the expense of insecurity by
 default. Use at your own risk.
 
+```
 [root@board1]# ./tsn-scripts/time-test 1 prepare
 [root@board2]# ./tsn-scripts/time-test 2 prepare
 [root@board1]# ./tsn-scripts/time-test 1 run
+```
 
 Optional:
 
+```
 [root@board3]# ./time-test.sh 3 prepare
+```
 
 A Qbv latency report will be generated.
 
@@ -51,11 +57,12 @@ IEEE 802.1CB
 ============
 
 This portion contains a demonstration of 802.1CB on the NXP LS1028A-RDB board.
-It has been tested on the OpenIL master branch (commit 4d07120a2c89
-("configs/nxp_ls1021atsn_optee-sb: fix optee-os build issue")).
+It has been tested on the OpenIL master branch (commit `4d07120a2c89
+("configs/nxp_ls1021atsn_optee-sb: fix optee-os build issue")`).
 
-Perform the following changes to nxp_ls1028ardb-64b_defconfig:
+Perform the following changes to `nxp_ls1028ardb-64b_defconfig`:
 
+```
 diff --git a/configs/nxp_ls1028ardb-64b_defconfig b/configs/nxp_ls1028ardb-64b_defconfig
 index ecd87d5b20c5..5a13571f3874 100644
 --- a/configs/nxp_ls1028ardb-64b_defconfig
@@ -68,44 +75,56 @@ index ecd87d5b20c5..5a13571f3874 100644
 +BR2_PACKAGE_JQ=y
 +
 +BR2_GLOBAL_PATCH_DIR="board/nxp/ls1028ardb/patches/"
+```
 
 Add the tsn-scripts patches to the OpenIL kernel for LS1028A-RDB:
 
+```
 rsync -avr deps/patches /path/to/openil/board/nxp/ls1028ardb/
+```
 
 Build with:
+```
 make nxp_ls1028ardb-64b_defconfig O=output-ls1028ardb
 make O=output-ls1028ardb | tee build.log
+```
 
 Copy this folder to the home directory of the root user on the three boards.
 You can either do that after build, offline, or transfer the scripts over the network.
 
 Offline:
 
+```
 [tsn-scripts] # rsync -avr . /path/to/openil/output-ls1028ardb/target/root/tsn-scripts
 # Run "make" again to integrate the files newly added to the rootfs into the
 # sdcard.img
 [openil] # make O=output-ls1028ardb
+```
 
 Online:
 
+```
 [root@board1] # ip addr add 10.0.0.111/24 dev eno0
 [root@board2] # ip addr add 10.0.0.112/24 dev eno0
 [root@board3] # ip addr add 10.0.0.113/24 dev eno0
 [tsn-scripts] # for board in 10.0.0.111 10.0.0.112 10.0.0.113; do rsync -avr . root@${board}:./tsn-scripts/; done
+```
 
 On each board, make sure that all Ethernet ports are up first. Typically this
 is the task of a network manager (and for OpenIL it is already done), but if
 you are not running one, it must be done manually:
 
+```
 [root@OpenIL]# for eth in eno2 eno3 swp0 swp1 swp4; do ip link set dev $eth up; done
 
 [root@board1]# ./tsn-scripts/8021cb.sh 1
 [root@board2]# ./tsn-scripts/8021cb.sh 2
 [root@board3]# ./tsn-scripts/8021cb.sh 3
+```
 
 Expected output from one board:
 
+```
 [root@LS1028ARDB ~] # ./tsn-scripts/8021cb.sh 1
 [ 1019.200668] 000: device swp4 left promiscuous mode
 [ 1019.200751] 000: br0: port 5(swp4) entered disabled state
@@ -179,12 +198,14 @@ echo reply:0
 Adding VLAN mangling rules (see with 'tc filter show dev eno2 egress && tc filter show dev eno2 ingress')
 Populating the ARP table...
 Ready to send/receive traffic. IP address of board is 172.15.0.1
+```
 
 Then follow the commands printed by the scripts above. In the OpenIL rootfs,
 tcpdump and iperf3 are installed by default.
 
 Ping test:
 
+```
 [root@board1 ~] # ping 172.15.0.2
 PING 172.15.0.2 (172.15.0.2): 56 data bytes
 64 bytes from 172.15.0.2: seq=2 ttl=64 time=0.443 ms
@@ -207,12 +228,14 @@ PING 172.15.0.2 (172.15.0.2): 56 data bytes
 --- 172.15.0.2 ping statistics ---
 18 packets transmitted, 16 packets received, 11% packet loss
 round-trip min/avg/max = 0.361/0.387/0.443 ms
+```
 
 Currently, due to an unidentified issue, the first 2 packets in a TSN stream
 are always lost. No packet loss is expected afterwards.
 
 iperf test:
 
+```
 [root@board2 ~] # iperf3 -s
 [root@board1 ~] # iperf3 -c 172.15.0.2
 Connecting to host 172.15.0.2, port 5201
@@ -232,6 +255,7 @@ Connecting to host 172.15.0.2, port 5201
 [ ID] Interval           Transfer     Bitrate         Retr
 [  5]   0.00-10.00  sec  1.01 GBytes   869 Mbits/sec  10763             sender
 [  5]   0.00-10.00  sec  1.01 GBytes   869 Mbits/sec                  receiver
+```
 
 iperf Done.
 
