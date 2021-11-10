@@ -729,7 +729,7 @@ isochron_printf_one_packet(const struct isochron_printf_variables *v,
 	}
 
 	if (buf[0])
-		puts(buf);
+		fputs(buf, stdout);
 
 	return 0;
 }
