@@ -1002,8 +1002,7 @@ static int prog_init_data_fd(struct prog_data *prog)
 				&sk_txtime, sizeof(sk_txtime));
 		if (rc) {
 			perror("setsockopt");
-			close(fd);
-			return -errno;
+			goto out_close;
 		}
 	}
 
