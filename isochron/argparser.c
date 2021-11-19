@@ -44,8 +44,7 @@ static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 	errno = 0;
 	sec = strtol(from, &from, 0);
 	if (errno) {
-		fprintf(stderr, "Failed to read seconds: %s\n",
-			strerror(errno));
+		perror("Failed to read seconds");
 		return -EINVAL;
 	}
 	if (from[0] == '.') {
@@ -70,8 +69,7 @@ static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 		 */
 		nsec = strtol(nsec_buf, NULL, 10);
 		if (errno) {
-			fprintf(stderr, "Failed to extract ns info: %s\n",
-				strerror(errno));
+			perror("Failed to extract ns info");
 			return -EINVAL;
 		}
 	} else {
@@ -142,8 +140,7 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 	case PROG_ARG_MAC_ADDR:
 		rc = mac_addr_from_string(match->mac.buf, val);
 		if (rc < 0) {
-			fprintf(stderr, "Could not read %s: %s\n",
-				match->long_opt, strerror(-rc));
+			pr_err(rc, "Could not read %s: %m\n", match->long_opt);
 			return rc;
 		}
 		break;
@@ -153,8 +150,7 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 		errno = 0;
 		*unsigned_ptr = strtoul(val, NULL, 0);
 		if (errno) {
-			fprintf(stderr, "Could not read %s: %s\n",
-				match->long_opt, strerror(errno));
+			pr_err(-errno, "Could not read %s: %m\n", match->long_opt);
 			return -1;
 		}
 		break;
@@ -164,8 +160,7 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 		errno = 0;
 		*long_ptr = strtol(val, NULL, 0);
 		if (errno) {
-			fprintf(stderr, "Could not read %s: %s\n",
-				match->long_opt, strerror(errno));
+			pr_err(-errno, "Could not read %s: %m\n", match->long_opt);
 			return -1;
 		}
 		break;
@@ -180,8 +175,9 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 			if (rc > 0) {
 				ip_ptr->family = AF_INET;
 			} else {
-				fprintf(stderr, "IP address %s not in known format: %d (%s)\n",
-					val, errno, strerror(errno));
+				pr_err(-errno,
+				       "IP address %s not in known format: %m\n",
+				       val);
 				return -1;
 			}
 		}
@@ -191,8 +187,7 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 
 		rc = get_time_from_string(time.clkid, time.ns, val);
 		if (rc < 0) {
-			fprintf(stderr, "Could not read base time: %s\n",
-				strerror(-rc));
+			pr_err(rc, "Could not read base time: %m\n");
 			return -1;
 		}
 		break;

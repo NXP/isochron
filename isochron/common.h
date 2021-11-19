@@ -252,4 +252,6 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 
 int isochron_handle_signals(void (*handler)(int signo));
 
+void pr_err(int rc, const char *fmt, ...);
+
 #endif

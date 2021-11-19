@@ -250,15 +250,13 @@ static int prog_init_stats_socket(struct prog_data *prog)
 
 	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
 	if (stats_fd < 0) {
-		fprintf(stderr, "socket returned %d: %s\n",
-			errno, strerror(errno));
+		perror("opening stats socket failed");
 		return -errno;
 	}
 
 	rc = connect(stats_fd, serv_addr, size);
 	if (rc < 0) {
-		fprintf(stderr, "connect returned %d: %s\n",
-			errno, strerror(errno));
+		perror("connecting to stats socket failed");
 		close(stats_fd);
 		return -errno;
 	}
@@ -408,7 +406,7 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	/* Send packet */
 	rc = sendmsg(prog->data_fd, &prog->msg, 0);
 	if (rc < 0) {
-		perror("sendmsg");
+		perror("sendmsg failed");
 		sk_receive(prog->data_fd, err_pkt, BUF_SIZ, NULL,
 			   MSG_ERRQUEUE, 0);
 		return rc;
@@ -442,9 +440,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 	while (prog->timestamped < prog->sent) {
 		rc = prog_poll_txtstamps(prog, TXTSTAMP_TIMEOUT_MS);
 		if (rc <= 0) {
-			fprintf(stderr,
-				"Timed out waiting for TX timestamp: %d (%s)\n",
-				rc, strerror(-rc));
+			pr_err(rc, "Timed out waiting for TX timestamp: %m\n");
 			fprintf(stderr, "%ld timestamps unacknowledged\n",
 				prog->sent - prog->timestamped);
 			return rc;
@@ -487,15 +483,14 @@ static int run_nanosleep(struct prog_data *prog)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d: %s\n",
-				errno, strerror(errno));
+			perror("sched_setattr failed");
 			return -errno;
 		}
 	}
 
 	rc = clock_gettime(prog->clkid, &now_ts);
 	if (rc < 0) {
-		perror("clock_gettime");
+		perror("clock_gettime failed");
 		rc = -errno;
 		goto restore;
 	}
@@ -537,8 +532,7 @@ static int run_nanosleep(struct prog_data *prog)
 		case EINTR:
 			continue;
 		default:
-			fprintf(stderr, "clock_nanosleep returned %d: %s\n",
-				rc, strerror(rc));
+			pr_err(-rc, "clock_nanosleep failed: %m\n");
 			break;
 		}
 
@@ -558,8 +552,7 @@ restore:
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d: %s\n",
-				errno, strerror(errno));
+			perror("sched_setattr failed");
 			return -errno;
 		}
 	}
@@ -612,18 +605,14 @@ static bool prog_sync_done(struct prog_data *prog)
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
 				    &parent_ds, sizeof(parent_ds));
 	if (rc) {
-		fprintf(stderr,
-			"Failed to query grandmaster clock id (%s), waiting for ptp4l\n",
-			strerror(-rc));
+		pr_err(rc, "ptpmon failed to query grandmaster clock id: %m\n");
 		return false;
 	}
 
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
 					     &local_port_state);
 	if (rc) {
-		fprintf(stderr,
-			"Failed to query port state for %s (%s), waiting for ptp4l\n",
-			prog->if_name, strerror(-rc));
+		pr_err(rc, "ptpmon failed to query port state: %m\n");
 		return false;
 	}
 
@@ -639,8 +628,7 @@ static bool prog_sync_done(struct prog_data *prog)
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
 	if (rc) {
-		fprintf(stderr, "Failed to query CURRENT_DATA_SET: %d (%s)\n",
-			rc, strerror(-rc));
+		pr_err(rc, "ptpmon failed to query CURRENT_DATA_SET: %m\n");
 		return false;
 	}
 
@@ -734,8 +722,7 @@ static int prog_query_utc_offset(struct prog_data *prog)
 				    &time_properties_ds,
 				    sizeof(time_properties_ds));
 	if (rc) {
-		fprintf(stderr, "Failed to query TIME_PROPERTIES_DATA_SET: %d (%s)\n",
-			rc, strerror(-rc));
+		pr_err(rc, "ptpmon failed to query TIME_PROPERTIES_DATA_SET: %m\n");
 		return rc;
 	}
 
@@ -797,15 +784,13 @@ static int prog_prepare_session(struct prog_data *prog)
 
 	rc = prog_check_sync(prog);
 	if (rc) {
-		fprintf(stderr, "Failed to check sync status: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to check sync status: %m\n");
 		return rc;
 	}
 
 	rc = prog_prepare_receiver(prog);
 	if (rc) {
-		fprintf(stderr, "Failed to prepare receiver for the test: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to prepare receiver for the test: %m\n");
 		return rc;
 	}
 
@@ -856,8 +841,7 @@ static int prog_end_session(struct prog_data *prog)
 
 	rc = isochron_collect_rcv_log(prog->stats_fd, &rcv_log);
 	if (rc) {
-		fprintf(stderr, "Failed to collect receiver stats: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to collect receiver stats: %m\n");
 		return rc;
 	}
 
@@ -893,8 +877,7 @@ static int prog_init_ptpmon(struct prog_data *prog)
 
 	rc = ptpmon_open(prog->ptpmon);
 	if (rc) {
-		fprintf(stderr, "failed to connect to %s: %d (%s)\n",
-			prog->uds_remote,  rc, strerror(-rc));
+		pr_err(rc, "failed to open ptpmon: %m\n");
 		goto out_destroy;
 	}
 
@@ -958,14 +941,14 @@ static int prog_init_data_fd(struct prog_data *prog)
 		fd = socket(prog->ip_destination.family, SOCK_DGRAM,
 			    IPPROTO_UDP);
 	if (fd < 0) {
-		perror("socket");
+		perror("opening data socket failed");
 		goto out;
 	}
 
 	rc = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
 			sizeof(int));
 	if (rc < 0) {
-		perror("setsockopt");
+		perror("setsockopt on data socket failed");
 		goto out_close;
 	}
 
@@ -973,7 +956,7 @@ static int prog_init_data_fd(struct prog_data *prog)
 	memset(&if_idx, 0, sizeof(struct ifreq));
 	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
 	if (ioctl(fd, SIOCGIFINDEX, &if_idx) < 0) {
-		perror("SIOCGIFINDEX");
+		perror("SIOCGIFINDEX failed");
 		goto out_close;
 	}
 
@@ -981,7 +964,7 @@ static int prog_init_data_fd(struct prog_data *prog)
 	memset(&if_mac, 0, sizeof(struct ifreq));
 	strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
 	if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
-		perror("SIOCGIFHWADDR");
+		perror("SIOCGIFHWADDR failed");
 		goto out_close;
 	}
 
@@ -1001,7 +984,7 @@ static int prog_init_data_fd(struct prog_data *prog)
 		rc = setsockopt(fd, SOL_SOCKET, SO_TXTIME,
 				&sk_txtime, sizeof(sk_txtime));
 		if (rc) {
-			perror("setsockopt");
+			perror("SO_TXTIME on data socket failed");
 			goto out_close;
 		}
 	}
@@ -1176,8 +1159,7 @@ static int prog_init(struct prog_data *prog)
 	 */
 	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
 	if (rc < 0) {
-		fprintf(stderr, "mlockall returned %d: %s\n",
-			errno, strerror(errno));
+		perror("mlockall failed");
 		goto out_log_teardown;
 	}
 
@@ -1549,8 +1531,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	/* Non-positional arguments left unconsumed */
 	if (rc < 0) {
-		fprintf(stderr, "Parsing returned %d: %s\n",
-			-rc, strerror(-rc));
+		pr_err(rc, "argument parsing failed: %m\n");
 		return rc;
 	} else if (rc < argc) {
 		fprintf(stderr, "%d unconsumed arguments. First: %s\n",

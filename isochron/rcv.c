@@ -200,8 +200,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 	if (!rc)
 		return 0;
 
-	fprintf(stderr, "setsockopt PACKET_MR_MULTICAST failed: %s\n",
-		strerror(errno));
+	perror("setsockopt PACKET_MR_MULTICAST failed");
 
 	mreq.mr_ifindex = if_index;
 	mreq.mr_type = PACKET_MR_ALLMULTI;
@@ -210,8 +209,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 	if (!rc)
 		return 0;
 
-	fprintf(stderr, "setsockopt PACKET_MR_ALLMULTI failed: %s\n",
-		strerror(errno));
+	perror("setsockopt PACKET_MR_ALLMULTI failed");
 
 	mreq.mr_ifindex = if_index;
 	mreq.mr_type = PACKET_MR_PROMISC;
@@ -220,8 +218,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 	if (!rc)
 		return 0;
 
-	fprintf(stderr, "setsockopt PACKET_MR_PROMISC failed: %s\n",
-		strerror(errno));
+	perror("setsockopt PACKET_MR_PROMISC failed");
 
 	fprintf(stderr, "all socket options failed\n");
 	return -1;
@@ -238,8 +235,7 @@ static int prog_data_event(struct prog_data *prog)
 			 TXTSTAMP_TIMEOUT_MS);
 	/* Suppress "Interrupted system call" message */
 	if (len < 0 && errno != EINTR) {
-		fprintf(stderr, "recvfrom returned %d: %s\n",
-			errno, strerror(errno));
+		perror("recvfrom failed");
 		return -errno;
 	}
 
@@ -287,15 +283,13 @@ static int prog_client_connect_event(struct prog_data *prog)
 				&addr_len);
 	if (prog->stats_fd < 0) {
 		if (errno != EINTR)
-			fprintf(stderr, "accept returned %d: %s\n",
-				errno, strerror(errno));
+			perror("accept failed");
 		return -errno;
 	}
 
 	if (!inet_ntop(addr.sin_family, &addr.sin_addr.s_addr,
 		       client_addr, addr_len)) {
-		fprintf(stderr, "inet_pton returned %d: %s\n",
-			errno, strerror(errno));
+		perror("inet_pton failed");
 		prog_close_client_stats_session(prog);
 		return -errno;
 	}
@@ -317,8 +311,7 @@ static int prog_forward_sysmon_offset(struct prog_data *prog)
 	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
 			       &sysmon_delay);
 	if (rc) {
-		fprintf(stderr, "Failed to read sysmon offset: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to read sysmon offset: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_SYSMON_OFFSET);
 		return 0;
 	}
@@ -348,8 +341,7 @@ static int prog_forward_ptpmon_offset(struct prog_data *prog)
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
 	if (rc) {
-		fprintf(stderr, "Failed to read ptpmon offset: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to read ptpmon offset: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PTPMON_OFFSET);
 		return 0;
 	}
@@ -377,8 +369,7 @@ static int prog_forward_utc_offset(struct prog_data *prog)
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_TIME_PROPERTIES_DATA_SET,
 				    &time_properties_ds, sizeof(time_properties_ds));
 	if (rc) {
-		fprintf(stderr, "Failed to read ptpmon UTC offset: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to read ptpmon UTC offset: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_UTC_OFFSET);
 		return 0;
 	}
@@ -407,8 +398,7 @@ static int prog_forward_port_state(struct prog_data *prog)
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
 					     &port_state);
 	if (rc) {
-		fprintf(stderr, "Failed to read ptpmon port state: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to read ptpmon port state: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PORT_STATE);
 		return 0;
 	}
@@ -434,8 +424,7 @@ static int prog_forward_gm_clock_identity(struct prog_data *prog)
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
 				    &parent_ds, sizeof(parent_ds));
 	if (rc) {
-		fprintf(stderr, "Failed to read ptpmon GM clockID: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Failed to read ptpmon GM clockID: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_GM_CLOCK_IDENTITY);
 		return 0;
 	}
@@ -509,9 +498,8 @@ static int prog_set_packet_count(struct prog_data *prog,
 	rc = isochron_log_init(&prog->log, iterations *
 			       sizeof(struct isochron_rcv_pkt_data));
 	if (rc) {
-		fprintf(stderr,
-			"Could not allocate memory for %zu iterations: %s\n",
-			iterations, strerror(-rc));
+		pr_err(rc, "Could not allocate memory for %zu iterations: %m\n",
+		       iterations);
 		isochron_send_empty_tlv(prog->stats_fd,
 					ISOCHRON_MID_PACKET_COUNT);
 		return 0;
@@ -522,8 +510,7 @@ static int prog_set_packet_count(struct prog_data *prog,
 	/* Clock is ticking! */
 	rc = prog_rearm_data_timeout_fd(prog);
 	if (rc) {
-		fprintf(stderr, "Could not arm timeout timer: %s\n",
-			strerror(-rc));
+		pr_err(rc, "Could not arm timeout timer: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd,
 					ISOCHRON_MID_PACKET_COUNT);
 		return 0;
@@ -686,8 +673,7 @@ static int server_loop(struct prog_data *prog)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d: %s\n",
-				errno, strerror(errno));
+			perror("sched_setattr failed");
 			return -errno;
 		}
 	}
@@ -703,8 +689,7 @@ static int server_loop(struct prog_data *prog)
 			if (errno == EINTR) {
 				break;
 			} else {
-				fprintf(stderr, "poll returned %d: %s\n",
-					errno, strerror(errno));
+				perror("poll failed");
 				rc = -errno;
 				break;
 			}
@@ -759,8 +744,7 @@ static int server_loop(struct prog_data *prog)
 		};
 
 		if (sched_setattr(getpid(), &attr, 0)) {
-			fprintf(stderr, "sched_setattr returned %d: %s\n",
-				errno, strerror(errno));
+			perror("sched_setattr failed");
 			return -errno;
 		}
 	}
@@ -794,8 +778,7 @@ static int prog_init_ptpmon(struct prog_data *prog)
 
 	rc = ptpmon_open(prog->ptpmon);
 	if (rc) {
-		fprintf(stderr, "failed to connect to %s: %d (%s)\n",
-			prog->uds_remote,  rc, strerror(-rc));
+		pr_err(rc, "failed to open ptpmon: %m\n");
 		goto out_destroy;
 	}
 
@@ -1010,8 +993,7 @@ static int prog_init(struct prog_data *prog)
 
 	prog->if_index = if_nametoindex(prog->if_name);
 	if (!prog->if_index) {
-		fprintf(stderr, "if_nametoindex(%s) returned %s\n",
-			prog->if_name, strerror(errno));
+		perror("if_nametoindex failed");
 		rc = -errno;
 		goto out_teardown_sysmon;
 	}
@@ -1184,8 +1166,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	/* Non-positional arguments left unconsumed */
 	if (rc < 0) {
-		fprintf(stderr, "Parsing returned %d: %s\n",
-			-rc, strerror(-rc));
+		pr_err(rc, "argument parsing failed: %m\n");
 		return rc;
 	} else if (rc < argc) {
 		fprintf(stderr, "%d unconsumed arguments. First: %s\n",

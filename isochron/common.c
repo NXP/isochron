@@ -29,6 +29,16 @@
 #include <stdarg.h>
 #include "common.h"
 
+void pr_err(int rc, const char *fmt, ...)
+{
+	va_list ap;
+
+	errno = -rc;
+	va_start(ap, fmt);
+	fprintf(stderr, fmt, ap);
+	va_end(ap);
+}
+
 ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags)
 {
 	size_t received = 0;
@@ -123,8 +133,7 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 	cfg.rx_filter = rx_filter;
 	rc = ioctl(fd, SIOCSHWTSTAMP, &ifreq);
 	if (rc < 0) {
-		fprintf(stderr, "ioctl SIOCSHWTSTAMP failed: %s\n",
-			strerror(errno));
+		perror("ioctl SIOCSHWTSTAMP failed");
 		return rc;
 	}
 
@@ -169,8 +178,7 @@ int sk_timestamping_init(int fd, const char *if_name, bool on)
 	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING,
 			&flags, sizeof(flags));
 	if (rc < 0) {
-		fprintf(stderr, "ioctl SO_TIMESTAMPING failed: %s\n",
-			strerror(errno));
+		perror("ioctl SO_TIMESTAMPING failed");
 		return -1;
 	}
 
@@ -178,8 +186,7 @@ int sk_timestamping_init(int fd, const char *if_name, bool on)
 	rc = setsockopt(fd, SOL_SOCKET, SO_SELECT_ERR_QUEUE,
 			&flags, sizeof(flags));
 	if (rc < 0) {
-		fprintf(stderr, "%s: SO_SELECT_ERR_QUEUE: %s", if_name,
-			strerror(errno));
+		perror("SO_SELECT_ERR_QUEUE failed");
 		return rc;
 	}
 
@@ -211,8 +218,7 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 		if (rc == 0) {
 			return 0;
 		} else if (rc < 0) {
-			fprintf(stderr, "poll for tx timestamp failed: %s\n",
-				strerror(rc));
+			perror("poll for tx timestamp failed");
 			return rc;
 		} else if (!(pfd.revents & POLLPRI)) {
 			fprintf(stderr, "poll woke up on non ERR event\n");
@@ -224,9 +230,7 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	len = recvmsg(fd, &msg, flags);
 	/* Suppress "Interrupted system call" message */
 	if (len < 1 && errno != EINTR)
-		fprintf(stderr, "recvmsg%sfailed: %s\n",
-			flags == MSG_ERRQUEUE ? " tx timestamp " : " ",
-			strerror(errno));
+		perror("recvmsg failed");
 
 	for (cm = CMSG_FIRSTHDR(&msg); cm != NULL; cm = CMSG_NXTHDR(&msg, cm)) {
 		int level = cm->cmsg_level;
@@ -284,11 +288,10 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 				}
 				break;
 			default:
-				fprintf(stderr,
-					"unknown socket error %d, origin %d code %d: %s\n",
-					sock_err->ee_errno, sock_err->ee_origin,
-					sock_err->ee_code,
-					strerror(sock_err->ee_errno));
+				pr_err(-sock_err->ee_errno,
+				       "unknown socket error %d, origin %d code %d: %m\n",
+				       sock_err->ee_errno, sock_err->ee_origin,
+				       sock_err->ee_code);
 				break;
 			}
 		} else {
@@ -377,8 +380,7 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 	rc = ptpmon_query_clock_mid(ptpmon, MID_DEFAULT_DATA_SET,
 				    &default_ds, sizeof(default_ds));
 	if (rc) {
-		fprintf(stderr, "Failed to query DEFAULT_DATA_SET: %d (%s)\n",
-			rc, strerror(-rc));
+		pr_err(rc, "Failed to query DEFAULT_DATA_SET: %m\n");
 		return rc;
 	}
 
@@ -396,9 +398,7 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 						 sizeof(port_properties_np),
 						 MAX_IFACE_LEN);
 		if (rc) {
-			fprintf(stderr,
-				"Failed to query PORT_PROPERTIES_NP: %d (%s)\n",
-				rc, strerror(-rc));
+			pr_err(rc, "Failed to query PORT_PROPERTIES_NP: %m\n");
 			return rc;
 		}
 
@@ -424,19 +424,19 @@ int isochron_handle_signals(void (*handler)(int signo))
 
 	rc = sigaction(SIGTERM, &sa, NULL);
 	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGTERM: %s\n", strerror(errno));
+		perror("can't catch SIGTERM");
 		return -errno;
 	}
 
 	rc = sigaction(SIGINT, &sa, NULL);
 	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGINT: %s\n", strerror(errno));
+		perror("can't catch SIGINT");
 		return -errno;
 	}
 
 	rc = sigaction(SIGPIPE, &sa, NULL);
 	if (rc < 0) {
-		fprintf(stderr, "can't catch SIGPIPE: %s\n", strerror(errno));
+		perror("can't catch SIGPIPE");
 		return -errno;
 	}
 

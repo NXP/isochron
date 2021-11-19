@@ -293,23 +293,20 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 
 	len = write_exact(fd, &log_version, sizeof(log_version));
 	if (len <= 0) {
-		fprintf(stderr, "log_version write returned %d: %s\n",
-			errno, strerror(errno));
+		perror("log_version write failed");
 		return -errno;
 	}
 
 	len = write_exact(fd, &buf_len, sizeof(buf_len));
 	if (len <= 0) {
-		fprintf(stderr, "buf_len write returned %d: %s\n",
-			errno, strerror(errno));
+		perror("buf_len write failed");
 		return -errno;
 	}
 
 	if (log->size) {
 		len = write_exact(fd, log->buf, log->size);
 		if (len <= 0) {
-			fprintf(stderr, "write returned %d: %s\n",
-				errno, strerror(errno));
+			perror("log write failed");
 			return -errno;
 		}
 	}
@@ -326,8 +323,7 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 
 	len = read_exact(fd, &log_version, sizeof(log_version));
 	if (len <= 0) {
-		fprintf(stderr, "could not read buffer length: %d: %s\n",
-			errno, strerror(errno));
+		perror("could not read log version");
 		return -errno;
 	}
 
@@ -340,8 +336,7 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 
 	len = read_exact(fd, &buf_len, sizeof(buf_len));
 	if (len <= 0) {
-		fprintf(stderr, "could not read buffer length: %d: %s\n",
-			errno, strerror(errno));
+		perror("could not read buffer length");
 		return -errno;
 	}
 
@@ -353,8 +348,7 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 	if (log->size) {
 		len = read_exact(fd, log->buf, log->size);
 		if (len <= 0) {
-			fprintf(stderr, "read of %zu bytes returned %d: %s\n",
-				log->size, errno, strerror(errno));
+			perror("could not read log");
 			isochron_log_teardown(log);
 			return -errno;
 		}

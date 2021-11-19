@@ -102,8 +102,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	/* Non-positional arguments left unconsumed */
 	if (rc < 0) {
-		fprintf(stderr, "Parsing returned %d: %s\n",
-			-rc, strerror(-rc));
+		pr_err(rc, "argument parsing failed: %m\n");
 		return rc;
 	} else if (rc < argc) {
 		fprintf(stderr, "%d unconsumed arguments. First: %s\n",
