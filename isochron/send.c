@@ -652,6 +652,7 @@ static bool prog_sync_done(struct prog_data *prog)
 		return false;
 
 	sysmon_offset += NSEC_PER_SEC * prog->utc_tai_offset;
+	sysmon_ts += NSEC_PER_SEC * prog->utc_tai_offset;
 
 	local_ptpmon_sync_done = !!(llabs(ptpmon_offset) <= prog->sync_threshold);
 	local_sysmon_sync_done = !!(llabs(sysmon_offset) <= prog->sync_threshold);
