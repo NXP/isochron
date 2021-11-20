@@ -231,8 +231,7 @@ static int prog_data_event(struct prog_data *prog)
 	ssize_t len;
 
 	len = sk_receive(prog->data_fd, prog->rcvbuf,
-			 BUF_SIZ, &tstamp, 0,
-			 TXTSTAMP_TIMEOUT_MS);
+			 BUF_SIZ, &tstamp, 0, 0);
 	/* Suppress "Interrupted system call" message */
 	if (len < 0 && errno != EINTR) {
 		perror("recvfrom failed");

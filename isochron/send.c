@@ -65,7 +65,6 @@ struct prog_data {
 	struct isochron_log log;
 	unsigned long timestamped;
 	unsigned long iterations;
-	unsigned long sent;
 	clockid_t clkid;
 	__s64 advance_time;
 	__s64 shift_time;
@@ -105,7 +104,9 @@ struct prog_data {
 	long num_readings;
 	char output_file[PATH_MAX];
 	pthread_t send_tid;
+	pthread_t tx_timestamp_tid;
 	int send_tid_rc;
+	int tx_timestamp_tid_rc;
 };
 
 static int signal_received;
@@ -408,6 +409,10 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	if (prog->txtime)
 		*((__u64 *)CMSG_DATA(prog->cmsg)) = (__u64)(scheduled);
 
+	rc = prog_log_packet_no_tstamp(prog, hdr);
+	if (rc)
+		return rc;
+
 	/* Send packet */
 	rc = sendmsg(prog->data_fd, &prog->msg, 0);
 	if (rc < 0) {
@@ -419,35 +424,20 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 
 	trace(prog, "send seqid %d end\n", iteration);
 
-	rc = prog_log_packet_no_tstamp(prog, hdr);
-	if (rc)
-		return rc;
-
-	if (prog->do_ts) {
-		do {
-			/* Break on errors and on no immediate availability
-			 * of timestamps
-			 */
-			rc = prog_poll_txtstamps(prog, 0);
-		} while (rc > 0);
-	}
-
-	return rc;
+	return 0;
 }
 
 static int wait_for_txtimestamps(struct prog_data *prog)
 {
+	int timeout_ms = 2 * MSEC_PER_SEC;
 	int rc;
 
-	if (!prog->do_ts)
-		return 0;
-
-	while (prog->timestamped < prog->sent) {
-		rc = prog_poll_txtstamps(prog, TXTSTAMP_TIMEOUT_MS);
+	while (prog->timestamped < prog->iterations) {
+		rc = prog_poll_txtstamps(prog, timeout_ms);
 		if (rc <= 0) {
-			pr_err(rc, "Timed out waiting for TX timestamp: %m\n");
-			fprintf(stderr, "%ld timestamps unacknowledged\n",
-				prog->sent - prog->timestamped);
+			fprintf(stderr,
+				"Timed out waiting for TX timestamps, %ld timestamps unacknowledged\n",
+				prog->iterations - prog->timestamped);
 			return rc;
 		}
 	}
@@ -526,9 +516,7 @@ static int run_nanosleep(struct prog_data *prog)
 			break;
 	}
 
-	prog->sent = i - 1;
-
-	return wait_for_txtimestamps(prog);
+	return 0;
 }
 
 static void *prog_send_thread(void *arg)
@@ -539,6 +527,15 @@ static void *prog_send_thread(void *arg)
 	prog->send_tid_stopped = true;
 
 	return &prog->send_tid_rc;
+}
+
+static void *prog_tx_timestamp_thread(void *arg)
+{
+	struct prog_data *prog = arg;
+
+	prog->tx_timestamp_tid_rc = wait_for_txtimestamps(prog);
+
+	return &prog->tx_timestamp_tid_rc;
 }
 
 static void sig_handler(int signo)
@@ -821,14 +818,73 @@ static void prog_send_thread_destroy(struct prog_data *prog)
 		pr_err(rc, "sender thread failed: %m\n");
 }
 
+static int prog_tx_timestamp_thread_create(struct prog_data *prog)
+{
+	pthread_attr_t attr;
+	int rc;
+
+	if (!prog->do_ts)
+		return 0;
+
+	rc = pthread_attr_init(&attr);
+	if (rc) {
+		pr_err(-rc, "failed to init tx timestamp pthread attrs: %m\n");
+		return rc;
+	}
+
+	rc = pthread_create(&prog->tx_timestamp_tid, &attr,
+			    prog_tx_timestamp_thread, prog);
+	if (rc) {
+		pr_err(-rc, "failed to create tx timestamp pthread: %m\n");
+		goto err_destroy_attr;
+	}
+
+err_destroy_attr:
+	pthread_attr_destroy(&attr);
+
+	return rc;
+}
+
+static void prog_tx_timestamp_thread_destroy(struct prog_data *prog)
+{
+	void *res;
+	int rc;
+
+	if (!prog->do_ts)
+		return;
+
+	rc = pthread_join(prog->tx_timestamp_tid, &res);
+	if (rc) {
+		pr_err(-rc, "failed to join with tx timestamp thread: %m\n");
+		return;
+	}
+
+	rc = *((int *)res);
+	if (rc)
+		pr_err(rc, "tx timestamp thread failed: %m\n");
+}
+
 static int prog_start_threads(struct prog_data *prog)
 {
-	return prog_send_thread_create(prog);
+	int rc;
+
+	rc = prog_tx_timestamp_thread_create(prog);
+	if (rc)
+		return rc;
+
+	rc = prog_send_thread_create(prog);
+	if (rc) {
+		prog_tx_timestamp_thread_destroy(prog);
+		return rc;
+	}
+
+	return 0;
 }
 
 static void prog_stop_threads(struct prog_data *prog)
 {
 	prog_send_thread_destroy(prog);
+	prog_tx_timestamp_thread_destroy(prog);
 }
 
 static int prog_prepare_session(struct prog_data *prog)
@@ -836,7 +892,6 @@ static int prog_prepare_session(struct prog_data *prog)
 	int rc;
 
 	prog->timestamped = 0;
-	prog->sent = 0;
 	prog->send_tid_should_stop = false;
 	prog->send_tid_stopped = false;
 

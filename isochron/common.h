@@ -90,12 +90,11 @@ struct isochron_header {
 }  __attribute__((packed));
 
 #define NSEC_PER_SEC	1000000000LL
+#define MSEC_PER_SEC	1000L
 #define ETH_P_ISOCHRON	0xdead
 
 #define TIMESPEC_BUFSIZ	22
 #define MACADDR_BUFSIZ	18
-
-#define TXTSTAMP_TIMEOUT_MS	10
 
 /* From include/uapi/linux/net_tstamp.h */
 #ifndef HAVE_TX_SWHW
