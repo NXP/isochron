@@ -838,26 +838,37 @@ int isochron_print_stats(struct isochron_log *send_log,
 			 __s64 base_time, __s64 advance_time, __s64 shift_time,
 			 __s64 cycle_time, __s64 window_size)
 {
-	char *log_buf_end = send_log->buf + send_log->size;
 	struct isochron_metric_stats sender_latency_ms;
 	struct isochron_metric_stats wakeup_latency_ms;
 	struct isochron_metric_stats driver_latency_ms;
 	struct isochron_packet_metrics *entry, *tmp;
-	struct isochron_send_pkt_data *send_pkt;
+	struct isochron_send_pkt_data *pkt_arr;
 	struct isochron_stats stats = {0};
 	struct isochron_metric_stats ms;
+	size_t pkt_arr_size;
+	__u32 seqid;
 	int rc = 0;
 
 	LIST_INIT(&stats.entries);
 
-	for (send_pkt = (struct isochron_send_pkt_data *)send_log->buf;
-	     (char *)send_pkt < log_buf_end; send_pkt++) {
-		__u32 seqid = __be32_to_cpu(send_pkt->seqid);
+	pkt_arr = (struct isochron_send_pkt_data *)send_log->buf;
+	pkt_arr_size = send_log->size / sizeof(*pkt_arr);
+
+	if (start == 0 || start > pkt_arr_size ||
+	    stop == 0 || stop > pkt_arr_size) {
+		fprintf(stderr, "Trying to index an out-of-bounds element\n");
+		return -ERANGE;
+	}
+
+	for (seqid = start; seqid <= stop; seqid++) {
+		struct isochron_send_pkt_data *send_pkt = &pkt_arr[seqid - 1];
 		struct isochron_rcv_pkt_data *rcv_pkt;
 		struct isochron_printf_variables v;
 
-		if (seqid < start || seqid > stop)
+		if (seqid != __be32_to_cpu(send_pkt->seqid)) {
+			fprintf(stderr, "seqid %u lost\n", seqid);
 			continue;
+		}
 
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
 		if (!rcv_pkt) {
