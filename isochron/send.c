@@ -24,6 +24,7 @@
 #include <net/if.h>
 #include <netinet/udp.h>
 #include <errno.h>
+#include <pthread.h>
 #include <sys/mman.h>
 #include <signal.h>
 #include "argparser.h"
@@ -101,6 +102,8 @@ struct prog_data {
 	long sync_threshold;
 	long num_readings;
 	char output_file[PATH_MAX];
+	pthread_t send_tid;
+	int send_tid_rc;
 };
 
 static int signal_received;
@@ -455,7 +458,6 @@ static int run_nanosleep(struct prog_data *prog)
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
-	__u32 sched_policy = SCHED_OTHER;
 	char now_buf[TIMESPEC_BUFSIZ];
 	__s64 wakeup, scheduled, now;
 	struct isochron_header *hdr;
@@ -470,29 +472,11 @@ static int run_nanosleep(struct prog_data *prog)
 		hdr = (struct isochron_header *)prog->sendbuf;
 	}
 
-	if (prog->sched_fifo)
-		sched_policy = SCHED_FIFO;
-	if (prog->sched_rr)
-		sched_policy = SCHED_RR;
-
-	if (sched_policy != SCHED_OTHER) {
-		struct sched_attr attr = {
-			.size = sizeof(struct sched_attr),
-			.sched_policy = sched_policy,
-			.sched_priority = prog->sched_priority,
-		};
-
-		if (sched_setattr(getpid(), &attr, 0)) {
-			perror("sched_setattr failed");
-			return -errno;
-		}
-	}
-
 	rc = clock_gettime(prog->clkid, &now_ts);
 	if (rc < 0) {
 		perror("clock_gettime failed");
 		rc = -errno;
-		goto restore;
+		return rc;
 	}
 
 	now = timespec_to_ns(&now_ts);
@@ -525,7 +509,7 @@ static int run_nanosleep(struct prog_data *prog)
 
 			rc = do_work(prog, i, scheduled, hdr);
 			if (rc < 0)
-				break;
+				return rc;
 
 			wakeup += prog->cycle_time;
 			break;
@@ -542,25 +526,16 @@ static int run_nanosleep(struct prog_data *prog)
 
 	prog->sent = i - 1;
 
-restore:
-	/* Restore scheduling policy */
-	if (sched_policy != SCHED_OTHER) {
-		struct sched_attr attr = {
-			.size = sizeof(struct sched_attr),
-			.sched_policy = SCHED_OTHER,
-			.sched_priority = 0,
-		};
-
-		if (sched_setattr(getpid(), &attr, 0)) {
-			perror("sched_setattr failed");
-			return -errno;
-		}
-	}
-
-	if (rc)
-		return rc;
-
 	return wait_for_txtimestamps(prog);
+}
+
+static void *prog_send_thread(void *arg)
+{
+	struct prog_data *prog = arg;
+
+	prog->send_tid_rc = run_nanosleep(prog);
+
+	return &prog->send_tid_rc;
 }
 
 static void sig_handler(int signo)
@@ -778,6 +753,79 @@ static int prog_prepare_receiver(struct prog_data *prog)
 				   &packet_count, sizeof(packet_count));
 }
 
+static int prog_send_thread_create(struct prog_data *prog)
+{
+	int sched_policy = SCHED_OTHER;
+	pthread_attr_t attr;
+	int rc;
+
+	rc = pthread_attr_init(&attr);
+	if (rc) {
+		pr_err(-rc, "failed to init sender pthread attrs: %m\n");
+		return rc;
+	}
+
+	if (prog->sched_fifo)
+		sched_policy = SCHED_FIFO;
+	if (prog->sched_rr)
+		sched_policy = SCHED_RR;
+
+	if (sched_policy != SCHED_OTHER) {
+		struct sched_param sched_param = {
+			.sched_priority = prog->sched_priority,
+		};
+
+		rc = pthread_attr_setschedpolicy(&attr, sched_policy);
+		if (rc) {
+			pr_err(-rc, "failed to set sender pthread sched policy: %m\n");
+			goto err_destroy_attr;
+		}
+
+		rc = pthread_attr_setschedparam(&attr, &sched_param);
+		if (rc) {
+			pr_err(-rc, "failed to set sender pthread sched priority: %m\n");
+			goto err_destroy_attr;
+		}
+	}
+
+	rc = pthread_create(&prog->send_tid, &attr, prog_send_thread, prog);
+	if (rc) {
+		pr_err(-rc, "failed to create sender pthread: %m\n");
+		goto err_destroy_attr;
+	}
+
+err_destroy_attr:
+	pthread_attr_destroy(&attr);
+
+	return rc;
+}
+
+static void prog_send_thread_destroy(struct prog_data *prog)
+{
+	void *res;
+	int rc;
+
+	rc = pthread_join(prog->send_tid, &res);
+	if (rc) {
+		pr_err(-rc, "failed to join with sender thread: %m\n");
+		return;
+	}
+
+	rc = *((int *)res);
+	if (rc)
+		pr_err(rc, "sender thread failed: %m\n");
+}
+
+static int prog_start_threads(struct prog_data *prog)
+{
+	return prog_send_thread_create(prog);
+}
+
+static void prog_stop_threads(struct prog_data *prog)
+{
+	prog_send_thread_destroy(prog);
+}
+
 static int prog_prepare_session(struct prog_data *prog)
 {
 	int rc;
@@ -793,6 +841,10 @@ static int prog_prepare_session(struct prog_data *prog)
 		pr_err(rc, "Failed to prepare receiver for the test: %m\n");
 		return rc;
 	}
+
+	rc = prog_start_threads(prog);
+	if (rc)
+		return rc;
 
 	return 0;
 }
@@ -826,6 +878,8 @@ static int prog_end_session(struct prog_data *prog)
 {
 	struct isochron_log rcv_log;
 	int rc;
+
+	prog_stop_threads(prog);
 
 	rc = prog_check_final_sync_status(prog);
 	if (rc)
@@ -1700,10 +1754,6 @@ int isochron_send_main(int argc, char *argv[])
 		return rc;
 
 	rc = prog_prepare_session(&prog);
-	if (rc < 0)
-		goto out;
-
-	rc = run_nanosleep(&prog);
 	if (rc < 0)
 		goto out;
 

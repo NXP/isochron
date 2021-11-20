@@ -48,7 +48,7 @@ docs/pdf/%.pdf: docs/%.md
 -include $(deps)
 
 isochron/isochron: $(objs)
-	$(CC) $^ -o $@ $(LDFLAGS) -lm
+	$(CC) $^ -o $@ $(LDFLAGS) -lm -pthread
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -c $< -o $@
