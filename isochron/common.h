@@ -34,6 +34,8 @@
 	_a > _b ? _a : _b; \
 })
 
+#define BIT(nr)			(1UL << (nr))
+
 struct sched_attr {
 	__u32 size;		/* Size of this structure */
 	__u32 sched_policy;	/* Policy (SCHED_*) */

@@ -7,6 +7,7 @@
  * https://gist.github.com/austinmarton/1922600
  * https://sourceforge.net/p/linuxptp/mailman/message/31998404/
  */
+#define _GNU_SOURCE
 #include <inttypes.h>
 #include <time.h>
 #include <linux/errqueue.h>
@@ -25,6 +26,7 @@
 #include <netinet/udp.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sched.h>
 #include <sys/mman.h>
 #include <signal.h>
 #include "argparser.h"
@@ -107,6 +109,7 @@ struct prog_data {
 	pthread_t tx_timestamp_tid;
 	int send_tid_rc;
 	int tx_timestamp_tid_rc;
+	unsigned long cpumask;
 };
 
 static int signal_received;
@@ -784,6 +787,23 @@ static int prog_send_thread_create(struct prog_data *prog)
 		rc = pthread_attr_setschedparam(&attr, &sched_param);
 		if (rc) {
 			pr_err(-rc, "failed to set sender pthread sched priority: %m\n");
+			goto err_destroy_attr;
+		}
+	}
+
+	if (prog->cpumask) {
+		int cpu, num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+		cpu_set_t cpus;
+
+		CPU_ZERO(&cpus);
+
+		for (cpu = 0; cpu < num_cpus; cpu++)
+			if (prog->cpumask & BIT(cpu))
+				CPU_SET(cpu, &cpus);
+
+		rc = pthread_attr_setaffinity_np(&attr, sizeof(cpus), &cpus);
+		if (rc) {
+			pr_err(-rc, "failed to set sender pthread cpu affinity: %m\n");
 			goto err_destroy_attr;
 		}
 	}
@@ -1629,6 +1649,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.string = {
 				.buf = prog->output_file,
 				.size = PATH_MAX - 1,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-M",
+			.long_opt = "--cpu-mask",
+			.type = PROG_ARG_UNSIGNED,
+			.unsigned_ptr = {
+				.ptr = &prog->cpumask,
 			},
 			.optional = true,
 		},

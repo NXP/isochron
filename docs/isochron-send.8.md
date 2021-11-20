@@ -204,6 +204,13 @@ OPTIONS
     requests the kernel to change its scheduling priority for the
     duration of the test.
 
+`-M`, `--cpu-mask` <`NUMBER`>
+
+:   a bit mask of CPUs on which the sender thread is allowed to be
+    scheduled. The other threads of the program are not affected by this
+    selection. Optional, defaults to the CPU affinity of the isochron
+    process.
+
 `-O`, `--utc-tai-offset` <`NUMBER`>
 
 :   the program uses the `CLOCK_TAI` time base for its timers and for
@@ -313,7 +320,8 @@ tc qdisc add dev eth0 root taprio num_tc 5 \
 	sched-entry S 10  50000 \
 	sched-entry S 0f 450000 \
 	flags 2
-taskset $((1 << 1)) isochron send \
+taskset $((1 << 0)) isochron send \
+	--cpu-mask $((1 << 1)) \
 	--interface eth0 \
 	--cycle-time 0.0005 \
 	--frame-size 64 \

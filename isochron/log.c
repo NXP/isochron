@@ -19,8 +19,6 @@
 
 #define FILEMODE (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP) /*0660*/
 
-#define BIT(nr)			(1UL << (nr))
-
 #define ISOCHRON_FLAG_OMIT_SYNC		BIT(0)
 #define ISOCHRON_FLAG_DO_TS		BIT(1)
 #define ISOCHRON_FLAG_TAPRIO		BIT(2)
