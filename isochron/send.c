@@ -40,6 +40,8 @@
 #define TIME_FMT_LEN	27 /* "[%s] " */
 
 struct prog_data {
+	volatile bool send_tid_should_stop;
+	volatile bool send_tid_stopped;
 	unsigned char dest_mac[ETH_ALEN];
 	unsigned char src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
@@ -520,7 +522,7 @@ static int run_nanosleep(struct prog_data *prog)
 			break;
 		}
 
-		if (signal_received)
+		if (signal_received || prog->send_tid_should_stop)
 			break;
 	}
 
@@ -534,6 +536,7 @@ static void *prog_send_thread(void *arg)
 	struct prog_data *prog = arg;
 
 	prog->send_tid_rc = run_nanosleep(prog);
+	prog->send_tid_stopped = true;
 
 	return &prog->send_tid_rc;
 }
@@ -550,7 +553,7 @@ static void sig_handler(int signo)
 	}
 }
 
-static bool prog_sync_done(struct prog_data *prog)
+static bool prog_sync_ok(struct prog_data *prog)
 {
 	bool local_port_transient_state, remote_port_transient_state;
 	bool remote_ptpmon_sync_done, remote_sysmon_sync_done;
@@ -567,6 +570,9 @@ static bool prog_sync_done(struct prog_data *prog)
 	int rcv_utc_offset;
 	__u64 sysmon_ts;
 	int rc;
+
+	if (!prog->ptpmon)
+		return true;
 
 	rc = prog_collect_receiver_sync_stats(prog, &have_remote_stats,
 					      &rcv_sysmon_offset,
@@ -669,16 +675,13 @@ static bool prog_sync_done(struct prog_data *prog)
 	       remote_ptpmon_sync_done && remote_sysmon_sync_done;
 }
 
-static int prog_check_sync(struct prog_data *prog)
+static int prog_wait_until_sync_ok(struct prog_data *prog)
 {
-	if (!prog->ptpmon)
-		return 0;
-
 	while (1) {
 		if (signal_received)
 			return -EINTR;
 
-		if (prog_sync_done(prog))
+		if (prog_sync_ok(prog))
 			break;
 
 		sleep(1);
@@ -805,6 +808,8 @@ static void prog_send_thread_destroy(struct prog_data *prog)
 	void *res;
 	int rc;
 
+	prog->send_tid_should_stop = true;
+
 	rc = pthread_join(prog->send_tid, &res);
 	if (rc) {
 		pr_err(-rc, "failed to join with sender thread: %m\n");
@@ -830,66 +835,69 @@ static int prog_prepare_session(struct prog_data *prog)
 {
 	int rc;
 
-	rc = prog_check_sync(prog);
+	prog->timestamped = 0;
+	prog->sent = 0;
+	prog->send_tid_should_stop = false;
+	prog->send_tid_stopped = false;
+
+	rc = isochron_log_init(&prog->log, prog->iterations *
+			       sizeof(struct isochron_send_pkt_data));
+	if (rc)
+		return rc;
+
+	rc = prog_wait_until_sync_ok(prog);
 	if (rc) {
 		pr_err(rc, "Failed to check sync status: %m\n");
-		return rc;
+		goto out_teardown_log;
 	}
 
 	rc = prog_prepare_receiver(prog);
 	if (rc) {
 		pr_err(rc, "Failed to prepare receiver for the test: %m\n");
-		return rc;
+		goto out_teardown_log;
 	}
 
 	rc = prog_start_threads(prog);
 	if (rc)
-		return rc;
+		goto out_teardown_log;
 
 	return 0;
+
+out_teardown_log:
+	isochron_log_teardown(&prog->log);
+	return rc;
 }
 
-static int prog_check_final_sync_status(struct prog_data *prog)
+static bool prog_monitor_sync(struct prog_data *prog)
 {
-	int retries = 3;
-
-	if (!prog->ptpmon)
-		return 0;
-
-	printf("Test ended, checking sync status again\n");
-
-	while (retries--) {
+	while (!prog->send_tid_stopped) {
 		if (signal_received)
-			return -EINTR;
+			return false;
 
-		if (prog_sync_done(prog))
-			return 0;
+		if (!prog_sync_ok(prog)) {
+			fprintf(stderr,
+				"Sync lost during the test, repeating\n");
+			return false;
+		}
 
 		sleep(1);
 	}
 
-	fprintf(stderr,
-		"Sync lost during the test, log data is invalid, aborting\n");
-
-	return -EINVAL;
+	return true;
 }
 
-static int prog_end_session(struct prog_data *prog)
+static int prog_end_session(struct prog_data *prog, bool save_log)
 {
 	struct isochron_log rcv_log;
 	int rc;
 
 	prog_stop_threads(prog);
 
-	rc = prog_check_final_sync_status(prog);
-	if (rc)
-		return rc;
+	if (!prog->stats_srv.family && !prog->quiet)
+		isochron_send_log_print(&prog->log);
 
-	if (!prog->stats_srv.family) {
-		if (!prog->quiet)
-			isochron_send_log_print(&prog->log);
-		return 0;
-	}
+	if (!prog->stats_srv.family)
+		goto skip_collecting_rcv_log;
 
 	printf("Collecting receiver stats\n");
 
@@ -899,7 +907,7 @@ static int prog_end_session(struct prog_data *prog)
 		return rc;
 	}
 
-	if (strlen(prog->output_file)) {
+	if (save_log && strlen(prog->output_file)) {
 		rc = isochron_log_save(prog->output_file, &prog->log, &rcv_log,
 				       prog->iterations, prog->tx_len,
 				       prog->omit_sync, prog->do_ts,
@@ -910,6 +918,8 @@ static int prog_end_session(struct prog_data *prog)
 	}
 
 	isochron_log_teardown(&rcv_log);
+skip_collecting_rcv_log:
+	isochron_log_teardown(&prog->log);
 
 	return rc;
 }
@@ -1203,18 +1213,13 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		goto out_close_data_fd;
 
-	rc = isochron_log_init(&prog->log, prog->iterations *
-			       sizeof(struct isochron_send_pkt_data));
-	if (rc < 0)
-		goto out_close_trace_mark_fd;
-
 	/* Prevent the process's virtual memory from being swapped out, by
 	 * locking all current and future pages
 	 */
 	rc = mlockall(MCL_CURRENT | MCL_FUTURE);
 	if (rc < 0) {
 		perror("mlockall failed");
-		goto out_log_teardown;
+		goto out_close_trace_mark_fd;
 	}
 
 	rc = prog_init_ptpmon(prog);
@@ -1244,8 +1249,6 @@ out_teardown_ptpmon:
 	prog_teardown_ptpmon(prog);
 out_munlock:
 	munlockall();
-out_log_teardown:
-	isochron_log_teardown(&prog->log);
 out_close_trace_mark_fd:
 	prog_teardown_trace_mark(prog);
 out_close_data_fd:
@@ -1263,7 +1266,6 @@ static void prog_teardown(struct prog_data *prog)
 
 	munlockall();
 
-	isochron_log_teardown(&prog->log);
 	prog_teardown_trace_mark(prog);
 	prog_teardown_data_fd(prog);
 	prog_teardown_stats_socket(prog);
@@ -1743,26 +1745,33 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 int isochron_send_main(int argc, char *argv[])
 {
 	struct prog_data prog = {0};
+	bool sync_ok;
 	int rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
 		return rc;
 
-	rc = prog_init(&prog);
-	if (rc < 0)
-		return rc;
+	do {
+		rc = prog_init(&prog);
+		if (rc)
+			break;
 
-	rc = prog_prepare_session(&prog);
-	if (rc < 0)
-		goto out;
+		rc = prog_prepare_session(&prog);
+		if (rc)
+			break;
 
-	rc = prog_end_session(&prog);
-	if (rc < 0)
-		goto out;
+		sync_ok = prog_monitor_sync(&prog);
 
-out:
-	prog_teardown(&prog);
+		rc = prog_end_session(&prog, sync_ok);
+		if (rc)
+			break;
+
+		prog_teardown(&prog);
+	} while (!sync_ok);
+
+	if (rc)
+		prog_teardown(&prog);
 
 	return rc;
 }
