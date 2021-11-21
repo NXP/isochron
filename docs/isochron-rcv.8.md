@@ -52,10 +52,6 @@ OPTIONS
     octet of the destination MAC address until the last octet of data
     before the FCS.
 
-`-T`, `--no-ts`
-
-:   disable the process of collecting TX timestamps.
-
 `-v`, `--vid` <`NUMBER`>
 
 :   insert a VLAN header with the specified VLAN ID in the test packets.
