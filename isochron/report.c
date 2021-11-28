@@ -52,6 +52,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 				.buf = prog->input_file,
 				.size = PATH_MAX - 1,
 			},
+			.optional = true,
 		}, {
 			.short_opt = "-m",
 			.long_opt = "--summary",
@@ -115,6 +116,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		prog_usage("isochron-report", args, ARRAY_SIZE(args));
 		return -1;
 	}
+
+	if (!strlen(prog->input_file))
+		sprintf(prog->input_file, "isochron.dat");
 
 	return 0;
 }

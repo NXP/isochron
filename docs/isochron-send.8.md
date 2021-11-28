@@ -300,8 +300,9 @@ OPTIONS
 `-F`, `--output-file` <`PATH`>
 
 :   save the packet timestamps to a file that can be queried at a later
-    time using `isochron report`. Optional. This requires the `--client`
-    option, since logging only TX timestamps is not supported.
+    time using `isochron report`. Defaults to "isochron.dat". This
+    requires the `--client` option, since logging only TX timestamps is
+    not supported.
 
 EXAMPLES
 ========
@@ -329,7 +330,7 @@ taskset $((1 << 0)) isochron send \
 	--client 192.168.100.2 \
 	--quiet \
 	--sync-threshold 2000 \
-	--output-file isochron.log \
+	--output-file isochron.dat \
 	--taprio \
 	--priority 4 \
 	--sched-rr \

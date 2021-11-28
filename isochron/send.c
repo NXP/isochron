@@ -1754,6 +1754,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		return -EINVAL;
 	}
 
+	if (!strlen(prog->output_file))
+		sprintf(prog->output_file, "isochron.dat");
+
 	if (strlen(prog->uds_remote) == 0)
 		sprintf(prog->uds_remote, "/var/run/ptp4l");
 
