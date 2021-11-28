@@ -1020,9 +1020,15 @@ static int prog_init_ptpmon(struct prog_data *prog)
 		goto out_destroy;
 	}
 
-	rc = prog_query_utc_offset(prog);
-	if (rc)
-		goto out_close;
+	while (prog_query_utc_offset(prog) == -ENOENT) {
+		if (signal_received) {
+			rc = -EINTR;
+			goto out_close;
+		}
+
+		printf("waiting for ptp4l\n");
+		sleep(1);
+	}
 
 	return 0;
 
