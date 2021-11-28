@@ -685,6 +685,21 @@ isochron_printf_one_packet(const struct isochron_printf_variables *v,
 				return -EINVAL;
 			}
 
+			code = *(percent + 1);
+			/* Escaped %% */
+			if (code == '%') {
+				/* Copy up to and including the first percent */
+				rc = buf_copy_verbatim(buf_ptr, buf_end_ptr, fmt_ptr,
+						       percent + 1 - fmt_ptr);
+				if (rc < 0)
+					return rc;
+
+				buf_ptr += rc;
+				/* Jump past both percent signs */
+				fmt_ptr = percent + 2;
+				continue;
+			}
+
 			if (args_ptr >= args_end_ptr) {
 				fprintf(stderr,
 					"Not enough arguments for format\n");
@@ -698,7 +713,6 @@ isochron_printf_one_packet(const struct isochron_printf_variables *v,
 				return rc;
 			buf_ptr += rc;
 
-			code = *(percent + 1);
 			rc = isochron_printf_one_var(buf_ptr, buf_end_ptr,
 						     v, *args_ptr, code);
 			if (rc < 0)
