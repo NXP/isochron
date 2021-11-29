@@ -94,6 +94,7 @@ static const char * const prog_arg_type_str[] = {
 	[PROG_ARG_UNSIGNED] = "Unsigned integer",
 	[PROG_ARG_LONG] = "Long integer",
 	[PROG_ARG_TIME] = "Time in sec.nsec format",
+	[PROG_ARG_FILEPATH] = "File path",
 	[PROG_ARG_STRING] = "String",
 	[PROG_ARG_BOOL] = "Boolean",
 	[PROG_ARG_IP] = "IP address",
@@ -105,6 +106,7 @@ static int required_args[] = {
 	[PROG_ARG_UNSIGNED] = 1,
 	[PROG_ARG_LONG] = 1,
 	[PROG_ARG_TIME] = 1,
+	[PROG_ARG_FILEPATH] = 1,
 	[PROG_ARG_STRING] = 1,
 	[PROG_ARG_BOOL] = 0,
 	[PROG_ARG_IP] = 1,
@@ -127,6 +129,7 @@ void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 
 static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 {
+	struct prog_arg_filepath filepath;
 	struct prog_arg_string string;
 	unsigned long *unsigned_ptr;
 	struct prog_arg_time time;
@@ -195,6 +198,18 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 		boolean_ptr = match->boolean_ptr.ptr;
 
 		*boolean_ptr = true;
+		break;
+	case PROG_ARG_FILEPATH:
+		filepath = match->filepath;
+
+		if (strlen(val) >= filepath.size) {
+			fprintf(stderr,
+				"File path \"%s\" too large, please limit to %zu bytes\n",
+				val, filepath.size);
+			return -ERANGE;
+		}
+
+		strcpy(filepath.buf, val);
 		break;
 	case PROG_ARG_STRING:
 		string = match->string;

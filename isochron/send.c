@@ -1626,8 +1626,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-U",
 			.long_opt = "--unix-domain-socket",
-			.type = PROG_ARG_STRING,
-			.string = {
+			.type = PROG_ARG_FILEPATH,
+			.filepath = {
 				.buf = prog->uds_remote,
 				.size = UNIX_PATH_MAX - 1,
 			},
@@ -1651,8 +1651,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-F",
 			.long_opt = "--output-file",
-			.type = PROG_ARG_STRING,
-			.string = {
+			.type = PROG_ARG_FILEPATH,
+			.filepath = {
 				.buf = prog->output_file,
 				.size = PATH_MAX - 1,
 			},

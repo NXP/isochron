@@ -47,8 +47,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-F",
 			.long_opt = "--input-file",
-			.type = PROG_ARG_STRING,
-			.string = {
+			.type = PROG_ARG_FILEPATH,
+			.filepath = {
 				.buf = prog->input_file,
 				.size = PATH_MAX - 1,
 			},
