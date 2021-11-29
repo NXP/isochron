@@ -54,7 +54,7 @@ static int isochron_parse_args(int *argc, char ***argv,
 	(*argc)--;
 
 	if (!strcmp(prog_func, "-V") || !strcmp(prog_func, "--version")) {
-		fprintf(stderr, "%s version %s\n", prog_name, VERSION);
+		fprintf(stderr, "%s\n", VERSION);
 		return -EINVAL;
 	}
 
