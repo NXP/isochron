@@ -60,8 +60,6 @@ clean:
 	rm -f $(objs) $(deps) $(TARGET)
 	rm -f docs/pdf/* docs/man/*
 
-install: install-binaries install-manpages
-
 install-manpages: $(manpages)
 	$(foreach manpage, $^, install -m 0644 -D $(manpage) \
 		$(call get_manpage_destination,$(manpage));)
