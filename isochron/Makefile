@@ -1,6 +1,7 @@
 prefix ?= /usr/local
 exec_prefix ?= ${prefix}
 bindir ?= ${exec_prefix}/bin
+etcdir ?= /etc
 
 src := \
 	argparser.o \
@@ -67,4 +68,7 @@ install-manpages: $(manpages)
 install-binaries: $(TARGET)
 	install -m 0755 -D $(TARGET) $(DESTDIR)${bindir}/isochron
 
-install: install-binaries install-manpages
+install-completion: bash-completion/isochron-completion.bash
+	install -m 0755 -D $< $(DESTDIR)$(etcdir)/bash_completion.d/isochron-completion.bash
+
+install: install-binaries install-manpages install-completion
