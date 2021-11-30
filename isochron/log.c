@@ -364,6 +364,7 @@ void isochron_rcv_log_print(struct isochron_log *log)
 	     (char *)rcv_pkt < log_buf_end; rcv_pkt++) {
 		__s64 rx_hwts = (__s64 )__be64_to_cpu(rcv_pkt->hwts);
 		__s64 rx_swts = (__s64 )__be64_to_cpu(rcv_pkt->swts);
+		__u32 seqid = __be32_to_cpu(rcv_pkt->seqid);
 
 		/* Print packet */
 		if (rcv_pkt->hwts) {
@@ -373,11 +374,10 @@ void isochron_rcv_log_print(struct isochron_log *log)
 			ns_sprintf(hwts_buf, rx_hwts);
 			ns_sprintf(swts_buf, rx_swts);
 
-			printf("seqid %d rxtstamp %s swts %s\n",
-			       __be32_to_cpu(rcv_pkt->seqid),
-			       hwts_buf, swts_buf);
-		} else {
-			printf("seqid %d\n", __be32_to_cpu(rcv_pkt->seqid));
+			printf("seqid %u rxtstamp %s swts %s\n",
+			       seqid, hwts_buf, swts_buf);
+		} else if (seqid) {
+			printf("seqid %u\n", seqid);
 		}
 	}
 }
