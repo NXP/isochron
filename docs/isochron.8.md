@@ -170,6 +170,15 @@ When the tc-taprio qdisc is used, the deadline is `(t < T2)`.
 When the tc-etf qdisc is used, the deadline is `(s + delta < S)`, where
 `delta` is the "fudge factor" of the `tc-etf` qdisc.
 
+BUGS
+====
+
+Versions starting with `0.x` should be expected to be unstable, and not
+necessarily maintain binary compatibility on the network (between sender
+and receiver) or on the filesystem (the format of the report file). When
+using an unstable version, it is expected that the producer and the
+consumer of the data are running the same version of isochron.
+
 AUTHOR
 ======
 
