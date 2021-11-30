@@ -25,6 +25,7 @@ enum prog_arg_type {
 	PROG_ARG_LONG,
 	PROG_ARG_TIME,
 	PROG_ARG_STRING,
+	PROG_ARG_IFNAME,
 	PROG_ARG_FILEPATH,
 	PROG_ARG_BOOL,
 	PROG_ARG_IP,
@@ -32,6 +33,11 @@ enum prog_arg_type {
 };
 
 struct prog_arg_filepath {
+	char *buf;
+	size_t size;
+};
+
+struct prog_arg_ifname {
 	char *buf;
 	size_t size;
 };
@@ -77,6 +83,7 @@ struct prog_arg {
 	enum prog_arg_type type;
 	union {
 		struct prog_arg_string string;
+		struct prog_arg_ifname ifname;
 		struct prog_arg_filepath filepath;
 		struct prog_arg_time time;
 		struct prog_arg_unsigned unsigned_ptr;

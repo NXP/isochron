@@ -1367,8 +1367,8 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 		}, {
 			.short_opt = "-i",
 			.long_opt = "--interface",
-			.type = PROG_ARG_STRING,
-			.string = {
+			.type = PROG_ARG_IFNAME,
+			.ifname = {
 				.buf = prog->if_name,
 				.size = IFNAMSIZ - 1,
 			},
