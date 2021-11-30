@@ -254,6 +254,39 @@ isochron report \
 	> isochron.csv
 ```
 
+User-defined arithmetic on the built-in isochron variables can also be
+delegated to a scripting language interpreter such as Python, by
+configuring the isochron printf format specifier to generate output in
+Python syntax:
+
+```
+isochron report \
+	--printf-format "pdelay=%d - %d\nprint(\"path_delay[%u] =\", pdelay)\n" \
+	--printf-args "RTq" \
+	| python3 -
+```
+
+For more complex arithmetic, the per-packet internal variables can be
+stored inside arrays:
+
+```
+printf "wakeup_latency = {}\n" > isochron_data.py
+isochron report \
+	--printf-format "wakeup_latency[%u] = %d - (%d - %d)\n" \
+	--printf-args "qwSA" \
+	>> isochron_data.py
+cat << 'EOF' > isochron_postprocess.py
+#!/usr/bin/env python3
+
+from isochron_data import wakeup_latency
+import numpy as np
+
+w = np.array(list(wakeup_latency.values()))
+print("Wakeup latency: min {}, max {}, mean {}, median {}, stdev {}".format(np.min(w), np.max(w), np.mean(w), np.median(w), np.std(w)))
+EOF
+python3 ./isochron_postprocess.py
+```
+
 AUTHOR
 ======
 
