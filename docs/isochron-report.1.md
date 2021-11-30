@@ -82,11 +82,6 @@ The printf codes understood by isochron are:
 
 :   print a built-in variable in human-readable time format (`sec.nsec`).
 
-The `%` (percent) sign itself is not escaped (`%%`), due to the fact
-that printing a percent sign is not deemed useful (isochron cannot
-perform user-programmable arithmetic on the built-in variables and
-relies on external programs for that).
-
 PRINTF VARIABLES
 ================
 
