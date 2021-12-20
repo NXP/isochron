@@ -349,7 +349,7 @@ static void ptpmon_message_init(struct ptpmon *ptpmon, struct ptp_message *msg,
 
 	msg->len = sizeof(*mgmt);
 
-	header->tsmt = PTP_MSGTYPE_MANAGEMENT | ptpmon->transport_specific;
+	header->tsmt = PTP_MSGTYPE_MANAGEMENT | (ptpmon->transport_specific << 4);
 	header->ver = PTP_VERSION;
 	header->message_length = __cpu_to_be16(msg->len);
 	header->domain_number = ptpmon->domain_number;
