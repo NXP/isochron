@@ -387,25 +387,27 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 	num_ports = __be16_to_cpu(default_ds.number_ports);
 
 	for (portnum = 1; portnum <= num_ports; portnum++) {
-		struct port_properties_np port_properties_np;
+		__u8 buf[sizeof(struct port_properties_np) + MAX_IFACE_LEN] = {0};
+		struct port_properties_np *port_properties_np;
 		struct port_identity portid;
 
 		portid_set(&portid, &default_ds.clock_identity, portnum);
 
 		rc = ptpmon_query_port_mid_extra(ptpmon, &portid,
-						 MID_PORT_PROPERTIES_NP,
-						 &port_properties_np,
-						 sizeof(port_properties_np),
+						 MID_PORT_PROPERTIES_NP, buf,
+						 sizeof(struct port_properties_np),
 						 MAX_IFACE_LEN);
 		if (rc) {
 			pr_err(rc, "Failed to query PORT_PROPERTIES_NP: %m\n");
 			return rc;
 		}
 
-		if (strcmp(port_properties_np.iface, iface))
+		port_properties_np = (struct port_properties_np *)buf;
+
+		if (strcmp(port_properties_np->iface, iface))
 			continue;
 
-		*port_state = port_properties_np.port_state;
+		*port_state = port_properties_np->port_state;
 
 		return 0;
 	}
