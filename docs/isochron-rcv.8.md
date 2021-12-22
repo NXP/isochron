@@ -52,14 +52,6 @@ OPTIONS
     octet of the destination MAC address until the last octet of data
     before the FCS.
 
-`-v`, `--vid` <`NUMBER`>
-
-:   insert a VLAN header with the specified VLAN ID in the test packets.
-    The VLAN PCP is set to be equal to the priority configured with
-    `--priority`. This results in lower overhead compared to using a
-    kernel VLAN interface to insert the VLAN tag. Optional, defaults to
-    no VLAN header being inserted.
-
 `-q`, `--quiet`
 
 :   this option suppresses error messages regarding invalid test
