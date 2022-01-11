@@ -37,6 +37,7 @@ struct prog_data {
 	clockid_t clkid;
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
+	struct mnl_socket *rtnl;
 	int stats_listenfd;
 	int stats_fd;
 	int data_fd;
@@ -395,7 +396,7 @@ static int prog_forward_port_state(struct prog_data *prog)
 	int rc;
 
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
-					     &port_state);
+					     prog->rtnl, &port_state);
 	if (rc) {
 		pr_err(rc, "Failed to read ptpmon port state: %m\n");
 		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PORT_STATE);
@@ -972,6 +973,34 @@ static void prog_teardown_data_timeout_fd(struct prog_data *prog)
 	close(prog->data_timeout_fd);
 }
 
+static int prog_rtnl_open(struct prog_data *prog)
+{
+	struct mnl_socket *nl;
+
+	nl = mnl_socket_open(NETLINK_ROUTE);
+	if (!nl) {
+		perror("mnl_socket_open");
+		return -errno;
+	}
+
+	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
+		perror("mnl_socket_bind");
+		return -errno;
+	}
+
+	prog->rtnl = nl;
+
+	return 0;
+}
+
+static void prog_rtnl_close(struct prog_data *prog)
+{
+	struct mnl_socket *nl = prog->rtnl;
+
+	prog->rtnl = NULL;
+	mnl_socket_close(nl);
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	int rc;
@@ -980,9 +1009,13 @@ static int prog_init(struct prog_data *prog)
 	if (rc)
 		return rc;
 
-	rc = prog_init_ptpmon(prog);
+	rc = prog_rtnl_open(prog);
 	if (rc)
 		return rc;
+
+	rc = prog_init_ptpmon(prog);
+	if (rc)
+		goto out_close_rtnl;
 
 	rc = prog_init_sysmon(prog);
 	if (rc)
@@ -1019,6 +1052,8 @@ out_teardown_sysmon:
 	prog_teardown_sysmon(prog);
 out_teardown_ptpmon:
 	prog_teardown_ptpmon(prog);
+out_close_rtnl:
+	prog_rtnl_close(prog);
 	return rc;
 }
 
@@ -1234,6 +1269,7 @@ static void prog_teardown(struct prog_data *prog)
 	prog_teardown_stats_listenfd(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
+	prog_rtnl_close(prog);
 }
 
 int isochron_rcv_main(int argc, char *argv[])

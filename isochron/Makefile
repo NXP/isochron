@@ -2,6 +2,7 @@ prefix ?= /usr/local
 exec_prefix ?= ${prefix}
 bindir ?= ${exec_prefix}/bin
 etcdir ?= /etc
+PKG_CONFIG ?= pkg-config
 
 src := \
 	argparser.o \
@@ -12,6 +13,7 @@ src := \
 	ptpmon.o \
 	rcv.o \
 	report.o \
+	rtnl.o \
 	send.o \
 	sysmon.o
 
@@ -28,6 +30,9 @@ get_man_section = $(lastword $(subst ., ,$1))
 get_manpage_destination = $(join $(DESTDIR)${mandir}/man, \
                           $(join $(call get_man_section,$1)/, \
                           $(subst docs/man/,,$1)))
+
+CFLAGS  += $(shell ${PKG_CONFIG} --cflags libmnl)
+LDFLAGS += $(shell ${PKG_CONFIG} --libs libmnl)
 
 TARGET := isochron/isochron
 

@@ -7,6 +7,9 @@ cut-through switching etc).
 
 Its full documentation is available in the `docs/` folder.
 
+isochron links with the following libraries:
+* libmnl (https://git.netfilter.org/libmnl/)
+
 IEEE 802.1Qbv
 =============
 

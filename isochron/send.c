@@ -51,6 +51,7 @@ struct prog_data {
 	__u8 sendbuf[BUF_SIZ];
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
+	struct mnl_socket *rtnl;
 	enum port_state last_local_port_state;
 	enum port_state last_remote_port_state;
 	struct cmsghdr *cmsg;
@@ -591,7 +592,7 @@ static bool prog_sync_ok(struct prog_data *prog)
 	}
 
 	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
-					     &local_port_state);
+					     prog->rtnl, &local_port_state);
 	if (rc) {
 		pr_err(rc, "ptpmon failed to query port state: %m\n");
 		return false;
@@ -1266,6 +1267,34 @@ static void prog_teardown_trace_mark(struct prog_data *prog)
 	trace_mark_close(prog->trace_mark_fd);
 }
 
+static int prog_rtnl_open(struct prog_data *prog)
+{
+	struct mnl_socket *nl;
+
+	nl = mnl_socket_open(NETLINK_ROUTE);
+	if (!nl) {
+		perror("mnl_socket_open");
+		return -errno;
+	}
+
+	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
+		perror("mnl_socket_bind");
+		return -errno;
+	}
+
+	prog->rtnl = nl;
+
+	return 0;
+}
+
+static void prog_rtnl_close(struct prog_data *prog)
+{
+	struct mnl_socket *nl = prog->rtnl;
+
+	prog->rtnl = NULL;
+	mnl_socket_close(nl);
+}
+
 static int prog_init(struct prog_data *prog)
 {
 	int rc;
@@ -1276,9 +1305,13 @@ static int prog_init(struct prog_data *prog)
 
 	prog->clkid = CLOCK_TAI;
 
-	rc = prog_init_stats_socket(prog);
+	rc = prog_rtnl_open(prog);
 	if (rc)
 		goto out;
+
+	rc = prog_init_stats_socket(prog);
+	if (rc)
+		goto out_close_rtnl;
 
 	rc = prog_query_dest_mac(prog);
 	if (rc)
@@ -1336,6 +1369,8 @@ out_close_data_fd:
 	prog_teardown_data_fd(prog);
 out_stats_socket_teardown:
 	prog_teardown_stats_socket(prog);
+out_close_rtnl:
+	prog_rtnl_close(prog);
 out:
 	return rc;
 }
@@ -1350,6 +1385,7 @@ static void prog_teardown(struct prog_data *prog)
 	prog_teardown_trace_mark(prog);
 	prog_teardown_data_fd(prog);
 	prog_teardown_stats_socket(prog);
+	prog_rtnl_close(prog);
 }
 
 static int prog_parse_args(int argc, char **argv, struct prog_data *prog)

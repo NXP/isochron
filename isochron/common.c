@@ -28,6 +28,7 @@
 /* For va_start and va_end */
 #include <stdarg.h>
 #include "common.h"
+#include "rtnl.h"
 
 void pr_err(int rc, const char *fmt, ...)
 {
@@ -371,11 +372,17 @@ void isochron_fixup_kernel_utc_offset(int ptp_utc_offset)
 }
 
 int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
+				    struct mnl_socket *rtnl,
 				    enum port_state *port_state)
 {
 	struct default_ds default_ds;
+	char real_ifname[IFNAMSIZ];
 	int portnum, num_ports;
 	int rc;
+
+	rc = vlan_resolve_real_dev(rtnl, iface, real_ifname);
+	if (rc)
+		return rc;
 
 	rc = ptpmon_query_clock_mid(ptpmon, MID_DEFAULT_DATA_SET,
 				    &default_ds, sizeof(default_ds));
@@ -389,6 +396,7 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 	for (portnum = 1; portnum <= num_ports; portnum++) {
 		__u8 buf[sizeof(struct port_properties_np) + MAX_IFACE_LEN] = {0};
 		struct port_properties_np *port_properties_np;
+		char real_port_ifname[IFNAMSIZ];
 		struct port_identity portid;
 
 		portid_set(&portid, &default_ds.clock_identity, portnum);
@@ -404,7 +412,12 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 
 		port_properties_np = (struct port_properties_np *)buf;
 
-		if (strcmp(port_properties_np->iface, iface))
+		rc = vlan_resolve_real_dev(rtnl, port_properties_np->iface,
+					   real_port_ifname);
+		if (rc)
+			return rc;
+
+		if (strcmp(real_port_ifname, real_ifname))
 			continue;
 
 		*port_state = port_properties_np->port_state;
