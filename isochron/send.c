@@ -1708,6 +1708,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 	prog->vid = -1;
 	prog->utc_tai_offset = -1;
+	prog->sync_threshold = -1;
 
 	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
 
@@ -1794,6 +1795,12 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	if (strlen(prog->output_file) && !prog->stats_srv.family) {
 		fprintf(stderr,
 			"--client is mandatory when --output-file is used\n");
+		return -EINVAL;
+	}
+
+	if (prog->sync_threshold < 0 && !prog->omit_sync) {
+		fprintf(stderr,
+			"--sync-threshold is mandatory unless --omit-sync is used\n");
 		return -EINVAL;
 	}
 
