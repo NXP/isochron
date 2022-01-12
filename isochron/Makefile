@@ -2,6 +2,8 @@ prefix ?= /usr/local
 exec_prefix ?= ${prefix}
 bindir ?= ${exec_prefix}/bin
 etcdir ?= /etc
+datarootdir ?= ${prefix}/share
+mandir ?= ${datarootdir}/man
 PKG_CONFIG ?= pkg-config
 
 src := \
