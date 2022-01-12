@@ -1279,6 +1279,7 @@ static int prog_rtnl_open(struct prog_data *prog)
 
 	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
 		perror("mnl_socket_bind");
+		mnl_socket_close(nl);
 		return -errno;
 	}
 
