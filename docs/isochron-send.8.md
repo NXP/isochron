@@ -283,10 +283,10 @@ OPTIONS
 `-X`, `--sync-threshold` <`TIME`>
 
 :   when the program is configured to monitor the sync status of ptp4l
-    and phc2sys, this option specifies the threshold in nanoseconds by
-    which the absolute offset reported by these external programs is
-    qualified as sufficient to start the test. Mandatory unless
-    `--omit-sync` is specified.
+    and phc2sys, this option specifies the positive threshold in
+    nanoseconds by which the absolute offset reported by these external
+    programs is qualified as sufficient to start the test. Mandatory
+    unless `--omit-sync` is specified.
 
 `-R`, `--num-readings` <`NUMBER`>
 
