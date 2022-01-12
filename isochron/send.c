@@ -1883,7 +1883,7 @@ int isochron_send_main(int argc, char *argv[])
 	do {
 		rc = prog_init(&prog);
 		if (rc)
-			break;
+			return rc;
 
 		rc = prog_prepare_session(&prog);
 		if (rc)
