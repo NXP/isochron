@@ -137,9 +137,6 @@ static int rtnl_getlink_by_ifname(struct mnl_socket *rtnl, const char *ifname,
 	nlh->nlmsg_seq = seq = time(NULL);
 
 	ifm = mnl_nlmsg_put_extra_header(nlh, sizeof(*ifm));
-	ifm->ifi_family = AF_UNSPEC;
-	ifm->ifi_change = 0;
-	ifm->ifi_flags = 0;
 
 	mnl_attr_put_str(nlh, IFLA_IFNAME, ifname);
 
@@ -181,10 +178,7 @@ static int rtnl_getlink_by_ifindex(struct mnl_socket *rtnl, int ifindex,
 	nlh->nlmsg_seq = seq = time(NULL);
 
 	ifm = mnl_nlmsg_put_extra_header(nlh, sizeof(*ifm));
-	ifm->ifi_family = AF_UNSPEC;
 	ifm->ifi_index = ifindex;
-	ifm->ifi_change = 0;
-	ifm->ifi_flags = 0;
 
 	if (mnl_socket_sendto(rtnl, nlh, nlh->nlmsg_len) < 0) {
 		perror("mnl_socket_sendto");
