@@ -33,8 +33,19 @@ get_manpage_destination = $(join $(DESTDIR)${mandir}/man, \
                           $(join $(call get_man_section,$1)/, \
                           $(subst docs/man/,,$1)))
 
-CFLAGS  += $(shell ${PKG_CONFIG} --cflags libmnl)
-LDFLAGS += $(shell ${PKG_CONFIG} --libs libmnl)
+ifeq (, $(shell which $(PKG_CONFIG)))
+$(error No pkg-config binary in $(PATH))
+endif
+
+LIBMNL_CFLAGS  := $(shell ${PKG_CONFIG} --cflags libmnl)
+LIBMNL_LDFLAGS := $(shell ${PKG_CONFIG} --libs libmnl)
+
+ifeq (, $(LIBMNL_CFLAGS)$(LIBMNL_LDFLAGS))
+$(error pkg-config could not find libmnl)
+endif
+
+CFLAGS  += $(LIBMNL_CFLAGS)
+LDFLAGS += $(LIBMNL_LDFLAGS)
 
 TARGET := isochron/isochron
 
