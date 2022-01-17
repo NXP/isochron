@@ -58,9 +58,11 @@ pdf: $(pdf_docs)
 all: isochron man pdf
 
 docs/man/%: docs/%.md
+	@mkdir -p $(@D)
 	pandoc --standalone --to man $^ -o $@
 
 docs/pdf/%.pdf: docs/%.md
+	@mkdir -p $(@D)
 	pandoc --standalone -t latex $^ -o $@
 
 # include all .d files
