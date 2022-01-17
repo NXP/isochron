@@ -111,6 +111,8 @@ struct prog_data {
 	int send_tid_rc;
 	int tx_timestamp_tid_rc;
 	unsigned long cpumask;
+	bool onestep_sync;
+	bool onestep_p2p;
 };
 
 static int signal_received;
@@ -286,7 +288,7 @@ static void prog_teardown_stats_socket(struct prog_data *prog)
 
 /* Timestamps will come later */
 static int prog_log_packet_no_tstamp(struct prog_data *prog,
-				     const struct isochron_header *hdr)
+				     __u32 seqid, __u64 scheduled, __u64 wakeup)
 {
 	struct isochron_send_pkt_data *send_pkt;
 	__u32 index;
@@ -295,7 +297,7 @@ static int prog_log_packet_no_tstamp(struct prog_data *prog,
 	if (!prog->iterations)
 		return 0;
 
-	index = __be32_to_cpu(hdr->seqid) - 1;
+	index = seqid - 1;
 
 	send_pkt = isochron_log_get_entry(&prog->log, sizeof(*send_pkt),
 					  index);
@@ -312,9 +314,9 @@ static int prog_log_packet_no_tstamp(struct prog_data *prog,
 		return -EINVAL;
 	}
 
-	send_pkt->scheduled = hdr->scheduled;
-	send_pkt->wakeup = hdr->wakeup;
-	send_pkt->seqid = hdr->seqid;
+	send_pkt->scheduled = __cpu_to_be64(scheduled);
+	send_pkt->wakeup = __cpu_to_be64(wakeup);
+	send_pkt->seqid = __cpu_to_be32(seqid);
 	send_pkt->sched_ts = 0;
 	send_pkt->swts = 0;
 	send_pkt->hwts = 0;
@@ -413,7 +415,44 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	if (prog->txtime)
 		*((__u64 *)CMSG_DATA(prog->cmsg)) = (__u64)(scheduled);
 
-	rc = prog_log_packet_no_tstamp(prog, hdr);
+	rc = prog_log_packet_no_tstamp(prog, iteration, scheduled, now);
+	if (rc)
+		return rc;
+
+	/* Send packet */
+	rc = sendmsg(prog->data_fd, &prog->msg, 0);
+	if (rc < 0) {
+		perror("sendmsg failed");
+		sk_receive(prog->data_fd, err_pkt, BUF_SIZ, NULL,
+			   MSG_ERRQUEUE, 0);
+		return rc;
+	}
+
+	trace(prog, "send seqid %d end\n", iteration);
+
+	return 0;
+}
+
+static int do_work_ptp(struct prog_data *prog, int iteration, __s64 scheduled,
+		       struct ptp_header *ptp_hdr)
+{
+	struct timespec now_ts;
+	__u8 err_pkt[BUF_SIZ];
+	__s64 now;
+	int rc;
+
+	clock_gettime(prog->clkid, &now_ts);
+	now = timespec_to_ns(&now_ts);
+
+	trace(prog, "send seqid %d start\n", iteration);
+
+	ptp_hdr->correction = __cpu_to_be64(scheduled);
+	ptp_hdr->sequence_id = __cpu_to_be16(iteration);
+
+	if (prog->txtime)
+		*((__u64 *)CMSG_DATA(prog->cmsg)) = (__u64)(scheduled);
+
+	rc = prog_log_packet_no_tstamp(prog, iteration, scheduled, now);
 	if (rc)
 		return rc;
 
@@ -453,6 +492,7 @@ static int run_nanosleep(struct prog_data *prog)
 {
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
+	struct ptp_header *ptp_hdr = NULL;
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 	char now_buf[TIMESPEC_BUFSIZ];
 	__s64 wakeup, scheduled, now;
@@ -461,7 +501,10 @@ static int run_nanosleep(struct prog_data *prog)
 	unsigned long i;
 	int rc;
 
-	if (prog->l2) {
+	if (prog->onestep_sync || prog->onestep_p2p) {
+		ptp_hdr = (struct ptp_header *)(prog->sendbuf +
+						prog->l2_header_len);
+	} else if (prog->l2) {
 		hdr = (struct isochron_header *)(prog->sendbuf +
 						 prog->l2_header_len);
 	} else {
@@ -503,7 +546,10 @@ static int run_nanosleep(struct prog_data *prog)
 		case 0:
 			scheduled = wakeup + prog->advance_time;
 
-			rc = do_work(prog, i, scheduled, hdr);
+			if (ptp_hdr)
+				rc = do_work_ptp(prog, i, scheduled, ptp_hdr);
+			else
+				rc = do_work(prog, i, scheduled, hdr);
 			if (rc < 0)
 				return rc;
 
@@ -839,12 +885,17 @@ static void prog_send_thread_destroy(struct prog_data *prog)
 		pr_err(rc, "sender thread failed: %m\n");
 }
 
+static bool prog_needs_txts(struct prog_data *prog)
+{
+	return prog->do_ts && !prog->onestep_sync && !prog->onestep_p2p;
+}
+
 static int prog_tx_timestamp_thread_create(struct prog_data *prog)
 {
 	pthread_attr_t attr;
 	int rc;
 
-	if (!prog->do_ts)
+	if (!prog_needs_txts(prog))
 		return 0;
 
 	rc = pthread_attr_init(&attr);
@@ -871,7 +922,7 @@ static void prog_tx_timestamp_thread_destroy(struct prog_data *prog)
 	void *res;
 	int rc;
 
-	if (!prog->do_ts)
+	if (!prog_needs_txts(prog))
 		return;
 
 	rc = pthread_join(prog->tx_timestamp_tid, &res);
@@ -1136,7 +1187,9 @@ static int prog_init_data_fd(struct prog_data *prog)
 	}
 
 	if (prog->do_ts) {
-		rc = sk_timestamping_init(fd, prog->if_name, true);
+		rc = sk_timestamping_init(fd, prog->if_name, true,
+					  prog->onestep_sync,
+					  prog->onestep_p2p);
 		if (rc < 0)
 			goto out_close;
 	}
@@ -1175,12 +1228,35 @@ static void prog_teardown_data_fd(struct prog_data *prog)
 	close(prog->data_fd);
 }
 
+static void prog_init_ptp_onestep_sync(struct prog_data *prog)
+{
+	struct ptp_header *ptp_hdr;
+
+	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
+					prog->l2_header_len);
+	memset(ptp_hdr, 0, sizeof(struct ptp_header));
+	ptp_hdr->tsmt = SYNC;
+	ptp_hdr->ver = PTP_VERSION;
+}
+
+static void prog_init_ptp_onestep_p2p(struct prog_data *prog)
+{
+	struct ptp_header *ptp_hdr;
+
+	ptp_hdr = (struct ptp_header *)(prog->sendbuf +
+					prog->l2_header_len);
+	memset(ptp_hdr, 0, sizeof(struct ptp_header));
+	ptp_hdr->tsmt = PDELAY_REQ;
+	ptp_hdr->ver = PTP_VERSION;
+}
+
 static void prog_init_data_packet(struct prog_data *prog)
 {
 	int i;
 
 	/* Construct the Ethernet header */
 	memset(prog->sendbuf, 0, BUF_SIZ);
+
 	/* Ethernet header */
 	if (prog->do_vlan) {
 		struct vlan_ethhdr *hdr = (struct vlan_ethhdr *)prog->sendbuf;
@@ -1208,14 +1284,20 @@ static void prog_init_data_packet(struct prog_data *prog)
 	if (prog->l4)
 		prog->tx_len -= sizeof(struct ethhdr) + prog->l4_header_len;
 
-	i = sizeof(struct isochron_header) + prog->l2_header_len;
+	if (prog->onestep_sync) {
+		prog_init_ptp_onestep_sync(prog);
+	} else if (prog->onestep_p2p) {
+		prog_init_ptp_onestep_p2p(prog);
+	} else {
+		i = sizeof(struct isochron_header) + prog->l2_header_len;
 
-	/* Packet data */
-	while (i < prog->tx_len) {
-		prog->sendbuf[i++] = 0xde;
-		prog->sendbuf[i++] = 0xad;
-		prog->sendbuf[i++] = 0xbe;
-		prog->sendbuf[i++] = 0xef;
+		/* Packet data */
+		while (i < prog->tx_len) {
+			prog->sendbuf[i++] = 0xde;
+			prog->sendbuf[i++] = 0xad;
+			prog->sendbuf[i++] = 0xbe;
+			prog->sendbuf[i++] = 0xef;
+		}
 	}
 
 	prog->iov.iov_base = prog->sendbuf;
@@ -1700,6 +1782,22 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_UNSIGNED,
 			.unsigned_ptr = {
 				.ptr = &prog->cpumask,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-Y",
+			.long_opt = "--onestep-sync",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+				.ptr = &prog->onestep_sync,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-E",
+			.long_opt = "--onestep-p2p",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+				.ptr = &prog->onestep_p2p,
 			},
 			.optional = true,
 		},

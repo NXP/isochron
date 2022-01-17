@@ -16,4 +16,28 @@ if [ $? = 0 ]; then
 	EXTRA_CFLAGS="${EXTRA_CFLAGS} -DHAVE_TX_SWHW"
 fi
 
+${CC} ${CFLAGS} -x c -c -o $(mktemp) - > /dev/null 2>&1 << EOF
+#include <linux/net_tstamp.h>
+
+int main(void)
+{
+	return HWTSTAMP_TX_ONESTEP_SYNC;
+}
+EOF
+if [ $? = 0 ]; then
+	EXTRA_CFLAGS="${EXTRA_CFLAGS} -DHAVE_ONESTEP_SYNC"
+fi
+
+${CC} ${CFLAGS} -x c -c -o $(mktemp) - > /dev/null 2>&1 << EOF
+#include <linux/net_tstamp.h>
+
+int main(void)
+{
+	return HWTSTAMP_TX_ONESTEP_P2P;
+}
+EOF
+if [ $? = 0 ]; then
+	EXTRA_CFLAGS="${EXTRA_CFLAGS} -DHAVE_ONESTEP_P2P"
+fi
+
 echo ${EXTRA_CFLAGS}

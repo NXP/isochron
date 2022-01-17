@@ -92,6 +92,36 @@ struct isochron_header {
 	__be32			seqid;
 }  __attribute__((packed));
 
+#define PTP_VERSION 2
+
+/* Values for the messageType field */
+#define SYNC			0x0
+#define DELAY_REQ		0x1
+#define PDELAY_REQ		0x2
+#define PDELAY_RESP		0x3
+#define CUSTOM			0x4
+#define FOLLOW_UP		0x8
+#define DELAY_RESP		0x9
+#define PDELAY_RESP_FOLLOW_UP	0xA
+#define ANNOUNCE		0xB
+#define SIGNALING		0xC
+#define MANAGEMENT		0xD
+
+struct ptp_header {
+	__u8			tsmt;  /* transportSpecific | messageType */
+	__u8			ver;   /* reserved          | versionPTP  */
+	__be16			message_length;
+	__u8			domain_number;
+	__u8			reserved1;
+	__u8			flag_field[2];
+	__be64			correction;
+	__be32			reserved2;
+	struct port_identity	source_port_identity;
+	__be16			sequence_id;
+	__u8			control;
+	__u8			log_message_interval;
+}  __attribute((packed));
+
 #define NSEC_PER_SEC	1000000000LL
 #define MSEC_PER_SEC	1000L
 #define ETH_P_ISOCHRON	0xdead
@@ -150,7 +180,8 @@ ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
 ssize_t read_exact(int fd, void *buf, size_t count);
 ssize_t write_exact(int fd, const void *buf, size_t count);
 
-int sk_timestamping_init(int fd, const char *if_name, bool on);
+int sk_timestamping_init(int fd, const char *if_name, bool on, bool onestep_sync,
+			 bool onestep_p2p);
 int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout);
 __s64 timespec_to_ns(const struct timespec *ts);

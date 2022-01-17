@@ -930,7 +930,7 @@ static int prog_init_data_fd(struct prog_data *prog)
 		}
 	}
 
-	rc = sk_timestamping_init(fd, prog->if_name, true);
+	rc = sk_timestamping_init(fd, prog->if_name, true, false, false);
 	if (rc)
 		goto out;
 

@@ -28,6 +28,7 @@
 /* For va_start and va_end */
 #include <stdarg.h>
 #include "common.h"
+#include "missing.h"
 #include "rtnl.h"
 
 void pr_err(int rc, const char *fmt, ...)
@@ -151,7 +152,8 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 	return 0;
 }
 
-int sk_timestamping_init(int fd, const char *if_name, bool on)
+int sk_timestamping_init(int fd, const char *if_name, bool on, bool onestep_sync,
+			 bool onestep_p2p)
 {
 	int rc, filter, flags, tx_type;
 
@@ -167,7 +169,11 @@ int sk_timestamping_init(int fd, const char *if_name, bool on)
 
 	filter = HWTSTAMP_FILTER_ALL;
 
-	if (on)
+	if (onestep_sync)
+		tx_type = HWTSTAMP_TX_ONESTEP_SYNC;
+	else if (onestep_p2p)
+		tx_type = HWTSTAMP_TX_ONESTEP_P2P;
+	else if (on)
 		tx_type = HWTSTAMP_TX_ON;
 	else
 		tx_type = HWTSTAMP_TX_OFF;

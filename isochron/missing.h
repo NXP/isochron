@@ -9,6 +9,8 @@
 #ifndef _MISSING_H
 #define _MISSING_H
 
+#include <linux/ptp_clock.h>
+
 #ifndef PTP_MAX_SAMPLES
 #define PTP_MAX_SAMPLES 25 /* Maximum allowed offset measurement samples. */
 #endif /* PTP_MAX_SAMPLES */
@@ -67,6 +69,18 @@ struct ptp_sys_offset_extended {
 
 #ifndef CLOCK_INVALID
 #define CLOCK_INVALID -1
+#endif
+
+#ifndef HAVE_ONESTEP_SYNC
+enum {
+	HWTSTAMP_TX_ONESTEP_SYNC = 2,
+};
+#endif
+
+#ifndef HAVE_ONESTEP_P2P
+enum {
+	HWTSTAMP_TX_ONESTEP_P2P = 3,
+};
 #endif
 
 #endif
