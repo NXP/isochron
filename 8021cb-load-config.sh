@@ -12,6 +12,8 @@ usage() {
 	echo "$0: read from stdin"
 	echo "$0 -h|--help: show usage"
 	echo "$0 -f|--file <filename>: read from .json file"
+	echo "$0 -m|--macaddr <mac address list>"
+	echo "$0 -v|--vids <vlan id list>"
 	exit
 }
 
@@ -26,20 +28,38 @@ trap 'error ${LINENO}' ERR
 
 tsntool_bin=$(which tsntool)
 
-O=`getopt -l help,file: -- hf: "$@"` || exit 1
+macaddrs=
+vids=
+
+O=`getopt -l help,file,macaddr,vids: -- hf:m:v: "$@"` || exit 1
 eval set -- "$O"
 while true; do
 	case "$1" in
 	-h|--help)
 		usage; exit 0;;
 	-f|--file)
-		file="$2"; shift 2;;
+		file="$2"
+		shift
+		;;
+	-m|--macaddr)
+		macaddrs="$2"
+		shift
+		;;
+	-v|--vids)
+		vids="$2"
+		shift
+		;;
 	--)
 		shift; break;;
 	*)
 		echo "unrecognized argument $1"; exit 1;;
 	esac
+	shift
 done
+
+vidarray=(${vids//,/ })
+vid_swp2=${vidarray[0]}
+vid_swp3=${vidarray[1]}
 
 if [[ -z "${file+x}" ]]; then
 	usage
@@ -270,21 +290,23 @@ add_passthrough_vlans() {
 	done
 }
 
-limit_rogue_traffic() {
-	local iface="$1"
-
-	ip link set dev ${iface} multicast off
-	echo 1 > /proc/sys/net/ipv6/conf/${iface}/disable_ipv6
-}
-
 drop_looped_traffic() {
 	local iface="$1"
-	local this_host=$(ip link show dev eno2 | awk '/link\/ether/ {print $2; }')
+	local hosts="$2"
 
 	if tc qdisc show dev ${iface} | grep clsact; then tc qdisc del dev ${iface} clsact; fi
 	tc qdisc add dev ${iface} clsact
 	tc filter add dev ${iface} ingress flower skip_sw dst_mac ff:ff:ff:ff:ff:ff action drop
 	tc filter add dev ${iface} ingress flower skip_sw src_mac ${this_host} action drop
+}
+
+# Support to add VLAN id ingress the external port
+external_port_config() {
+	local iface="$1"
+	local vid="$2"
+	echo "vlan set ${iface}:${vid}"
+	bridge vlan del dev ${iface} vid ${vid}
+	bridge vlan add dev ${iface} vid ${vid} pvid untagged
 }
 
 install_vlans() {
@@ -300,17 +322,20 @@ install_vlans() {
 
 	for port in ${total_port_list}; do
 		# Don't drop traffic coming from the CPU port
-		if [ ${port} = swp4 ]; then
+		if [ ${port} = swp4 ] || [ ${port} = swp2 ] || [ ${port} = swp3 ]  ; then
 			continue
 		fi
-		drop_looped_traffic "${port}"
+		drop_looped_traffic "${port}" "${macaddrs}"
 	done
+
+	# Set for the external port
+	echo "Set the external device links to with vid swp2:${vid_swp2} swp3:${vid_swp3}"
+	external_port_config "swp2" "${vid_swp2}"
+	external_port_config "swp3" "${vid_swp3}"
 }
 
 do_bridging
 clear_stream_table
-
-limit_rogue_traffic eno2
 
 num_rules=$(jq '.rules|length' <<< "${json}")
 
