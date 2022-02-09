@@ -290,14 +290,55 @@ add_passthrough_vlans() {
 	done
 }
 
+# Refer the link:
+# https://github.com/torvalds/linux/blob/master/tools/testing/selftests/drivers/net/ocelot/tc_flower_chains.sh
+# Helpers to map a VCAP IS1 and VCAP IS2 lookup and policy to a chain number
+# used by the kernel driver. The numbers are:
+# VCAP IS1 lookup 0: 10000
+# VCAP IS1 lookup 1: 11000
+# VCAP IS1 lookup 2: 12000
+# VCAP IS2 lookup 0 policy 0: 20000
+# VCAP IS2 lookup 0 policy 1: 20001
+# VCAP IS2 lookup 0 policy 255: 20255
+# VCAP IS2 lookup 1 policy 0: 21000
+# VCAP IS2 lookup 1 policy 1: 21001
+# VCAP IS2 lookup 1 policy 255: 21255
+IS1()
+{
+	local lookup=$1
+	echo $((10000 + 1000 * lookup))
+}
+
+IS2()
+{
+
+	local lookup=$1
+	local pag=$2
+	echo $((20000 + 1000 * lookup + pag))
+}
+
+ES0()
+{
+
+	echo 0
+}
+
 drop_looped_traffic() {
 	local iface="$1"
 	local hosts="$2"
 
 	if tc qdisc show dev ${iface} | grep clsact; then tc qdisc del dev ${iface} clsact; fi
 	tc qdisc add dev ${iface} clsact
-	tc filter add dev ${iface} ingress flower skip_sw dst_mac ff:ff:ff:ff:ff:ff action drop
-	tc filter add dev ${iface} ingress flower skip_sw src_mac ${this_host} action drop
+	tc filter add dev ${iface} ingress chain 0 pref 49152 flower skip_sw action goto chain $(IS1 0)
+	tc filter add dev ${iface} ingress chain $(IS1 0) pref 49152 flower skip_sw action goto chain $(IS1 1)
+	tc filter add dev ${iface} ingress chain $(IS1 1) pref 49152 flower skip_sw action goto chain $(IS1 2)
+	tc filter add dev ${iface} ingress chain $(IS1 2) pref 49152 flower skip_sw action goto chain $(IS2 0 0)
+	tc filter add dev ${iface} ingress chain $(IS2 0 0) pref 49152 flower skip_sw action goto chain $(IS2 1 0)
+	tc filter add dev ${iface} ingress chain $(IS2 1 0) pref 49152 flower skip_sw action goto chain 30000
+	tc filter add dev ${iface} ingress chain $(IS2 1 0) flower skip_sw dst_mac ff:ff:ff:ff:ff:ff action drop
+	for host in ${hosts} ; do
+		tc filter add dev ${iface} ingress chain $(IS2 1 0) flower skip_sw src_mac ${host} action drop
+	done
 }
 
 # Support to add VLAN id ingress the external port
