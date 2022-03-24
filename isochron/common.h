@@ -150,6 +150,7 @@ ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags);
 ssize_t read_exact(int fd, void *buf, size_t count);
 ssize_t write_exact(int fd, const void *buf, size_t count);
 
+int sk_validate_ts_info(const char *if_name);
 int sk_timestamping_init(int fd, const char *if_name, bool on);
 int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 	       int flags, int timeout);

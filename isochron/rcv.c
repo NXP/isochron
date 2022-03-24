@@ -930,9 +930,17 @@ static int prog_init_data_fd(struct prog_data *prog)
 		}
 	}
 
-	rc = sk_timestamping_init(fd, prog->if_name, true);
-	if (rc)
+	rc = sk_validate_ts_info(prog->if_name);
+	if (rc) {
+		errno = -rc;
 		goto out;
+	}
+
+	rc = sk_timestamping_init(fd, prog->if_name, true);
+	if (rc) {
+		errno = -rc;
+		goto out;
+	}
 
 	prog->data_fd = fd;
 

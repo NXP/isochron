@@ -5,6 +5,7 @@
  * - The linuxptp project
  */
 #include <time.h>
+#include <linux/ethtool.h>
 #include <linux/net_tstamp.h>
 #include <netinet/ether.h>
 #include <linux/sockios.h>
@@ -120,6 +121,102 @@ static void init_ifreq(struct ifreq *ifreq, struct hwtstamp_config *cfg,
 	strncpy(ifreq->ifr_name, if_name, sizeof(ifreq->ifr_name) - 1);
 
 	ifreq->ifr_data = (void *) cfg;
+}
+
+/**
+ * Contains timestamping information returned by the GET_TS_INFO ioctl.
+ * @valid:            set to non-zero when the info struct contains valid data.
+ * @phc_index:        index of the PHC device.
+ * @so_timestamping:  supported time stamping modes.
+ * @tx_types:         driver level transmit options for the HWTSTAMP ioctl.
+ * @rx_filters:       driver level receive options for the HWTSTAMP ioctl.
+ */
+struct sk_ts_info {
+	int valid;
+	int phc_index;
+	unsigned int so_timestamping;
+	unsigned int tx_types;
+	unsigned int rx_filters;
+};
+
+static int sk_get_ts_info(const char *name, struct sk_ts_info *sk_info)
+{
+	struct ethtool_ts_info info;
+	struct ifreq ifr;
+	int fd, err;
+
+	memset(sk_info, 0, sizeof(struct sk_ts_info));
+
+	memset(&ifr, 0, sizeof(ifr));
+	memset(&info, 0, sizeof(info));
+	info.cmd = ETHTOOL_GET_TS_INFO;
+	strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+	ifr.ifr_data = (char *) &info;
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		fprintf(stderr, "socket failed: %m\n");
+		return -errno;
+	}
+
+	err = ioctl(fd, SIOCETHTOOL, &ifr);
+	if (err < 0) {
+		fprintf(stderr, "ioctl SIOCETHTOOL failed: %m\n");
+		close(fd);
+		return -errno;
+	}
+
+	close(fd);
+
+	/* copy the necessary data to sk_info */
+	sk_info->valid = 1;
+	sk_info->phc_index = info.phc_index;
+	sk_info->so_timestamping = info.so_timestamping;
+	sk_info->tx_types = info.tx_types;
+	sk_info->rx_filters = info.rx_filters;
+
+	return 0;
+}
+
+int sk_validate_ts_info(const char *if_name)
+{
+	struct sk_ts_info ts_info;
+	int rc;
+
+	/* check if device is a valid ethernet device */
+	rc = sk_get_ts_info(if_name, &ts_info);
+	if (rc)
+		return rc;
+
+	if (!ts_info.valid)
+		return -EINVAL;
+
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_TX_HARDWARE)) {
+		fprintf(stderr,
+			"Driver not capable of SOF_TIMESTAMPING_TX_HARDWARE, continuing anyway\n");
+	}
+
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_RX_HARDWARE)) {
+		fprintf(stderr,
+			"Driver not capable of SOF_TIMESTAMPING_RX_HARDWARE, continuing anyway\n");
+	}
+
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_TX_SOFTWARE)) {
+		fprintf(stderr,
+			"Driver not capable of SOF_TIMESTAMPING_TX_SOFTWARE, continuing anyway\n");
+	}
+
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_RX_SOFTWARE)) {
+		fprintf(stderr,
+			"Driver not capable of SOF_TIMESTAMPING_RX_SOFTWARE, continuing anyway\n");
+	}
+
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_SOFTWARE)) {
+		fprintf(stderr,
+			"Driver not capable of SOF_TIMESTAMPING_SOFTWARE, continuing anyway\n");
+	}
+
+	return 0;
 }
 
 static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)

@@ -1136,6 +1136,12 @@ static int prog_init_data_fd(struct prog_data *prog)
 	}
 
 	if (prog->do_ts) {
+		rc = sk_validate_ts_info(prog->if_name);
+		if (rc) {
+			errno = -rc;
+			goto out_close;
+		}
+
 		rc = sk_timestamping_init(fd, prog->if_name, true);
 		if (rc < 0)
 			goto out_close;
