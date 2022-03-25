@@ -137,7 +137,7 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 		if (len < sizeof(*eth_hdr) + sizeof(*hdr)) {
 			if (!prog->quiet)
 				printf("Packet too short (%zu bytes)\n", len);
-			return -1;
+			return 0;
 		}
 
 		rcv_pkt.seqid = hdr->seqid;
@@ -150,7 +150,7 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 		if (len < sizeof(*hdr)) {
 			if (!prog->quiet)
 				printf("Packet too short (%zu bytes)\n", len);
-			return -1;
+			return 0;
 		}
 
 		rcv_pkt.seqid = hdr->seqid;
@@ -163,7 +163,7 @@ static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
 	if (seqid > prog->iterations) {
 		if (!prog->quiet)
 			printf("Discarding seqid %u\n", seqid);
-		return -1;
+		return 0;
 	}
 
 	rc = isochron_log_rcv_pkt(&prog->log, &rcv_pkt);
