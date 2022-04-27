@@ -69,6 +69,7 @@ struct prog_data {
 	unsigned long timestamped;
 	unsigned long iterations;
 	clockid_t clkid;
+	__s64 session_start;
 	__s64 advance_time;
 	__s64 shift_time;
 	__s64 cycle_time;
@@ -451,13 +452,12 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 
 static int run_nanosleep(struct prog_data *prog)
 {
-	__s64 wakeup, scheduled, now, base_time;
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
+	__s64 wakeup, scheduled, base_time;
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct isochron_header *hdr;
-	struct timespec now_ts;
 	unsigned long i;
 	int rc;
 
@@ -468,23 +468,15 @@ static int run_nanosleep(struct prog_data *prog)
 		hdr = (struct isochron_header *)prog->sendbuf;
 	}
 
-	rc = clock_gettime(prog->clkid, &now_ts);
-	if (rc < 0) {
-		perror("clock_gettime failed");
-		rc = -errno;
-		return rc;
-	}
-
-	now = timespec_to_ns(&now_ts);
 	base_time = prog->base_time + prog->shift_time;
 
 	/* Make sure we get enough sleep at the beginning */
 	base_time = future_base_time(base_time, prog->cycle_time,
-				     now + NSEC_PER_SEC);
+				     prog->session_start + NSEC_PER_SEC);
 
 	wakeup = base_time - prog->advance_time;
 
-	ns_sprintf(now_buf, now);
+	ns_sprintf(now_buf, prog->session_start);
 	ns_sprintf(base_time_buf, base_time);
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
 	ns_sprintf(wakeup_buf, wakeup);
@@ -757,6 +749,23 @@ static int prog_prepare_receiver(struct prog_data *prog)
 				   &packet_count, sizeof(packet_count));
 }
 
+static int prog_update_session_start_time(struct prog_data *prog)
+{
+	struct timespec now_ts;
+	int rc;
+
+	rc = clock_gettime(prog->clkid, &now_ts);
+	if (rc < 0) {
+		perror("clock_gettime failed");
+		rc = -errno;
+		return rc;
+	}
+
+	prog->session_start = timespec_to_ns(&now_ts);
+
+	return 0;
+}
+
 static int prog_send_thread_create(struct prog_data *prog)
 {
 	int sched_policy = SCHED_OTHER;
@@ -930,6 +939,12 @@ static int prog_prepare_session(struct prog_data *prog)
 	rc = prog_prepare_receiver(prog);
 	if (rc) {
 		pr_err(rc, "Failed to prepare receiver for the test: %m\n");
+		goto out_teardown_log;
+	}
+
+	rc = prog_update_session_start_time(prog);
+	if (rc) {
+		pr_err(rc, "Failed to update session start time: %m\n");
 		goto out_teardown_log;
 	}
 
