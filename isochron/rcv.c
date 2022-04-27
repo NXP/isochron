@@ -44,6 +44,7 @@ struct prog_data {
 	int data_timeout_fd;
 	bool have_client;
 	bool client_waiting_for_log;
+	bool data_fd_timed_out;
 	bool quiet;
 	long etype;
 	long stats_port;
@@ -247,6 +248,8 @@ static int prog_data_event(struct prog_data *prog)
 
 static int prog_data_fd_timeout(struct prog_data *prog)
 {
+	prog->data_fd_timed_out = true;
+
 	if (!prog->client_waiting_for_log)
 		return 0;
 
@@ -267,6 +270,7 @@ static void prog_close_client_stats_session(struct prog_data *prog)
 	prog_disarm_data_timeout_fd(prog);
 	close(prog->stats_fd);
 	prog->have_client = false;
+	prog->data_fd_timed_out = false;
 	prog->client_waiting_for_log = false;
 	prog->received_pkt_count = 0;
 	prog->iterations = 0;
@@ -550,7 +554,8 @@ static int isochron_get_parse_one_tlv(struct prog_data *prog,
 	switch (mid) {
 	case ISOCHRON_MID_LOG:
 		/* Keep the client on hold */
-		if (!prog_received_all_packets(prog)) {
+		if (!prog_received_all_packets(prog) &&
+		    !prog->data_fd_timed_out) {
 			prog->client_waiting_for_log = true;
 			return 0;
 		}
