@@ -285,6 +285,15 @@ static void prog_teardown_stats_socket(struct prog_data *prog)
 	close(prog->stats_fd);
 }
 
+static __s64 prog_first_base_time(struct prog_data *prog)
+{
+	__s64 base_time = prog->base_time + prog->shift_time;
+
+	/* Make sure we get enough sleep at the beginning */
+	return future_base_time(base_time, prog->cycle_time,
+				prog->session_start + NSEC_PER_SEC);
+}
+
 /* Timestamps will come later */
 static int prog_log_packet_no_tstamp(struct prog_data *prog,
 				     const struct isochron_header *hdr)
@@ -468,12 +477,7 @@ static int run_nanosleep(struct prog_data *prog)
 		hdr = (struct isochron_header *)prog->sendbuf;
 	}
 
-	base_time = prog->base_time + prog->shift_time;
-
-	/* Make sure we get enough sleep at the beginning */
-	base_time = future_base_time(base_time, prog->cycle_time,
-				     prog->session_start + NSEC_PER_SEC);
-
+	base_time = prog_first_base_time(prog);
 	wakeup = base_time - prog->advance_time;
 
 	ns_sprintf(now_buf, prog->session_start);
@@ -528,6 +532,14 @@ static void *prog_send_thread(void *arg)
 static void *prog_tx_timestamp_thread(void *arg)
 {
 	struct prog_data *prog = arg;
+	struct timespec wakeup_ts;
+	__s64 wakeup;
+
+	wakeup = prog_first_base_time(prog) - prog->advance_time;
+	wakeup_ts = ns_to_timespec(wakeup);
+
+	/* Sync with the sender thread before polling for timestamps */
+	clock_nanosleep(prog->clkid, TIMER_ABSTIME, &wakeup_ts, NULL);
 
 	prog->tx_timestamp_tid_rc = wait_for_txtimestamps(prog);
 
