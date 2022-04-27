@@ -451,11 +451,11 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 
 static int run_nanosleep(struct prog_data *prog)
 {
+	__s64 wakeup, scheduled, now, base_time;
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 	char now_buf[TIMESPEC_BUFSIZ];
-	__s64 wakeup, scheduled, now;
 	struct isochron_header *hdr;
 	struct timespec now_ts;
 	unsigned long i;
@@ -476,16 +476,16 @@ static int run_nanosleep(struct prog_data *prog)
 	}
 
 	now = timespec_to_ns(&now_ts);
-	prog->base_time += prog->shift_time;
+	base_time = prog->base_time + prog->shift_time;
 
 	/* Make sure we get enough sleep at the beginning */
-	prog->base_time = future_base_time(prog->base_time, prog->cycle_time,
-					   now + NSEC_PER_SEC);
+	base_time = future_base_time(base_time, prog->cycle_time,
+				     now + NSEC_PER_SEC);
 
-	wakeup = prog->base_time - prog->advance_time;
+	wakeup = base_time - prog->advance_time;
 
 	ns_sprintf(now_buf, now);
-	ns_sprintf(base_time_buf, prog->base_time);
+	ns_sprintf(base_time_buf, base_time);
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
 	ns_sprintf(wakeup_buf, wakeup);
 	fprintf(stderr, "%12s: %*s\n", "Now", TIMESPEC_BUFSIZ, now_buf);
