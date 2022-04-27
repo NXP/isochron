@@ -40,6 +40,7 @@
 
 #define BUF_SIZ		10000
 #define TIME_FMT_LEN	27 /* "[%s] " */
+#define SYNC_CHECKS_TO_GO 3
 
 struct prog_data {
 	volatile bool send_tid_should_stop;
@@ -682,11 +683,16 @@ static bool prog_sync_ok(struct prog_data *prog)
 
 static int prog_wait_until_sync_ok(struct prog_data *prog)
 {
+	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
+
 	while (1) {
 		if (signal_received)
 			return -EINTR;
 
 		if (prog_sync_ok(prog))
+			sync_checks_to_go--;
+
+		if (!sync_checks_to_go)
 			break;
 
 		sleep(1);
@@ -973,11 +979,16 @@ out_teardown_log:
 
 static bool prog_monitor_sync(struct prog_data *prog)
 {
+	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
+
 	while (!prog->send_tid_stopped) {
 		if (signal_received)
 			return false;
 
-		if (!prog_sync_ok(prog)) {
+		if (!prog_sync_ok(prog))
+			sync_checks_to_go--;
+
+		if (!sync_checks_to_go) {
 			fprintf(stderr,
 				"Sync lost during the test, repeating\n");
 			return false;
