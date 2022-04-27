@@ -468,13 +468,40 @@ void isochron_fixup_kernel_utc_offset(int ptp_utc_offset)
 	set_utc_tai_offset(ptp_utc_offset);
 }
 
+static void ptpmon_print_tried_ports(const char *real_ifname,
+				     char **tried_ports,
+				     int tries)
+{
+	int i;
+
+	fprintf(stderr, "Interface %s not found amount %d ports reported by ptp4l: ",
+		real_ifname, tries);
+
+	for (i = 0; i < tries; i++)
+		fprintf(stderr, "%s", tried_ports[i]);
+
+	fprintf(stderr, "\n");
+}
+
+static void ptpmon_free_tried_ports(char **tried_ports, int tries)
+{
+	int i;
+
+	for (i = 0; i < tries; i++)
+		free(tried_ports[i]);
+
+	free(tried_ports);
+}
+
 int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 				    struct mnl_socket *rtnl,
 				    enum port_state *port_state)
 {
 	struct default_ds default_ds;
 	char real_ifname[IFNAMSIZ];
+	char **tried_ports, *dup;
 	int portnum, num_ports;
+	int tries = 0;
 	int rc;
 
 	rc = vlan_resolve_real_dev(rtnl, iface, real_ifname);
@@ -490,6 +517,12 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 
 	num_ports = __be16_to_cpu(default_ds.number_ports);
 
+	tried_ports = calloc(num_ports, sizeof(char *));
+	if (!tried_ports) {
+		printf("Failed to allocate memory for port names\n");
+		return -ENOMEM;
+	}
+
 	for (portnum = 1; portnum <= num_ports; portnum++) {
 		__u8 buf[sizeof(struct port_properties_np) + MAX_IFACE_LEN] = {0};
 		struct port_properties_np *port_properties_np;
@@ -503,7 +536,7 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 						 sizeof(struct port_properties_np),
 						 MAX_IFACE_LEN);
 		if (rc) {
-			pr_err(rc, "Failed to query PORT_PROPERTIES_NP: %m\n");
+			ptpmon_free_tried_ports(tried_ports, tries);
 			return rc;
 		}
 
@@ -512,17 +545,33 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 		rc = vlan_resolve_real_dev(rtnl, port_properties_np->iface,
 					   real_port_ifname);
 		if (rc)
-			return rc;
+			goto out;
 
-		if (strcmp(real_port_ifname, real_ifname))
+		if (strcmp(real_port_ifname, real_ifname)) {
+			/* Skipping ptp4l port, save the name for later to
+			 * inform the user in case we found nothing.
+			 */
+			dup = strdup(real_port_ifname);
+			if (!dup) {
+				rc = -ENOMEM;
+				goto out;
+			}
+			tried_ports[tries++] = dup;
 			continue;
+		}
 
 		*port_state = port_properties_np->port_state;
-
-		return 0;
+		rc = 0;
+		goto out;
 	}
 
-	return -ENODEV;
+	/* Nothing found */
+	rc = -ENODEV;
+
+	ptpmon_print_tried_ports(real_ifname, tried_ports, tries);
+out:
+	ptpmon_free_tried_ports(tried_ports, tries);
+	return rc;
 }
 
 int isochron_handle_signals(void (*handler)(int signo))
