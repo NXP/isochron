@@ -32,6 +32,11 @@ OPTIONS
 
 :   optionally calculate and print a summary of the built-in metrics.
 
+`-q`, `--quiet`
+
+:   silently ignore lost packets from the log. Optional, defaults to
+    false.
+
 `-s`, `--start` <`NUMBER`>
 
 :   specify the sequence number of the first packet to be taken into

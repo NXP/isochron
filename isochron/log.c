@@ -848,7 +848,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 			 struct isochron_log *rcv_log,
 			 const char *printf_fmt, const char *printf_args,
 			 unsigned long start, unsigned long stop, bool summary,
-			 bool omit_sync, bool taprio, bool txtime,
+			 bool quiet, bool omit_sync, bool taprio, bool txtime,
 			 __s64 base_time, __s64 advance_time, __s64 shift_time,
 			 __s64 cycle_time, __s64 window_size)
 {
@@ -880,13 +880,15 @@ int isochron_print_stats(struct isochron_log *send_log,
 		struct isochron_printf_variables v;
 
 		if (seqid != __be32_to_cpu(send_pkt->seqid)) {
-			fprintf(stderr, "seqid %u lost\n", seqid);
+			if (!quiet)
+				fprintf(stderr, "seqid %u lost\n", seqid);
 			continue;
 		}
 
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
 		if (!rcv_pkt) {
-			fprintf(stderr, "seqid %u lost\n", seqid);
+			if (!quiet)
+				fprintf(stderr, "seqid %u lost\n", seqid);
 			continue;
 		}
 

@@ -25,6 +25,7 @@ struct prog_data {
 	__s64 cycle_time;
 	__s64 window_size;
 	bool summary;
+	bool quiet;
 	unsigned long start;
 	unsigned long stop;
 	char input_file[PATH_MAX];
@@ -59,6 +60,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->summary,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-q",
+			.long_opt = "--quiet",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->quiet,
 			},
 			.optional = true,
 		}, {
@@ -227,7 +236,7 @@ int isochron_report_main(int argc, char *argv[])
 	rc = isochron_print_stats(&prog.send_log, &prog.rcv_log,
 				  prog.printf_fmt, prog.printf_args,
 				  prog.start, prog.stop, prog.summary,
-				  prog.omit_sync, prog.taprio,
+				  prog.quiet, prog.omit_sync, prog.taprio,
 				  prog.txtime, prog.base_time,
 				  prog.advance_time, prog.shift_time,
 				  prog.cycle_time, prog.window_size);
