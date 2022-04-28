@@ -348,7 +348,9 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 				tstamp->sw = tss->ts[0];
 				tstamp->hw = tss->ts[2];
 			}
-		} else if (level == SOL_PACKET && type == PACKET_TX_TIMESTAMP) {
+		} else if ((level == SOL_PACKET && type == PACKET_TX_TIMESTAMP) ||
+			   (level == SOL_IP && type == IP_RECVERR) ||
+			   (level == SOL_IPV6 && type == IPV6_RECVERR)) {
 			struct sock_extended_err *sock_err;
 			char txtime_buf[TIMESPEC_BUFSIZ];
 			__u64 txtime;
