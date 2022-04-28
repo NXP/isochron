@@ -503,6 +503,47 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 	return 0;
 }
 
+static int isochron_missing_txts_dump(void __attribute__((unused)) *priv,
+				      void *pkt)
+{
+	struct isochron_send_pkt_data *send_pkt = pkt;
+	__u32 seqid = __be32_to_cpu(send_pkt->seqid);
+	bool missing_sched_ts = false;
+	bool missing_hwts = false;
+	bool missing_swts = false;
+
+	if (!seqid)
+		return 1;
+
+	if (!send_pkt->hwts)
+		missing_hwts = true;
+	if (!send_pkt->swts)
+		missing_swts = true;
+	if (!send_pkt->sched_ts)
+		missing_sched_ts = true;
+
+	if (!missing_hwts && !missing_swts && !missing_sched_ts)
+		return 0;
+
+	fprintf(stderr, "seqid %u missing timestamps: %s%s%s\n",
+		__be32_to_cpu(send_pkt->seqid),
+		missing_hwts ? "hw, " : "",
+		missing_swts ? "sw, " : "",
+		missing_sched_ts ? "sched, " : "");
+
+	return 0;
+}
+
+static void prog_print_missing_timestamps(struct prog_data *prog)
+{
+	if (prog->quiet)
+		return;
+
+	isochron_log_for_each_pkt(&prog->log,
+				  sizeof(struct isochron_send_pkt_data),
+				  prog, isochron_missing_txts_dump);
+}
+
 static int wait_for_txtimestamps(struct prog_data *prog)
 {
 	int timeout_ms = 2 * MSEC_PER_SEC;
@@ -514,6 +555,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 			fprintf(stderr,
 				"Timed out waiting for TX timestamps, %ld timestamps unacknowledged\n",
 				prog->iterations - prog->timestamped);
+			prog_print_missing_timestamps(prog);
 			return rc;
 		}
 	}
