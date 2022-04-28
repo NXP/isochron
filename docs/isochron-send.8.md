@@ -151,6 +151,14 @@ OPTIONS
     synchronization status, and will proceed to send test packets
     regardless. Optional, defaults to false.
 
+`-y`, `--omit-remote-sync`
+
+:   when set, will only monitor the sync status of the local station.
+    The assumption is that the receiver interface is implicitly
+    synchronized (shares the same PHC as the sender interface), and
+    therefore no ptp4l instance runs on it, so the sync status cannot be
+    monitored. Optional, defaults to false.
+
 `-m`, `--tracemark`
 
 :   when set, the sender will write to the kernel's ftrace buffer in

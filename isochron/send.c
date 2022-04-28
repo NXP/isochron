@@ -85,6 +85,7 @@ struct prog_data {
 	bool quiet;
 	long etype;
 	bool omit_sync;
+	bool omit_remote_sync;
 	bool trace_mark;
 	int trace_mark_fd;
 	char tracebuf[BUF_SIZ];
@@ -580,14 +581,18 @@ static bool prog_sync_ok(struct prog_data *prog)
 	if (!prog->ptpmon)
 		return true;
 
-	rc = prog_collect_receiver_sync_stats(prog, &have_remote_stats,
-					      &rcv_sysmon_offset,
-					      &rcv_ptpmon_offset,
-					      &rcv_utc_offset,
-					      &remote_port_state,
-					      &rcv_gm_clkid);
-	if (rc)
-		return false;
+	if (prog->omit_remote_sync) {
+		have_remote_stats = false;
+	} else {
+		rc = prog_collect_receiver_sync_stats(prog, &have_remote_stats,
+						      &rcv_sysmon_offset,
+						      &rcv_ptpmon_offset,
+						      &rcv_utc_offset,
+						      &remote_port_state,
+						      &rcv_gm_clkid);
+		if (rc)
+			return false;
+	}
 
 	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
 				    &parent_ds, sizeof(parent_ds));
@@ -1590,6 +1595,14 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			.type = PROG_ARG_BOOL,
 			.boolean_ptr = {
 			        .ptr = &prog->omit_sync,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-y",
+			.long_opt = "--omit-remote-sync",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->omit_remote_sync,
 			},
 			.optional = true,
 		}, {
