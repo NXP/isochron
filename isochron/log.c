@@ -1060,7 +1060,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, &header, sizeof(header));
 	if (len <= 0) {
-		perror("isochron log header write");
+		perror("isochron log header read");
 		rc = len;
 		goto out_close;
 	}
