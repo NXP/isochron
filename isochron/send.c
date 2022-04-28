@@ -1997,6 +1997,9 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 			prog->do_vlan = true;
 			prog->l2_header_len = sizeof(struct vlan_ethhdr);
 		}
+	} else if (prog->vid != -1) {
+		fprintf(stderr, "Cannot insert VLAN header over IP socket\n");
+		return -EINVAL;
 	}
 
 	if (!prog->data_port)
