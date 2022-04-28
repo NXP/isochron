@@ -272,6 +272,17 @@ static int prog_init_stats_socket(struct prog_data *prog)
 		return -errno;
 	}
 
+	if (strlen(prog->stats_srv.bound_if_name)) {
+		rc = setsockopt(stats_fd, SOL_SOCKET, SO_BINDTODEVICE,
+				prog->stats_srv.bound_if_name,
+				IFNAMSIZ - 1);
+		if (rc < 0) {
+			perror("setsockopt(SO_BINDTODEVICE) on stats socket failed");
+			close(stats_fd);
+			return -errno;
+		}
+	}
+
 	rc = connect(stats_fd, serv_addr, size);
 	if (rc < 0) {
 		perror("connecting to stats socket failed");
@@ -1234,6 +1245,16 @@ static int prog_init_data_fd(struct prog_data *prog)
 	if (fd < 0) {
 		perror("opening data socket failed");
 		goto out;
+	}
+
+	if (prog->l4 && strlen(prog->ip_destination.bound_if_name)) {
+		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+				prog->ip_destination.bound_if_name,
+				IFNAMSIZ - 1);
+		if (rc < 0) {
+			perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
+			goto out_close;
+		}
 	}
 
 	rc = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,

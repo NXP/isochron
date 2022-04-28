@@ -3,6 +3,7 @@
 #ifndef _ISOCHRON_ARGPARSER_H
 #define _ISOCHRON_ARGPARSER_H
 
+#include <net/if.h>
 #include <netinet/ether.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -17,6 +18,7 @@ struct ip_address {
 		struct in_addr addr;
 		struct in6_addr addr6;
 	};
+	char bound_if_name[IFNAMSIZ];
 };
 
 enum prog_arg_type {

@@ -900,17 +900,21 @@ static int prog_init_data_fd(struct prog_data *prog)
 		goto out;
 	}
 
-	if (prog->l2) {
-		/* Bind to device */
-		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
-				IFNAMSIZ - 1);
-	} else {
+	/* Bind to device */
+	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
+			IFNAMSIZ - 1);
+	if (rc < 0) {
+		perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
+		goto out;
+	}
+
+	if (!prog->l2) {
 		rc = bind(fd, (struct sockaddr *)&serv_data_addr,
 			  sizeof(serv_data_addr));
-	}
-	if (rc < 0) {
-		perror("bind");
-		goto out;
+		if (rc < 0) {
+			perror("bind");
+			goto out;
+		}
 	}
 
 	if (is_zero_ether_addr(prog->dest_mac)) {

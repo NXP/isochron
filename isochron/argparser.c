@@ -27,6 +27,43 @@ static int mac_addr_from_string(unsigned char *to, char *from)
 	return 0;
 }
 
+static int ip_addr_from_string(const char *string, struct ip_address *ip)
+{
+	char *percent, *if_name;
+	size_t len;
+	int rc;
+
+	percent = strchr(string, '%');
+	if (percent) {
+		if_name = percent + 1;
+		len = strlen(if_name);
+		if (!len || len >= IFNAMSIZ) {
+			fprintf(stderr, "Invalid interface name %s\n",
+				if_name);
+			return -EINVAL;
+		}
+
+		*percent = 0;
+		strcpy(ip->bound_if_name, if_name);
+	}
+
+	rc = inet_pton(AF_INET6, string, &ip->addr6);
+	if (rc > 0) {
+		ip->family = AF_INET6;
+	} else {
+		rc = inet_pton(AF_INET, string, &ip->addr);
+		if (rc > 0) {
+			ip->family = AF_INET;
+		} else {
+			fprintf(stderr, "IP address %s not in known format\n",
+			        string);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 static int get_time_from_string(clockid_t clkid, __s64 *to, char *from)
 {
 	struct timespec now_ts = {0};
@@ -173,20 +210,10 @@ static int prog_parse_one_arg(char *val, const struct prog_arg *match)
 	case PROG_ARG_IP:
 		ip_ptr = match->ip_ptr.ptr;
 
-		rc = inet_pton(AF_INET6, val, &ip_ptr->addr6);
-		if (rc > 0) {
-			ip_ptr->family = AF_INET6;
-		} else {
-			rc = inet_pton(AF_INET, val, &ip_ptr->addr);
-			if (rc > 0) {
-				ip_ptr->family = AF_INET;
-			} else {
-				pr_err(-errno,
-				       "IP address %s not in known format: %m\n",
-				       val);
-				return -1;
-			}
-		}
+		rc = ip_addr_from_string(val, ip_ptr);
+		if (rc)
+			return rc;
+
 		break;
 	case PROG_ARG_TIME:
 		time = match->time;
