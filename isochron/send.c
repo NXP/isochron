@@ -116,6 +116,11 @@ struct prog_data {
 	unsigned long cpumask;
 };
 
+struct isochron_txtime_postmortem_priv {
+	struct prog_data *prog;
+	__u64 txtime;
+};
+
 static int signal_received;
 
 static void trace(struct prog_data *prog, const char *fmt, ...)
@@ -296,6 +301,59 @@ static __s64 prog_first_base_time(struct prog_data *prog)
 				prog->session_start + NSEC_PER_SEC);
 }
 
+static int isochron_txtime_pkt_dump(void *priv, void *pkt)
+{
+	struct isochron_txtime_postmortem_priv *postmortem = priv;
+	struct isochron_send_pkt_data *send_pkt = pkt;
+	struct prog_data *prog = postmortem->prog;
+	char ideal_wakeup_buf[TIMESPEC_BUFSIZ];
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	char latency_buf[TIMESPEC_BUFSIZ];
+	char wakeup_buf[TIMESPEC_BUFSIZ];
+	__s64 ideal_wakeup, latency;
+	__u64 wakeup, scheduled;
+
+	if (postmortem->txtime != __be64_to_cpu(send_pkt->scheduled))
+		return 0;
+
+	scheduled = __be64_to_cpu(send_pkt->scheduled);
+	wakeup = __be64_to_cpu(send_pkt->wakeup);
+	ideal_wakeup = scheduled - prog->advance_time;
+	latency = wakeup - ideal_wakeup;
+	ns_sprintf(scheduled_buf, scheduled);
+	ns_sprintf(wakeup_buf, wakeup);
+	ns_sprintf(ideal_wakeup_buf, ideal_wakeup);
+	ns_sprintf(latency_buf, latency);
+
+	fprintf(stderr,
+		"TXTIME postmortem: seqid %d scheduled for %s, wakeup at %s, ideal wakeup at %s, wakeup latency %s\n",
+		__be32_to_cpu(send_pkt->seqid), scheduled_buf, wakeup_buf,
+		ideal_wakeup_buf, latency_buf);
+
+	return 1;
+}
+
+static void prog_late_txtime_pkt_postmortem(struct prog_data *prog,
+					    __u64 txtime)
+{
+	struct isochron_txtime_postmortem_priv postmortem = {
+		.prog = prog,
+		.txtime = txtime,
+	};
+	int rc;
+
+	rc = isochron_log_for_each_pkt(&prog->log,
+				       sizeof(struct isochron_send_pkt_data),
+				       &postmortem, isochron_txtime_pkt_dump);
+	if (!rc) {
+		char txtime_buf[TIMESPEC_BUFSIZ];
+
+		ns_sprintf(txtime_buf, postmortem.txtime);
+		fprintf(stderr, "don't recognize packet with txtime %s\n",
+			txtime_buf);
+	}
+}
+
 /* Timestamps will come later */
 static int prog_log_packet_no_tstamp(struct prog_data *prog,
 				     const struct isochron_header *hdr)
@@ -350,12 +408,19 @@ static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
 	struct isochron_timestamp tstamp = {};
 	__be64 hwts, swts, swts_utc;
 	__u8 err_pkt[BUF_SIZ];
+	__u64 txtime;
 	int rc;
 
 	rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE,
 			timeout);
 	if (rc <= 0)
 		return rc;
+
+	txtime = timespec_to_ns(&tstamp.txtime);
+	if (txtime) {
+		prog_late_txtime_pkt_postmortem(prog, txtime);
+		return -EINVAL;
+	}
 
 	/* Since we log the packets in the same order as the kernel keeps
 	 * track of timestamps using SOF_TIMESTAMPING_OPT_ID on the data
@@ -409,7 +474,6 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 		   struct isochron_header *hdr)
 {
 	struct timespec now_ts;
-	__u8 err_pkt[BUF_SIZ];
 	__s64 now;
 	int rc;
 
@@ -431,12 +495,8 @@ static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
 
 	/* Send packet */
 	rc = sendmsg(prog->data_fd, &prog->msg, 0);
-	if (rc < 0) {
-		perror("sendmsg failed");
-		sk_receive(prog->data_fd, err_pkt, BUF_SIZ, NULL,
-			   MSG_ERRQUEUE, 0);
+	if (rc < 0)
 		return rc;
-	}
 
 	trace(prog, "send seqid %d end\n", iteration);
 

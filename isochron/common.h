@@ -142,6 +142,7 @@ struct isochron_timestamp {
 	struct timespec hw;
 	struct timespec sw;
 	struct timespec sched;
+	struct timespec txtime;
 	__u32 tskey;
 	__u32 tstype;
 };

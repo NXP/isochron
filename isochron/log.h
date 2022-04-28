@@ -44,6 +44,10 @@ void isochron_log_teardown(struct isochron_log *log);
 void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);
 
+typedef int isochron_log_walk_cb_t(void *priv, void *pkt);
+int isochron_log_for_each_pkt(struct isochron_log *log, size_t pkt_size,
+			      void *priv, isochron_log_walk_cb_t cb);
+
 int isochron_log_send_pkt(struct isochron_log *log,
 			  const struct isochron_send_pkt_data *send_pkt);
 int isochron_log_rcv_pkt(struct isochron_log *log,

@@ -368,6 +368,10 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 			case SO_EE_ORIGIN_TXTIME:
 				txtime = ((__u64)sock_err->ee_data << 32) +
 					 sock_err->ee_info;
+
+				if (tstamp)
+					tstamp->txtime = ns_to_timespec(txtime);
+
 				ns_sprintf(txtime_buf, txtime);
 
 				switch (sock_err->ee_code) {
@@ -375,12 +379,12 @@ int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
 					fprintf(stderr,
 						"packet with txtime %s dropped due to invalid params\n",
 						txtime_buf);
-					return -1;
+					break;
 				case SO_EE_CODE_TXTIME_MISSED:
 					fprintf(stderr,
 						"packet with txtime %s dropped due to missed deadline\n",
 						txtime_buf);
-					return -1;
+					break;
 				default:
 					return -1;
 				}

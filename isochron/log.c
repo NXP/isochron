@@ -1041,6 +1041,23 @@ void isochron_log_teardown(struct isochron_log *log)
 	free(log->buf);
 }
 
+int isochron_log_for_each_pkt(struct isochron_log *log, size_t pkt_size,
+			      void *priv, isochron_log_walk_cb_t cb)
+{
+	size_t i, pkt_arr_size = log->size / pkt_size;
+	int rc;
+
+	for (i = 0; i < pkt_arr_size; i++) {
+		void *pkt = (void *)((__u8 *)log->buf + i * pkt_size);
+
+		rc = cb(priv, pkt);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
+
 int isochron_log_load(const char *file, struct isochron_log *send_log,
 		      struct isochron_log *rcv_log, long *packet_count,
 		      long *frame_size, bool *omit_sync, bool *do_ts,
