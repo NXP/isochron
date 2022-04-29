@@ -668,8 +668,6 @@ isochron_printf_one_packet(const struct isochron_printf_variables *v,
 
 	buf_end_ptr = buf + ISOCHRON_LOG_PRINTF_BUF_SIZE - 1;
 	args_end_ptr = printf_args + strlen(printf_args);
-	/* Avoid uselessly memsetting the whole buffer to zero */
-	buf[0] = 0;
 
 	do {
 		percent = strchr(fmt_ptr, '%');
@@ -678,6 +676,8 @@ isochron_printf_one_packet(const struct isochron_printf_variables *v,
 					       strlen(fmt_ptr));
 			if (rc < 0)
 				return rc;
+
+			buf_ptr += rc;
 		} else {
 			if (percent + 1 >= fmt_end_ptr) {
 				fprintf(stderr,
@@ -728,6 +728,11 @@ isochron_printf_one_packet(const struct isochron_printf_variables *v,
 			args_ptr++;
 		}
 	} while (percent);
+
+	/* Avoid uselessly memsetting the whole buffer to zero,
+	 * just make sure it is NULL-terminated
+	 */
+	*buf_ptr = 0;
 
 	if (args_ptr < args_end_ptr) {
 		fprintf(stderr, "printf arguments left unconsumed\n");
