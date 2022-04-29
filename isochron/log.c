@@ -853,7 +853,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 			 struct isochron_log *rcv_log,
 			 const char *printf_fmt, const char *printf_args,
 			 unsigned long start, unsigned long stop, bool summary,
-			 bool quiet, bool omit_sync, bool taprio, bool txtime,
+			 bool omit_sync, bool taprio, bool txtime,
 			 __s64 base_time, __s64 advance_time, __s64 shift_time,
 			 __s64 cycle_time, __s64 window_size)
 {
@@ -885,11 +885,9 @@ int isochron_print_stats(struct isochron_log *send_log,
 		struct isochron_rcv_pkt_data *rcv_pkt;
 		struct isochron_printf_variables v;
 
-		if (seqid != __be32_to_cpu(send_pkt->seqid)) {
-			if (!quiet)
-				fprintf(stderr, "seqid %u lost\n", seqid);
-			continue;
-		}
+		if (seqid != __be32_to_cpu(send_pkt->seqid))
+			/* Incomplete log, send_pkt->seqid is 0, exit */
+			break;
 
 		/* For packets that didn't reach the receiver, at least report
 		 * the TX timestamps and seqid for debugging purposes, and use
