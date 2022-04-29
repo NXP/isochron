@@ -857,6 +857,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 			 __s64 base_time, __s64 advance_time, __s64 shift_time,
 			 __s64 cycle_time, __s64 window_size)
 {
+	struct isochron_rcv_pkt_data dummy_rcv_pkt = {};
 	struct isochron_metric_stats sender_latency_ms;
 	struct isochron_metric_stats wakeup_latency_ms;
 	struct isochron_metric_stats driver_latency_ms;
@@ -890,12 +891,13 @@ int isochron_print_stats(struct isochron_log *send_log,
 			continue;
 		}
 
+		/* For packets that didn't reach the receiver, at least report
+		 * the TX timestamps and seqid for debugging purposes, and use
+		 * a dummy received packet with all RX timestamps set to zero
+		 */
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
-		if (!rcv_pkt) {
-			if (!quiet)
-				fprintf(stderr, "seqid %u lost\n", seqid);
-			continue;
-		}
+		if (!rcv_pkt)
+			rcv_pkt = &dummy_rcv_pkt;
 
 		isochron_printf_vars_get(send_pkt, rcv_pkt, base_time,
 					 advance_time, shift_time, cycle_time,
