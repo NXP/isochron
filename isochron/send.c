@@ -409,6 +409,78 @@ isochron_pkt_fully_timestamped(struct isochron_send_pkt_data *send_pkt)
 	return send_pkt->hwts && send_pkt->swts && send_pkt->sched_ts;
 }
 
+static int prog_validate_premature_tx(__u32 seqid, __s64 hwts, __s64 scheduled,
+				      bool deadline)
+{
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	char hwts_buf[TIMESPEC_BUFSIZ];
+
+	/* When deadline_mode is set, premature transmissions are expected */
+	if (deadline || hwts >= scheduled)
+		return 0;
+
+	ns_sprintf(scheduled_buf, scheduled);
+	ns_sprintf(hwts_buf, hwts);
+
+	fprintf(stderr,
+		"Premature transmission detected for seqid %u scheduled for %s: TX hwts %s\n",
+		seqid, scheduled_buf, hwts_buf);
+
+	return -EINVAL;
+}
+
+static int prog_validate_late_tx(__u32 seqid, __s64 hwts, __s64 scheduled,
+				 __s64 cycle_time, bool deadline)
+{
+	int num_extra_cycles = (hwts - scheduled) / cycle_time;
+	char scheduled_buf[TIMESPEC_BUFSIZ];
+	char hwts_buf[TIMESPEC_BUFSIZ];
+	bool late;
+
+	if (deadline)
+		late = (hwts > scheduled);
+	else
+		late = (num_extra_cycles > 0);
+
+	if (!late)
+		return 0;
+
+	ns_sprintf(scheduled_buf, scheduled);
+	ns_sprintf(hwts_buf, hwts);
+
+	fprintf(stderr,
+		"Late transmission by %d cycles detected for seqid %u scheduled for %s: TX hwts %s\n",
+		num_extra_cycles, seqid, scheduled_buf, hwts_buf);
+
+	return -EINVAL;
+}
+
+static int prog_validate_tx_hwts(struct prog_data *prog,
+				 const struct isochron_send_pkt_data *send_pkt)
+{
+	__s64 hwts, scheduled;
+	__u32 seqid;
+	int rc;
+
+	if (!prog->txtime && !prog->taprio)
+		return 0;
+
+	seqid = __be32_to_cpu(send_pkt->seqid);
+	hwts = __be64_to_cpu(send_pkt->hwts);
+	scheduled = __be64_to_cpu(send_pkt->scheduled);
+
+	rc = prog_validate_premature_tx(seqid, hwts, scheduled, prog->deadline);
+	if (rc)
+		return rc;
+
+	rc = prog_validate_late_tx(seqid, hwts, scheduled, prog->cycle_time,
+				   prog->deadline);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+
 /* Propagates the return code from sk_receive, i.e. the number of bytes
  * read from the socket (if we could successfully read a timestamp),
  * or a negative error code.
@@ -420,12 +492,12 @@ static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
 	__be64 hwts, swts, swts_utc;
 	__u8 err_pkt[BUF_SIZ];
 	__u64 txtime;
-	int rc;
+	int len, rc;
 
-	rc = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE,
+	len = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE,
 			timeout);
-	if (rc <= 0)
-		return rc;
+	if (len <= 0)
+		return len;
 
 	txtime = timespec_to_ns(&tstamp.txtime);
 	if (txtime) {
@@ -472,13 +544,18 @@ static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
 		break;
 	}
 
-	if (hwts)
+	if (hwts) {
 		send_pkt->hwts = hwts;
+
+		rc = prog_validate_tx_hwts(prog, send_pkt);
+		if (rc)
+			return rc;
+	}
 
 	if (isochron_pkt_fully_timestamped(send_pkt))
 		prog->timestamped++;
 
-	return rc;
+	return len;
 }
 
 static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
