@@ -27,7 +27,7 @@
 
 #define BUF_SIZ		10000
 
-struct prog_data {
+struct isochron_rcv {
 	char if_name[IFNAMSIZ];
 	unsigned char dest_mac[ETH_ALEN];
 	char uds_remote[UNIX_PATH_MAX];
@@ -65,7 +65,7 @@ struct prog_data {
 
 static int signal_received;
 
-static int prog_rearm_data_timeout_fd(struct prog_data *prog)
+static int prog_rearm_data_timeout_fd(struct isochron_rcv *prog)
 {
 	struct itimerspec timeout = {
 		.it_value = {
@@ -86,19 +86,19 @@ static int prog_rearm_data_timeout_fd(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_disarm_data_timeout_fd(struct prog_data *prog)
+static void prog_disarm_data_timeout_fd(struct isochron_rcv *prog)
 {
 	struct itimerspec timeout = {};
 
 	timerfd_settime(prog->data_timeout_fd, 0, &timeout, NULL);
 }
 
-static bool prog_received_all_packets(struct prog_data *prog)
+static bool prog_received_all_packets(struct isochron_rcv *prog)
 {
 	return prog->received_pkt_count == prog->iterations;
 }
 
-static int prog_forward_isochron_log(struct prog_data *prog)
+static int prog_forward_isochron_log(struct isochron_rcv *prog)
 {
 	int rc;
 
@@ -114,7 +114,7 @@ static int prog_forward_isochron_log(struct prog_data *prog)
 				 sizeof(struct isochron_rcv_pkt_data));
 }
 
-static int app_loop(struct prog_data *prog, __u8 *rcvbuf, size_t len,
+static int app_loop(struct isochron_rcv *prog, __u8 *rcvbuf, size_t len,
 		    const struct isochron_timestamp *tstamp)
 {
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
@@ -226,7 +226,7 @@ static int multicast_listen(int fd, unsigned int if_index,
 	return -1;
 }
 
-static int prog_data_event(struct prog_data *prog)
+static int prog_data_event(struct isochron_rcv *prog)
 {
 	struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
 	struct isochron_timestamp tstamp = {0};
@@ -246,7 +246,7 @@ static int prog_data_event(struct prog_data *prog)
 	return app_loop(prog, prog->rcvbuf, len, &tstamp);
 }
 
-static int prog_data_fd_timeout(struct prog_data *prog)
+static int prog_data_fd_timeout(struct isochron_rcv *prog)
 {
 	prog->data_fd_timed_out = true;
 
@@ -265,7 +265,7 @@ static int prog_data_fd_timeout(struct prog_data *prog)
 	return prog_forward_isochron_log(prog);
 }
 
-static void prog_close_client_stats_session(struct prog_data *prog)
+static void prog_close_client_stats_session(struct isochron_rcv *prog)
 {
 	prog_disarm_data_timeout_fd(prog);
 	close(prog->stats_fd);
@@ -276,7 +276,7 @@ static void prog_close_client_stats_session(struct prog_data *prog)
 	prog->iterations = 0;
 }
 
-static int prog_client_connect_event(struct prog_data *prog)
+static int prog_client_connect_event(struct isochron_rcv *prog)
 {
 	char client_addr[INET6_ADDRSTRLEN];
 	struct sockaddr_in addr;
@@ -305,7 +305,7 @@ static int prog_client_connect_event(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_forward_sysmon_offset(struct prog_data *prog)
+static int prog_forward_sysmon_offset(struct isochron_rcv *prog)
 {
 	struct isochron_sysmon_offset sysmon;
 	__s64 sysmon_offset, sysmon_delay;
@@ -335,7 +335,7 @@ static int prog_forward_sysmon_offset(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_forward_ptpmon_offset(struct prog_data *prog)
+static int prog_forward_ptpmon_offset(struct isochron_rcv *prog)
 {
 	struct isochron_ptpmon_offset ptpmon;
 	struct current_ds current_ds;
@@ -364,7 +364,7 @@ static int prog_forward_ptpmon_offset(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_forward_utc_offset(struct prog_data *prog)
+static int prog_forward_utc_offset(struct isochron_rcv *prog)
 {
 	struct time_properties_ds time_properties_ds;
 	struct isochron_utc_offset utc;
@@ -393,7 +393,7 @@ static int prog_forward_utc_offset(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_forward_port_state(struct prog_data *prog)
+static int prog_forward_port_state(struct isochron_rcv *prog)
 {
 	struct isochron_port_state state;
 	enum port_state port_state;
@@ -419,7 +419,7 @@ static int prog_forward_port_state(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_forward_gm_clock_identity(struct prog_data *prog)
+static int prog_forward_gm_clock_identity(struct isochron_rcv *prog)
 {
 	struct isochron_gm_clock_identity gm;
 	struct parent_data_set parent_ds;
@@ -447,7 +447,7 @@ static int prog_forward_gm_clock_identity(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_forward_destination_mac(struct prog_data *prog)
+static int prog_forward_destination_mac(struct isochron_rcv *prog)
 {
 	struct isochron_destination_mac mac;
 	int rc;
@@ -480,7 +480,7 @@ static void *isochron_tlv_data(struct isochron_tlv *tlv)
 	return tlv + 1;
 }
 
-static int prog_set_packet_count(struct prog_data *prog,
+static int prog_set_packet_count(struct isochron_rcv *prog,
 				 struct isochron_packet_count *packet_count,
 				 size_t struct_size)
 {
@@ -531,7 +531,7 @@ static int prog_set_packet_count(struct prog_data *prog,
 	return 0;
 }
 
-static int isochron_set_parse_one_tlv(struct prog_data *prog,
+static int isochron_set_parse_one_tlv(struct isochron_rcv *prog,
 				      struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
@@ -546,7 +546,7 @@ static int isochron_set_parse_one_tlv(struct prog_data *prog,
 	}
 }
 
-static int isochron_get_parse_one_tlv(struct prog_data *prog,
+static int isochron_get_parse_one_tlv(struct isochron_rcv *prog,
 				      struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
@@ -579,7 +579,7 @@ static int isochron_get_parse_one_tlv(struct prog_data *prog,
 	}
 }
 
-static int prog_client_mgmt_event(struct prog_data *prog)
+static int prog_client_mgmt_event(struct isochron_rcv *prog)
 {
 	struct isochron_management_message msg;
 	unsigned char buf[BUF_SIZ];
@@ -645,7 +645,7 @@ out_client_close_or_err:
 	return len;
 }
 
-static int server_loop(struct prog_data *prog)
+static int server_loop(struct isochron_rcv *prog)
 {
 	struct pollfd pfd[3] = {
 		[0] = {
@@ -769,7 +769,7 @@ static void sig_handler(int signo)
 	}
 }
 
-static int prog_init_ptpmon(struct prog_data *prog)
+static int prog_init_ptpmon(struct isochron_rcv *prog)
 {
 	char uds_local[UNIX_PATH_MAX];
 	int rc;
@@ -796,13 +796,13 @@ out_destroy:
 	return rc;
 }
 
-static void prog_teardown_ptpmon(struct prog_data *prog)
+static void prog_teardown_ptpmon(struct isochron_rcv *prog)
 {
 	ptpmon_close(prog->ptpmon);
 	ptpmon_destroy(prog->ptpmon);
 }
 
-static int prog_init_sysmon(struct prog_data *prog)
+static int prog_init_sysmon(struct isochron_rcv *prog)
 {
 	prog->sysmon = sysmon_create(prog->if_name, prog->num_readings);
 	if (!prog->sysmon)
@@ -813,12 +813,12 @@ static int prog_init_sysmon(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_teardown_sysmon(struct prog_data *prog)
+static void prog_teardown_sysmon(struct isochron_rcv *prog)
 {
 	sysmon_destroy(prog->sysmon);
 }
 
-static int prog_init_stats_listenfd(struct prog_data *prog)
+static int prog_init_stats_listenfd(struct isochron_rcv *prog)
 {
 	struct sockaddr_in serv_addr = {
 		.sin_family = AF_INET,
@@ -865,12 +865,12 @@ out:
 	return -errno;
 }
 
-static void prog_teardown_stats_listenfd(struct prog_data *prog)
+static void prog_teardown_stats_listenfd(struct isochron_rcv *prog)
 {
 	close(prog->stats_listenfd);
 }
 
-static int prog_init_data_fd(struct prog_data *prog)
+static int prog_init_data_fd(struct isochron_rcv *prog)
 {
 	struct sockaddr_in serv_data_addr = {
 		.sin_family = AF_INET,
@@ -960,7 +960,7 @@ out:
 	return -errno;
 }
 
-static void prog_teardown_data_fd(struct prog_data *prog)
+static void prog_teardown_data_fd(struct isochron_rcv *prog)
 {
 	if (is_multicast_ether_addr(prog->dest_mac))
 		multicast_listen(prog->data_fd, prog->if_index,
@@ -969,7 +969,7 @@ static void prog_teardown_data_fd(struct prog_data *prog)
 	close(prog->data_fd);
 }
 
-static int prog_init_data_timeout_fd(struct prog_data *prog)
+static int prog_init_data_timeout_fd(struct isochron_rcv *prog)
 {
 	int fd;
 
@@ -984,13 +984,13 @@ static int prog_init_data_timeout_fd(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_teardown_data_timeout_fd(struct prog_data *prog)
+static void prog_teardown_data_timeout_fd(struct isochron_rcv *prog)
 {
 	prog_disarm_data_timeout_fd(prog);
 	close(prog->data_timeout_fd);
 }
 
-static int prog_rtnl_open(struct prog_data *prog)
+static int prog_rtnl_open(struct isochron_rcv *prog)
 {
 	struct mnl_socket *nl;
 
@@ -1011,7 +1011,7 @@ static int prog_rtnl_open(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_rtnl_close(struct prog_data *prog)
+static void prog_rtnl_close(struct isochron_rcv *prog)
 {
 	struct mnl_socket *nl = prog->rtnl;
 
@@ -1019,7 +1019,7 @@ static void prog_rtnl_close(struct prog_data *prog)
 	mnl_socket_close(nl);
 }
 
-static int prog_init(struct prog_data *prog)
+static int prog_init(struct isochron_rcv *prog)
 {
 	int rc;
 
@@ -1075,7 +1075,7 @@ out_close_rtnl:
 	return rc;
 }
 
-static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
+static int prog_parse_args(int argc, char **argv, struct isochron_rcv *prog)
 {
 	bool help = false;
 	struct prog_arg args[] = {
@@ -1276,7 +1276,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 	return 0;
 }
 
-static void prog_teardown(struct prog_data *prog)
+static void prog_teardown(struct isochron_rcv *prog)
 {
 	if (!prog->quiet)
 		isochron_rcv_log_print(&prog->log);
@@ -1292,7 +1292,7 @@ static void prog_teardown(struct prog_data *prog)
 
 int isochron_rcv_main(int argc, char *argv[])
 {
-	struct prog_data prog = {0};
+	struct isochron_rcv prog = {0};
 	int rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
