@@ -42,7 +42,7 @@
 #define TIME_FMT_LEN	27 /* "[%s] " */
 #define SYNC_CHECKS_TO_GO 3
 
-struct prog_data {
+struct isochron_send {
 	volatile bool send_tid_should_stop;
 	volatile bool send_tid_stopped;
 	unsigned char dest_mac[ETH_ALEN];
@@ -117,13 +117,13 @@ struct prog_data {
 };
 
 struct isochron_txtime_postmortem_priv {
-	struct prog_data *prog;
+	struct isochron_send *prog;
 	__u64 txtime;
 };
 
 static int signal_received;
 
-static void trace(struct prog_data *prog, const char *fmt, ...)
+static void trace(struct isochron_send *prog, const char *fmt, ...)
 {
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct timespec now_ts;
@@ -175,7 +175,7 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 	return base_time + (n + 1) * cycle_time;
 }
 
-static int prog_collect_receiver_sync_stats(struct prog_data *prog,
+static int prog_collect_receiver_sync_stats(struct isochron_send *prog,
 					    bool *have_remote_stats,
 					    __s64 *sysmon_offset,
 					    __s64 *ptpmon_offset,
@@ -243,7 +243,7 @@ static int prog_collect_receiver_sync_stats(struct prog_data *prog,
 	return 0;
 }
 
-static int prog_init_stats_socket(struct prog_data *prog)
+static int prog_init_stats_socket(struct isochron_send *prog)
 {
 	struct sockaddr_in6 serv_addr6;
 	struct sockaddr_in serv_addr4;
@@ -295,7 +295,7 @@ static int prog_init_stats_socket(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_teardown_stats_socket(struct prog_data *prog)
+static void prog_teardown_stats_socket(struct isochron_send *prog)
 {
 	if (!prog->stats_srv.family)
 		return;
@@ -303,7 +303,7 @@ static void prog_teardown_stats_socket(struct prog_data *prog)
 	close(prog->stats_fd);
 }
 
-static __s64 prog_first_base_time(struct prog_data *prog)
+static __s64 prog_first_base_time(struct isochron_send *prog)
 {
 	__s64 base_time = prog->base_time + prog->shift_time;
 
@@ -316,7 +316,7 @@ static int isochron_txtime_pkt_dump(void *priv, void *pkt)
 {
 	struct isochron_txtime_postmortem_priv *postmortem = priv;
 	struct isochron_send_pkt_data *send_pkt = pkt;
-	struct prog_data *prog = postmortem->prog;
+	struct isochron_send *prog = postmortem->prog;
 	char ideal_wakeup_buf[TIMESPEC_BUFSIZ];
 	char scheduled_buf[TIMESPEC_BUFSIZ];
 	char latency_buf[TIMESPEC_BUFSIZ];
@@ -344,7 +344,7 @@ static int isochron_txtime_pkt_dump(void *priv, void *pkt)
 	return 1;
 }
 
-static void prog_late_txtime_pkt_postmortem(struct prog_data *prog,
+static void prog_late_txtime_pkt_postmortem(struct isochron_send *prog,
 					    __u64 txtime)
 {
 	struct isochron_txtime_postmortem_priv postmortem = {
@@ -366,7 +366,7 @@ static void prog_late_txtime_pkt_postmortem(struct prog_data *prog,
 }
 
 /* Timestamps will come later */
-static int prog_log_packet_no_tstamp(struct prog_data *prog,
+static int prog_log_packet_no_tstamp(struct isochron_send *prog,
 				     const struct isochron_header *hdr)
 {
 	struct isochron_send_pkt_data *send_pkt;
@@ -455,7 +455,7 @@ static int prog_validate_late_tx(__u32 seqid, __s64 hwts, __s64 scheduled,
 	return -EINVAL;
 }
 
-static int prog_validate_tx_hwts(struct prog_data *prog,
+static int prog_validate_tx_hwts(struct isochron_send *prog,
 				 const struct isochron_send_pkt_data *send_pkt)
 {
 	__s64 hwts, scheduled;
@@ -485,7 +485,7 @@ static int prog_validate_tx_hwts(struct prog_data *prog,
  * read from the socket (if we could successfully read a timestamp),
  * or a negative error code.
  */
-static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
+static int prog_poll_txtstamps(struct isochron_send *prog, int timeout)
 {
 	struct isochron_send_pkt_data *send_pkt;
 	struct isochron_timestamp tstamp = {};
@@ -558,7 +558,7 @@ static int prog_poll_txtstamps(struct prog_data *prog, int timeout)
 	return len;
 }
 
-static int do_work(struct prog_data *prog, int iteration, __s64 scheduled,
+static int do_work(struct isochron_send *prog, int iteration, __s64 scheduled,
 		   struct isochron_header *hdr)
 {
 	struct timespec now_ts;
@@ -622,7 +622,7 @@ static int isochron_missing_txts_dump(void __attribute__((unused)) *priv,
 	return 0;
 }
 
-static void prog_print_missing_timestamps(struct prog_data *prog)
+static void prog_print_missing_timestamps(struct isochron_send *prog)
 {
 	if (prog->quiet)
 		return;
@@ -632,7 +632,7 @@ static void prog_print_missing_timestamps(struct prog_data *prog)
 				  prog, isochron_missing_txts_dump);
 }
 
-static int wait_for_txtimestamps(struct prog_data *prog)
+static int wait_for_txtimestamps(struct isochron_send *prog)
 {
 	int timeout_ms = 2 * MSEC_PER_SEC;
 	int rc;
@@ -651,7 +651,7 @@ static int wait_for_txtimestamps(struct prog_data *prog)
 	return 0;
 }
 
-static int run_nanosleep(struct prog_data *prog)
+static int run_nanosleep(struct isochron_send *prog)
 {
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
@@ -713,7 +713,7 @@ static int run_nanosleep(struct prog_data *prog)
 
 static void *prog_send_thread(void *arg)
 {
-	struct prog_data *prog = arg;
+	struct isochron_send *prog = arg;
 
 	prog->send_tid_rc = run_nanosleep(prog);
 	prog->send_tid_stopped = true;
@@ -723,7 +723,7 @@ static void *prog_send_thread(void *arg)
 
 static void *prog_tx_timestamp_thread(void *arg)
 {
-	struct prog_data *prog = arg;
+	struct isochron_send *prog = arg;
 	struct timespec wakeup_ts;
 	__s64 wakeup;
 
@@ -750,7 +750,7 @@ static void sig_handler(int signo)
 	}
 }
 
-static bool prog_sync_ok(struct prog_data *prog)
+static bool prog_sync_ok(struct isochron_send *prog)
 {
 	bool local_port_transient_state, remote_port_transient_state;
 	bool remote_ptpmon_sync_done, remote_sysmon_sync_done;
@@ -876,7 +876,7 @@ static bool prog_sync_ok(struct prog_data *prog)
 	       remote_ptpmon_sync_done && remote_sysmon_sync_done;
 }
 
-static int prog_wait_until_sync_ok(struct prog_data *prog)
+static int prog_wait_until_sync_ok(struct isochron_send *prog)
 {
 	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
 
@@ -896,7 +896,7 @@ static int prog_wait_until_sync_ok(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_query_utc_offset(struct prog_data *prog)
+static int prog_query_utc_offset(struct isochron_send *prog)
 {
 	struct time_properties_ds time_properties_ds;
 	int ptp_utc_offset;
@@ -917,7 +917,7 @@ static int prog_query_utc_offset(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_query_dest_mac(struct prog_data *prog)
+static int prog_query_dest_mac(struct isochron_send *prog)
 {
 	struct isochron_destination_mac mac;
 	char mac_buf[MACADDR_BUFSIZ];
@@ -949,7 +949,7 @@ static int prog_query_dest_mac(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_prepare_receiver(struct prog_data *prog)
+static int prog_prepare_receiver(struct isochron_send *prog)
 {
 	struct isochron_packet_count packet_count = {
 		.count = __cpu_to_be64(prog->iterations),
@@ -962,7 +962,7 @@ static int prog_prepare_receiver(struct prog_data *prog)
 				   &packet_count, sizeof(packet_count));
 }
 
-static int prog_update_session_start_time(struct prog_data *prog)
+static int prog_update_session_start_time(struct isochron_send *prog)
 {
 	struct timespec now_ts;
 	int rc;
@@ -979,7 +979,7 @@ static int prog_update_session_start_time(struct prog_data *prog)
 	return 0;
 }
 
-static int prog_send_thread_create(struct prog_data *prog)
+static int prog_send_thread_create(struct isochron_send *prog)
 {
 	int sched_policy = SCHED_OTHER;
 	pthread_attr_t attr;
@@ -1043,7 +1043,7 @@ err_destroy_attr:
 	return rc;
 }
 
-static void prog_send_thread_destroy(struct prog_data *prog)
+static void prog_send_thread_destroy(struct isochron_send *prog)
 {
 	void *res;
 	int rc;
@@ -1061,7 +1061,7 @@ static void prog_send_thread_destroy(struct prog_data *prog)
 		pr_err(rc, "sender thread failed: %m\n");
 }
 
-static int prog_tx_timestamp_thread_create(struct prog_data *prog)
+static int prog_tx_timestamp_thread_create(struct isochron_send *prog)
 {
 	pthread_attr_t attr;
 	int rc;
@@ -1088,7 +1088,7 @@ err_destroy_attr:
 	return rc;
 }
 
-static void prog_tx_timestamp_thread_destroy(struct prog_data *prog)
+static void prog_tx_timestamp_thread_destroy(struct isochron_send *prog)
 {
 	void *res;
 	int rc;
@@ -1107,7 +1107,7 @@ static void prog_tx_timestamp_thread_destroy(struct prog_data *prog)
 		pr_err(rc, "tx timestamp thread failed: %m\n");
 }
 
-static int prog_start_threads(struct prog_data *prog)
+static int prog_start_threads(struct isochron_send *prog)
 {
 	int rc;
 
@@ -1124,13 +1124,13 @@ static int prog_start_threads(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_stop_threads(struct prog_data *prog)
+static void prog_stop_threads(struct isochron_send *prog)
 {
 	prog_send_thread_destroy(prog);
 	prog_tx_timestamp_thread_destroy(prog);
 }
 
-static int prog_prepare_session(struct prog_data *prog)
+static int prog_prepare_session(struct isochron_send *prog)
 {
 	int rc;
 
@@ -1172,7 +1172,7 @@ out_teardown_log:
 	return rc;
 }
 
-static bool prog_monitor_sync(struct prog_data *prog)
+static bool prog_monitor_sync(struct isochron_send *prog)
 {
 	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
 
@@ -1195,7 +1195,7 @@ static bool prog_monitor_sync(struct prog_data *prog)
 	return true;
 }
 
-static int prog_end_session(struct prog_data *prog, bool save_log)
+static int prog_end_session(struct isochron_send *prog, bool save_log)
 {
 	struct isochron_log rcv_log;
 	int rc;
@@ -1233,7 +1233,7 @@ skip_collecting_rcv_log:
 	return rc;
 }
 
-static int prog_init_ptpmon(struct prog_data *prog)
+static int prog_init_ptpmon(struct isochron_send *prog)
 {
 	char uds_local[UNIX_PATH_MAX];
 	int rc;
@@ -1275,7 +1275,7 @@ out_destroy:
 	return rc;
 }
 
-static void prog_teardown_ptpmon(struct prog_data *prog)
+static void prog_teardown_ptpmon(struct isochron_send *prog)
 {
 	if (!prog->ptpmon)
 		return;
@@ -1285,7 +1285,7 @@ static void prog_teardown_ptpmon(struct prog_data *prog)
 	prog->ptpmon = NULL;
 }
 
-static int prog_init_sysmon(struct prog_data *prog)
+static int prog_init_sysmon(struct isochron_send *prog)
 {
 	if (prog->omit_sync)
 		return 0;
@@ -1299,7 +1299,7 @@ static int prog_init_sysmon(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_teardown_sysmon(struct prog_data *prog)
+static void prog_teardown_sysmon(struct isochron_send *prog)
 {
 	if (!prog->sysmon)
 		return;
@@ -1307,7 +1307,7 @@ static void prog_teardown_sysmon(struct prog_data *prog)
 	sysmon_destroy(prog->sysmon);
 }
 
-static int prog_init_data_fd(struct prog_data *prog)
+static int prog_init_data_fd(struct isochron_send *prog)
 {
 	struct ifreq if_idx;
 	struct ifreq if_mac;
@@ -1419,12 +1419,12 @@ out:
 	return -errno;
 }
 
-static void prog_teardown_data_fd(struct prog_data *prog)
+static void prog_teardown_data_fd(struct isochron_send *prog)
 {
 	close(prog->data_fd);
 }
 
-static void prog_init_data_packet(struct prog_data *prog)
+static void prog_init_data_packet(struct isochron_send *prog)
 {
 	int i;
 
@@ -1487,7 +1487,7 @@ static void prog_init_data_packet(struct prog_data *prog)
 	}
 }
 
-static int prog_init_trace_mark(struct prog_data *prog)
+static int prog_init_trace_mark(struct isochron_send *prog)
 {
 	int fd;
 
@@ -1508,7 +1508,7 @@ static int prog_init_trace_mark(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_teardown_trace_mark(struct prog_data *prog)
+static void prog_teardown_trace_mark(struct isochron_send *prog)
 {
 	if (!prog->trace_mark)
 		return;
@@ -1516,7 +1516,7 @@ static void prog_teardown_trace_mark(struct prog_data *prog)
 	trace_mark_close(prog->trace_mark_fd);
 }
 
-static int prog_rtnl_open(struct prog_data *prog)
+static int prog_rtnl_open(struct isochron_send *prog)
 {
 	struct mnl_socket *nl;
 
@@ -1537,7 +1537,7 @@ static int prog_rtnl_open(struct prog_data *prog)
 	return 0;
 }
 
-static void prog_rtnl_close(struct prog_data *prog)
+static void prog_rtnl_close(struct isochron_send *prog)
 {
 	struct mnl_socket *nl = prog->rtnl;
 
@@ -1545,7 +1545,7 @@ static void prog_rtnl_close(struct prog_data *prog)
 	mnl_socket_close(nl);
 }
 
-static int prog_init(struct prog_data *prog)
+static int prog_init(struct isochron_send *prog)
 {
 	int rc;
 
@@ -1625,7 +1625,7 @@ out:
 	return rc;
 }
 
-static void prog_teardown(struct prog_data *prog)
+static void prog_teardown(struct isochron_send *prog)
 {
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
@@ -1638,7 +1638,7 @@ static void prog_teardown(struct prog_data *prog)
 	prog_rtnl_close(prog);
 }
 
-static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
+static int prog_parse_args(int argc, char **argv, struct isochron_send *prog)
 {
 	bool help = false;
 	struct prog_arg args[] = {
@@ -2140,7 +2140,7 @@ static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
 
 int isochron_send_main(int argc, char *argv[])
 {
-	struct prog_data prog = {0};
+	struct isochron_send prog = {0};
 	bool sync_ok;
 	int rc;
 
