@@ -9,7 +9,7 @@
 #include "isochron.h"
 #include "log.h"
 
-struct prog_data {
+struct isochron_report {
 	struct isochron_log send_log;
 	struct isochron_log rcv_log;
 	long packet_count;
@@ -32,7 +32,7 @@ struct prog_data {
 	char printf_args[ISOCHRON_LOG_PRINTF_MAX_NUM_ARGS];
 };
 
-static int prog_parse_args(int argc, char **argv, struct prog_data *prog)
+static int prog_parse_args(int argc, char **argv, struct isochron_report *prog)
 {
 	bool help = false;
 	struct prog_arg args[] = {
@@ -199,7 +199,7 @@ static int prog_replace_escape_sequences(char *printf_fmt)
 
 int isochron_report_main(int argc, char *argv[])
 {
-	struct prog_data prog = {0};
+	struct isochron_report prog = {0};
 	int rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
