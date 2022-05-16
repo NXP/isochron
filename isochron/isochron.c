@@ -5,50 +5,75 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include "common.h"
 #include "isochron.h"
 
-enum isochron_func {
-	ISOCHRON_SEND,
-	ISOCHRON_RCV,
-	ISOCHRON_REPORT,
+typedef int isochron_prog_main_func_t(int argc, char *argv[]);
+
+struct isochron_prog {
+	const char *prog_name;
+	const char *prog_func;
+	isochron_prog_main_func_t *main;
+};
+
+static const struct isochron_prog progs[] = {
+	{
+		.prog_name = "isochron-send",
+		.prog_func = "send",
+		.main = isochron_send_main,
+	}, {
+		.prog_name = "isochron-rcv",
+		.prog_func = "rcv",
+		.main = isochron_rcv_main,
+	}, {
+		.prog_name = "isochron-report",
+		.prog_func = "report",
+		.main = isochron_report_main,
+	},
 };
 
 static void isochron_usage(void)
 {
+	size_t i;
+
 	fprintf(stderr, "isochron usage:\n");
-	fprintf(stderr, "isochron send ...\n");
-	fprintf(stderr, "isochron rcv ...\n");
-	fprintf(stderr, "isochron report ...\n");
-	fprintf(stderr, "Run \"isochron send --help\" or ");
-	fprintf(stderr, "\"isochron rcv --help\" or ");
-	fprintf(stderr, "\"isochron report --help\" for more details.\n");
+
+	for (i = 0; i < ARRAY_SIZE(progs); i++)
+		fprintf(stderr, "isochron %s ...\n", progs[i].prog_func);
+
+	fprintf(stderr, "Run ");
+
+	for (i = 0; i < ARRAY_SIZE(progs); i++)
+		fprintf(stderr, "\"isochron %s --help\", ", progs[i].prog_func);
+
+	fprintf(stderr, "for more details.\n");
 }
 
 static int isochron_parse_args(int *argc, char ***argv,
-			       enum isochron_func *func)
+			       const struct isochron_prog **prog)
 {
 	char *prog_name;
 	char *prog_func;
+	size_t i;
 
 	if (*argc < 2) {
 		isochron_usage();
 		return -EINVAL;
 	}
 
+	/* First try to match on program name */
 	prog_name = *argv[0];
 	(*argv)++;
 	(*argc)--;
-	if (strcmp(prog_name, "isochron-send") == 0) {
-		*func = ISOCHRON_SEND;
-		return 0;
-	} else if (strcmp(prog_name, "isochron-rcv") == 0) {
-		*func = ISOCHRON_RCV;
-		return 0;
-	} else if (strcmp(prog_name, "isochron-report") == 0) {
-		*func = ISOCHRON_REPORT;
-		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(progs); i++) {
+		if (strcmp(prog_name, progs[i].prog_name) == 0) {
+			*prog = &progs[i];
+			return 0;
+		}
 	}
 
+	/* Next try to match on function name */
 	prog_func = (*argv)[0];
 	(*argv)++;
 	(*argc)--;
@@ -63,48 +88,32 @@ static int isochron_parse_args(int *argc, char ***argv,
 		return -EINVAL;
 	}
 
-	if (strcmp(prog_func, "send") == 0) {
-		*func = ISOCHRON_SEND;
-		return 0;
-	} else if (strcmp(prog_func, "rcv") == 0) {
-		*func = ISOCHRON_RCV;
-		return 0;
-	} else if (strcmp(prog_func, "report") == 0) {
-		*func = ISOCHRON_REPORT;
-		return 0;
+	for (i = 0; i < ARRAY_SIZE(progs); i++) {
+		if (strcmp(prog_func, progs[i].prog_func) == 0) {
+			*prog = &progs[i];
+			return 0;
+		}
 	}
 
-	fprintf(stderr,
-		"%s: unknown function %s, expected \"send\", \"rcv\" or \"report\"\n",
+	fprintf(stderr, "%s: unknown function %s, expected one of ",
 		prog_name, prog_func);
+
+	for (i = 0; i < ARRAY_SIZE(progs); i++)
+		fprintf(stderr, "\"%s\", ", progs[i].prog_func);
+
+	fprintf(stderr, "\n");
 
 	return -EINVAL;
 }
 
 int main(int argc, char *argv[])
 {
-	enum isochron_func func;
+	const struct isochron_prog *prog;
 	int rc;
 
-	rc = isochron_parse_args(&argc, &argv, &func);
+	rc = isochron_parse_args(&argc, &argv, &prog);
 	if (rc)
 		return -rc;
 
-	switch (func) {
-	case ISOCHRON_SEND:
-		rc = isochron_send_main(argc, argv);
-		break;
-	case ISOCHRON_RCV:
-		rc = isochron_rcv_main(argc, argv);
-		break;
-	case ISOCHRON_REPORT:
-		rc = isochron_report_main(argc, argv);
-		break;
-	default:
-		isochron_usage();
-		rc = -EINVAL;
-		break;
-	}
-
-	return -rc;
+	return prog->main(argc, argv);
 }
