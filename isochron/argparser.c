@@ -295,14 +295,14 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 		return -ENOMEM;
 
 	while (argc) {
-		char *arg = argv[0], *val;
+		char *arg = argv[0], *val = NULL;
 		char *equals = NULL;
 
 		equals = strchr(arg, '=');
 		if (equals) {
 			*equals = 0;
 			val = equals + 1;
-		} else {
+		} else if (argc >= 2) {
 			val = argv[1];
 		}
 
