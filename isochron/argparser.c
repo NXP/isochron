@@ -60,6 +60,9 @@ int string_replace_escape_sequences(char *str)
 		case '?': /* question mark */
 			replacement = '\?';
 			break;
+		case '\n': /* line continuation */
+			replacement = ' ';
+			break;
 		default:
 			fprintf(stderr,
 				"Unrecognized escape sequence %c\n", code);
