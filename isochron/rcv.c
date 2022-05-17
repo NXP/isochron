@@ -844,10 +844,6 @@ static int prog_init(struct isochron_rcv *prog)
 {
 	int rc;
 
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
-
 	rc = prog_rtnl_open(prog);
 	if (rc)
 		return rc;
@@ -1115,6 +1111,10 @@ int isochron_rcv_main(int argc, char *argv[])
 {
 	struct isochron_rcv prog = {0};
 	int rc;
+
+	rc = isochron_handle_signals(sig_handler);
+	if (rc)
+		return rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
