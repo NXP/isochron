@@ -92,8 +92,8 @@ void isochron_send_empty_tlv(int fd, enum isochron_management_id mid);
 int isochron_collect_rcv_log(int fd, struct isochron_log *rcv_log);
 int isochron_query_mid(int fd, enum isochron_management_id mid,
 		       void *data, size_t data_len);
-int isochron_update_mid(int fd, enum isochron_management_id mid,
-			void *data, size_t data_len);
+
+int isochron_update_packet_count(int fd, long count);
 
 static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 {

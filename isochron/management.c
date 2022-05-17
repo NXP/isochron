@@ -158,8 +158,8 @@ int isochron_query_mid(int fd, enum isochron_management_id mid,
 	return 0;
 }
 
-int isochron_update_mid(int fd, enum isochron_management_id mid,
-			void *data, size_t data_len)
+static int isochron_update_mid(int fd, enum isochron_management_id mid,
+			       void *data, size_t data_len)
 {
 	struct isochron_management_message msg;
 	size_t payload_length, tlv_length;
@@ -263,6 +263,16 @@ int isochron_update_mid(int fd, enum isochron_management_id mid,
 	free(tmp_buf);
 
 	return 0;
+}
+
+int isochron_update_packet_count(int fd, long count)
+{
+	struct isochron_packet_count packet_count = {
+		.count = __cpu_to_be64(count),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_PACKET_COUNT,
+				   &packet_count, sizeof(packet_count));
 }
 
 static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)

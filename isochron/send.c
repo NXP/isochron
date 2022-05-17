@@ -875,15 +875,10 @@ static int prog_query_dest_mac(struct isochron_send *prog)
 
 static int prog_prepare_receiver(struct isochron_send *prog)
 {
-	struct isochron_packet_count packet_count = {
-		.count = __cpu_to_be64(prog->iterations),
-	};
-
 	if (!prog->stats_srv.family)
 		return 0;
 
-	return isochron_update_mid(prog->stats_fd, ISOCHRON_MID_PACKET_COUNT,
-				   &packet_count, sizeof(packet_count));
+	return isochron_update_packet_count(prog->stats_fd, prog->iterations);
 }
 
 static int prog_update_session_start_time(struct isochron_send *prog)
