@@ -307,144 +307,39 @@ static int prog_client_connect_event(struct isochron_rcv *prog)
 
 static int prog_forward_sysmon_offset(struct isochron_rcv *prog)
 {
-	struct isochron_sysmon_offset sysmon;
-	__s64 sysmon_offset, sysmon_delay;
-	__u64 sysmon_ts;
-	int rc;
-
-	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
-			       &sysmon_delay);
-	if (rc) {
-		pr_err(rc, "Failed to read sysmon offset: %m\n");
-		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_SYSMON_OFFSET);
-		return 0;
-	}
-
-	sysmon.offset = __cpu_to_be64(sysmon_offset);
-	sysmon.time = __cpu_to_be64(sysmon_ts);
-	sysmon.delay = __cpu_to_be64(sysmon_delay);
-
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-			       ISOCHRON_MID_SYSMON_OFFSET,
-			       sizeof(sysmon));
-	if (rc)
-		return 0;
-
-	write_exact(prog->stats_fd, &sysmon, sizeof(sysmon));
-
-	return 0;
+	return isochron_forward_sysmon_offset(prog->stats_fd, prog->sysmon);
 }
 
 static int prog_forward_ptpmon_offset(struct isochron_rcv *prog)
 {
-	struct isochron_ptpmon_offset ptpmon;
-	struct current_ds current_ds;
-	__s64 ptpmon_offset;
-	int rc;
-
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
-				    &current_ds, sizeof(current_ds));
-	if (rc) {
-		pr_err(rc, "Failed to read ptpmon offset: %m\n");
-		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PTPMON_OFFSET);
-		return 0;
-	}
-
-	ptpmon_offset = master_offset_from_current_ds(&current_ds);
-	ptpmon.offset = __cpu_to_be64(ptpmon_offset);
-
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-			       ISOCHRON_MID_PTPMON_OFFSET,
-			       sizeof(ptpmon));
-	if (rc)
-		return 0;
-
-	write_exact(prog->stats_fd, &ptpmon, sizeof(ptpmon));
-
-	return 0;
+	return isochron_forward_ptpmon_offset(prog->stats_fd, prog->ptpmon);
 }
 
 static int prog_forward_utc_offset(struct isochron_rcv *prog)
 {
-	struct time_properties_ds time_properties_ds;
-	struct isochron_utc_offset utc;
-	int rc;
+	int rc, utc_offset;
 
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_TIME_PROPERTIES_DATA_SET,
-				    &time_properties_ds, sizeof(time_properties_ds));
-	if (rc) {
-		pr_err(rc, "Failed to read ptpmon UTC offset: %m\n");
-		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_UTC_OFFSET);
-		return 0;
-	}
-
-	utc.offset = time_properties_ds.current_utc_offset;
-
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-			       ISOCHRON_MID_UTC_OFFSET, sizeof(utc));
+	rc = isochron_forward_utc_offset(prog->stats_fd, prog->ptpmon,
+					 &utc_offset);
 	if (rc)
-		return 0;
+		return rc;
 
-	write_exact(prog->stats_fd, &utc, sizeof(utc));
-
-	isochron_fixup_kernel_utc_offset(__be16_to_cpu(utc.offset));
-	prog->utc_tai_offset = __be16_to_cpu(utc.offset);
+	isochron_fixup_kernel_utc_offset(utc_offset);
+	prog->utc_tai_offset = utc_offset;
 
 	return 0;
 }
 
 static int prog_forward_port_state(struct isochron_rcv *prog)
 {
-	struct isochron_port_state state;
-	enum port_state port_state;
-	int rc;
-
-	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
-					     prog->rtnl, &port_state);
-	if (rc) {
-		pr_err(rc, "Failed to read ptpmon port state: %m\n");
-		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_PORT_STATE);
-		return 0;
-	}
-
-	state.state = port_state;
-
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-			       ISOCHRON_MID_PORT_STATE, sizeof(state));
-	if (rc)
-		return 0;
-
-	write_exact(prog->stats_fd, &state, sizeof(state));
-
-	return 0;
+	return isochron_forward_port_state(prog->stats_fd, prog->ptpmon,
+					   prog->if_name, prog->rtnl);
 }
 
 static int prog_forward_gm_clock_identity(struct isochron_rcv *prog)
 {
-	struct isochron_gm_clock_identity gm;
-	struct parent_data_set parent_ds;
-	int rc;
-
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
-				    &parent_ds, sizeof(parent_ds));
-	if (rc) {
-		pr_err(rc, "Failed to read ptpmon GM clockID: %m\n");
-		isochron_send_empty_tlv(prog->stats_fd, ISOCHRON_MID_GM_CLOCK_IDENTITY);
-		return 0;
-	}
-
-	memcpy(&gm.clock_identity, &parent_ds.grandmaster_identity,
-	       sizeof(gm.clock_identity));
-
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-			       ISOCHRON_MID_GM_CLOCK_IDENTITY,
-			       sizeof(gm));
-	if (rc)
-		return 0;
-
-	write_exact(prog->stats_fd, &gm, sizeof(gm));
-
-	return 0;
+	return isochron_forward_gm_clock_identity(prog->stats_fd,
+						  prog->ptpmon);
 }
 
 static int prog_forward_destination_mac(struct isochron_rcv *prog)
@@ -464,20 +359,6 @@ static int prog_forward_destination_mac(struct isochron_rcv *prog)
 	write_exact(prog->stats_fd, &mac, sizeof(mac));
 
 	return 0;
-}
-
-static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
-{
-	size_t tlv_size_bytes;
-
-	tlv_size_bytes = __be32_to_cpu((*tlv)->length_field) + sizeof(**tlv);
-	*len += tlv_size_bytes;
-	*tlv = (struct isochron_tlv *)((unsigned char *)tlv + tlv_size_bytes);
-}
-
-static void *isochron_tlv_data(struct isochron_tlv *tlv)
-{
-	return tlv + 1;
 }
 
 static int prog_set_packet_count(struct isochron_rcv *prog,
@@ -531,10 +412,10 @@ static int prog_set_packet_count(struct isochron_rcv *prog,
 	return 0;
 }
 
-static int isochron_set_parse_one_tlv(struct isochron_rcv *prog,
-				      struct isochron_tlv *tlv)
+static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
+	struct isochron_rcv *prog = priv;
 
 	switch (mid) {
 	case ISOCHRON_MID_PACKET_COUNT:
@@ -546,10 +427,10 @@ static int isochron_set_parse_one_tlv(struct isochron_rcv *prog,
 	}
 }
 
-static int isochron_get_parse_one_tlv(struct isochron_rcv *prog,
-				      struct isochron_tlv *tlv)
+static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
+	struct isochron_rcv *prog = priv;
 
 	switch (mid) {
 	case ISOCHRON_MID_LOG:
@@ -579,72 +460,6 @@ static int isochron_get_parse_one_tlv(struct isochron_rcv *prog,
 	}
 }
 
-static int prog_client_mgmt_event(struct isochron_rcv *prog)
-{
-	struct isochron_management_message msg;
-	unsigned char buf[BUF_SIZ];
-	struct isochron_tlv *tlv;
-	size_t parsed_len = 0;
-	ssize_t len;
-	int rc;
-
-	len = recv_exact(prog->stats_fd, &msg, sizeof(msg), 0);
-	if (len <= 0)
-		goto out_client_close_or_err;
-
-	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
-		fprintf(stderr, "Expected management version %d, got %d\n",
-			ISOCHRON_MANAGEMENT_VERSION, msg.version);
-		return 0;
-	}
-
-	if (msg.action != ISOCHRON_GET && msg.action != ISOCHRON_SET) {
-		fprintf(stderr, "Unexpected action %d\n", msg.action);
-		return 0;
-	}
-
-	len = __be32_to_cpu(msg.payload_length);
-	if (len >= BUF_SIZ) {
-		fprintf(stderr, "GET message too large at %zd, max %d\n", len, BUF_SIZ);
-		return 0;
-	}
-
-	len = recv_exact(prog->stats_fd, buf, len, 0);
-	if (len <= 0)
-		goto out_client_close_or_err;
-
-	tlv = (struct isochron_tlv *)buf;
-
-	while (parsed_len < (size_t)len) {
-		if (__be16_to_cpu(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
-			continue;
-
-		switch (msg.action) {
-		case ISOCHRON_GET:
-			rc = isochron_get_parse_one_tlv(prog, tlv);
-			if (rc)
-				return rc;
-			break;
-		case ISOCHRON_SET:
-			rc = isochron_set_parse_one_tlv(prog, tlv);
-			if (rc)
-				return rc;
-			break;
-		default:
-			break;
-		}
-
-		isochron_tlv_next(&tlv, &parsed_len);
-	}
-
-	return 0;
-
-out_client_close_or_err:
-	prog_close_client_stats_session(prog);
-
-	return len;
-}
-
 static int server_loop(struct isochron_rcv *prog)
 {
 	struct pollfd pfd[3] = {
@@ -662,6 +477,7 @@ static int server_loop(struct isochron_rcv *prog)
 		},
 	};
 	__u32 sched_policy = SCHED_OTHER;
+	bool socket_closed;
 	int rc = 0;
 	int cnt;
 
@@ -710,7 +526,12 @@ static int server_loop(struct isochron_rcv *prog)
 
 		if (pfd[1].revents & (POLLIN | POLLERR | POLLPRI)) {
 			if (prog->have_client) {
-				rc = prog_client_mgmt_event(prog);
+				rc = isochron_mgmt_event(prog->stats_fd, prog,
+							 isochron_get_parse_one_tlv,
+							 isochron_set_parse_one_tlv,
+							 &socket_closed);
+				if (socket_closed)
+					prog_close_client_stats_session(prog);
 				if (rc)
 					break;
 			} else {

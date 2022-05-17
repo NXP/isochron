@@ -7,6 +7,7 @@
 #include <netinet/ether.h>
 #include "log.h"
 #include "ptpmon.h"
+#include "sysmon.h"
 
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
@@ -93,5 +94,22 @@ int isochron_query_mid(int fd, enum isochron_management_id mid,
 		       void *data, size_t data_len);
 int isochron_update_mid(int fd, enum isochron_management_id mid,
 			void *data, size_t data_len);
+
+static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
+{
+	return tlv + 1;
+}
+
+typedef int isochron_tlv_cb_t(void *priv, struct isochron_tlv *tlv);
+int isochron_mgmt_event(int fd, void *priv, isochron_tlv_cb_t get_cb,
+			isochron_tlv_cb_t set_cb, bool *socket_closed);
+
+int isochron_forward_log(int fd, struct isochron_log *log, size_t size);
+int isochron_forward_sysmon_offset(int fd, struct sysmon *sysmon);
+int isochron_forward_ptpmon_offset(int fd, struct ptpmon *ptpmon);
+int isochron_forward_utc_offset(int fd, struct ptpmon *ptpmon, int *utc_offset);
+int isochron_forward_port_state(int fd, struct ptpmon *ptpmon,
+				const char *if_name, struct mnl_socket *rtnl);
+int isochron_forward_gm_clock_identity(int fd, struct ptpmon *ptpmon);
 
 #endif
