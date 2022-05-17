@@ -158,6 +158,37 @@ int isochron_query_mid(int fd, enum isochron_management_id mid,
 	return 0;
 }
 
+int isochron_mgmt_tlv_set(int fd, struct isochron_tlv *tlv, void *priv,
+			  enum isochron_management_id mid,
+			  size_t struct_size, isochron_mgmt_tlv_set_cb_t cb)
+{
+	size_t tlv_len = __be32_to_cpu(tlv->length_field);
+	int rc;
+
+	if (tlv_len != struct_size) {
+		fprintf(stderr,
+			"Expected %zu bytes for SET of MID %d, got %zu\n",
+			struct_size, mid, tlv_len);
+		isochron_send_empty_tlv(fd, mid);
+		return 0;
+	}
+
+	rc = cb(priv, isochron_tlv_data(tlv));
+	if (rc) {
+		isochron_send_empty_tlv(fd, mid);
+		return 0;
+	}
+
+	/* Echo back the TLV data as ack */
+	rc = isochron_send_tlv(fd, ISOCHRON_RESPONSE, mid, struct_size);
+	if (rc)
+		return rc;
+
+	write_exact(fd, isochron_tlv_data(tlv), struct_size);
+
+	return 0;
+}
+
 static int isochron_update_mid(int fd, enum isochron_management_id mid,
 			       void *data, size_t data_len)
 {

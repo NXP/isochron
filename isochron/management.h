@@ -101,8 +101,13 @@ static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 }
 
 typedef int isochron_tlv_cb_t(void *priv, struct isochron_tlv *tlv);
+typedef int isochron_mgmt_tlv_set_cb_t(void *priv, void *ptr);
+
 int isochron_mgmt_event(int fd, void *priv, isochron_tlv_cb_t get_cb,
 			isochron_tlv_cb_t set_cb, bool *socket_closed);
+int isochron_mgmt_tlv_set(int fd, struct isochron_tlv *tlv, void *priv,
+			  enum isochron_management_id mid,
+			  size_t struct_size, isochron_mgmt_tlv_set_cb_t cb);
 
 int isochron_forward_log(int fd, struct isochron_log *log, size_t size);
 int isochron_forward_sysmon_offset(int fd, struct sysmon *sysmon);

@@ -361,21 +361,12 @@ static int prog_forward_destination_mac(struct isochron_rcv *prog)
 	return 0;
 }
 
-static int prog_set_packet_count(struct isochron_rcv *prog,
-				 struct isochron_packet_count *packet_count,
-				 size_t struct_size)
+static int prog_set_packet_count(void *priv, void *ptr)
 {
+	struct isochron_packet_count *packet_count = ptr;
+	struct isochron_rcv *prog = priv;
 	size_t iterations;
 	int rc;
-
-	if (struct_size != sizeof(*packet_count)) {
-		fprintf(stderr,
-			"Expected %zu bytes for PACKET_COUNT command, got %zu\n",
-			sizeof(*packet_count), struct_size);
-		isochron_send_empty_tlv(prog->stats_fd,
-					ISOCHRON_MID_PACKET_COUNT);
-		return 0;
-	}
 
 	iterations = __be64_to_cpu(packet_count->count);
 
@@ -385,9 +376,7 @@ static int prog_set_packet_count(struct isochron_rcv *prog,
 	if (rc) {
 		pr_err(rc, "Could not allocate memory for %zu iterations: %m\n",
 		       iterations);
-		isochron_send_empty_tlv(prog->stats_fd,
-					ISOCHRON_MID_PACKET_COUNT);
-		return 0;
+		return -ENOMEM;
 	}
 
 	prog->iterations = iterations;
@@ -396,18 +385,8 @@ static int prog_set_packet_count(struct isochron_rcv *prog,
 	rc = prog_rearm_data_timeout_fd(prog);
 	if (rc) {
 		pr_err(rc, "Could not arm timeout timer: %m\n");
-		isochron_send_empty_tlv(prog->stats_fd,
-					ISOCHRON_MID_PACKET_COUNT);
-		return 0;
+		return rc;
 	}
-
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
-			       ISOCHRON_MID_PACKET_COUNT,
-			       sizeof(*packet_count));
-	if (rc)
-		return 0;
-
-	write_exact(prog->stats_fd, packet_count, sizeof(*packet_count));
 
 	return 0;
 }
@@ -416,11 +395,13 @@ static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
 	struct isochron_rcv *prog = priv;
+	int fd = prog->stats_fd;
 
 	switch (mid) {
 	case ISOCHRON_MID_PACKET_COUNT:
-		return prog_set_packet_count(prog, isochron_tlv_data(tlv),
-					     __be32_to_cpu(tlv->length_field));
+		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+					     sizeof(struct isochron_packet_count),
+					     prog_set_packet_count);
 	default:
 		isochron_send_empty_tlv(prog->stats_fd, mid);
 		return 0;
