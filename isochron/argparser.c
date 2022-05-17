@@ -8,6 +8,77 @@
 #include "argparser.h"
 #include "common.h"
 
+int string_replace_escape_sequences(char *str)
+{
+	char *end_ptr = str + strlen(str);
+	char code, replacement;
+	const char *p = str;
+	char *backslash;
+
+	while ((backslash = strchr(p, '\\')) != NULL) {
+		if (backslash + 1 >= end_ptr) {
+			fprintf(stderr,
+				"Illegal backslash placement at the end of the printf format\n");
+			return -EINVAL;
+		}
+
+		code = *(backslash + 1);
+		switch (code) {
+		case 'a': /* alert (beep) */
+			replacement = '\a';
+			break;
+		case '\\': /* backslash */
+			replacement = '\\';
+			break;
+		case 'b': /* backspace */
+			replacement = '\b';
+			break;
+		case 'r': /* carriage return */
+			replacement = '\r';
+			break;
+		case '"': /* double quote */
+			replacement = '"';
+			break;
+		case 'f': /* formfeed */
+			replacement = '\f';
+			break;
+		case 't': /* horizontal tab */
+			replacement = '\t';
+			break;
+		case 'n': /* newline */
+			replacement = '\n';
+			break;
+		case '0': /* null character */
+			replacement = '\0';
+			break;
+		case '\'': /* single quote */
+			replacement = '\'';
+			break;
+		case 'v': /* vertical tab */
+			replacement = '\v';
+			break;
+		case '?': /* question mark */
+			replacement = '\?';
+			break;
+		default:
+			fprintf(stderr,
+				"Unrecognized escape sequence %c\n", code);
+			return -EINVAL;
+		}
+
+		*backslash = replacement;
+		memmove(backslash + 1, backslash + 2,
+			end_ptr - (backslash + 2));
+
+		p = backslash + 1;
+		end_ptr--;
+	}
+
+	*end_ptr = '\0';
+
+	return 0;
+}
+
 static int mac_addr_from_string(unsigned char *to, char *from)
 {
 	unsigned long byte;

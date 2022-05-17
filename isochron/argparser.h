@@ -103,4 +103,6 @@ int prog_parse_np_args(int argc, char **argv,
 void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
+int string_replace_escape_sequences(char *str);
+
 #endif

@@ -123,80 +123,6 @@ static int prog_parse_args(int argc, char **argv, struct isochron_report *prog)
 	return 0;
 }
 
-/* Replacing the escape sequences does not need to be done per packet, so do it
- * once before passing the printf format specifier to the log.
- */
-static int prog_replace_escape_sequences(char *printf_fmt)
-{
-	char *fmt_end_ptr = printf_fmt + strlen(printf_fmt);
-	const char *fmt_ptr = printf_fmt;
-	char code, replacement;
-	char *backslash;
-
-	while ((backslash = strchr(fmt_ptr, '\\')) != NULL) {
-		if (backslash + 1 >= fmt_end_ptr) {
-			fprintf(stderr,
-				"Illegal backslash placement at the end of the printf format\n");
-			return -EINVAL;
-		}
-
-		code = *(backslash + 1);
-		switch (code) {
-		case 'a': /* alert (beep) */
-			replacement = '\a';
-			break;
-		case '\\': /* backslash */
-			replacement = '\\';
-			break;
-		case 'b': /* backspace */
-			replacement = '\b';
-			break;
-		case 'r': /* carriage return */
-			replacement = '\r';
-			break;
-		case '"': /* double quote */
-			replacement = '"';
-			break;
-		case 'f': /* formfeed */
-			replacement = '\f';
-			break;
-		case 't': /* horizontal tab */
-			replacement = '\t';
-			break;
-		case 'n': /* newline */
-			replacement = '\n';
-			break;
-		case '0': /* null character */
-			replacement = '\0';
-			break;
-		case '\'': /* single quote */
-			replacement = '\'';
-			break;
-		case 'v': /* vertical tab */
-			replacement = '\v';
-			break;
-		case '?': /* question mark */
-			replacement = '\?';
-			break;
-		default:
-			fprintf(stderr,
-				"Unrecognized escape sequence %c\n", code);
-			return -EINVAL;
-		}
-
-		*backslash = replacement;
-		memmove(backslash + 1, backslash + 2,
-			fmt_end_ptr - (backslash + 2));
-
-		fmt_ptr = backslash + 1;
-		fmt_end_ptr--;
-	}
-
-	*fmt_end_ptr = '\0';
-
-	return 0;
-}
-
 int isochron_report_main(int argc, char *argv[])
 {
 	struct isochron_report prog = {0};
@@ -206,7 +132,10 @@ int isochron_report_main(int argc, char *argv[])
 	if (rc)
 		return rc;
 
-	rc = prog_replace_escape_sequences(prog.printf_fmt);
+	/* Replacing the escape sequences does not need to be done per packet,
+	 * so do it once before passing the printf format specifier to the log.
+	 */
+	rc = string_replace_escape_sequences(prog.printf_fmt);
 	if (rc)
 		return rc;
 
