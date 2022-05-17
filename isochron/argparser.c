@@ -172,7 +172,7 @@ static int mac_addr_from_string(unsigned char *to, char *from)
 	return 0;
 }
 
-static int ip_addr_from_string(const char *string, struct ip_address *ip)
+int ip_addr_from_string(const char *string, struct ip_address *ip)
 {
 	char *percent, *if_name;
 	size_t len;

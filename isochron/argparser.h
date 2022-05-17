@@ -106,5 +106,6 @@ void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 int string_replace_escape_sequences(char *str);
 char *string_trim_whitespaces(char *str);
 char *string_trim_comments(char *str);
+int ip_addr_from_string(const char *string, struct ip_address *ip);
 
 #endif
