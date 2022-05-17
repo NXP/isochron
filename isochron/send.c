@@ -1549,10 +1549,6 @@ static int prog_init(struct isochron_send *prog)
 {
 	int rc;
 
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		goto out;
-
 	prog->clkid = CLOCK_TAI;
 
 	rc = prog_rtnl_open(prog);
@@ -2143,6 +2139,10 @@ int isochron_send_main(int argc, char *argv[])
 	struct isochron_send prog = {0};
 	bool sync_ok;
 	int rc;
+
+	rc = isochron_handle_signals(sig_handler);
+	if (rc)
+		return rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)
