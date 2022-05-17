@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright 2019-2021 NXP */
+#include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -80,6 +81,76 @@ int string_replace_escape_sequences(char *str)
 	*end_ptr = '\0';
 
 	return 0;
+}
+
+char *string_trim_whitespaces(char *str)
+{
+	size_t len;
+	char *end;
+
+	/* Trim leading space */
+	while (isspace(*str))
+		str++;
+
+	/* All spaces? */
+	len = strlen(str);
+	if (!len)
+		return str;
+
+	/* Trim trailing space */
+	end = str + len - 1;
+	while (end > str && isspace(*end))
+		end--;
+
+	/* Write new null terminator */
+	*(end + 1) = 0;
+	return str;
+}
+
+char *string_trim_comments(char *str)
+{
+	char *pound, *single_quote, *double_quote, *first_quote, *next_quote;
+	char *substr = str;
+
+	while (strlen(substr)) {
+		pound = strchr(substr, '#');
+		if (!pound)
+			break;
+
+		single_quote = strchr(substr, '\'');
+		double_quote = strchr(substr, '"');
+
+		if (!single_quote && !double_quote) {
+			/* We have a comment and no quotes,
+			 * strip the rest of the line
+			 */
+			*pound = 0;
+			break;
+		} else if (single_quote && !double_quote) {
+			first_quote = single_quote;
+		} else if (!single_quote && double_quote) {
+			first_quote = double_quote;
+		} else {
+			/* We have both kinds of quotes, choose the first one */
+			if (single_quote - substr < double_quote - substr)
+				first_quote = single_quote;
+			else
+				first_quote = double_quote;
+		}
+
+		next_quote = strchr(first_quote + 1, *first_quote);
+		if (!next_quote) {
+			fprintf(stderr, "Unterminated quoted string: \"%s\"\n",
+				str);
+			*pound = 0;
+			break;
+		}
+
+		/* Continue the search after the closing quote */
+		substr = next_quote + 1;
+	}
+
+	return str;
 }
 
 static int mac_addr_from_string(unsigned char *to, char *from)

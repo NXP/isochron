@@ -104,5 +104,7 @@ void prog_usage(const char *prog_name, struct prog_arg *prog_args,
 		int prog_args_size);
 
 int string_replace_escape_sequences(char *str);
+char *string_trim_whitespaces(char *str);
+char *string_trim_comments(char *str);
 
 #endif
