@@ -49,13 +49,13 @@ LDFLAGS += $(LIBMNL_LDFLAGS)
 
 TARGET := isochron/isochron
 
+all: isochron man pdf
+
 isochron: $(TARGET)
 
 man: $(manpages)
 
 pdf: $(pdf_docs)
-
-all: isochron man pdf
 
 docs/man/%: docs/%.md
 	@mkdir -p $(@D)
