@@ -7,6 +7,8 @@
 #include "common.h"
 #include "rtnl.h"
 
+#define SOCKET_BUFFER_SIZE 8192
+
 struct vlan_info {
 	const char *kind;
 	__u32 link_ifindex;
@@ -123,7 +125,7 @@ static int rtnl_parse_ifindex_nlh(const struct nlmsghdr *nlh, void *data)
 static int rtnl_getlink_by_ifname(struct mnl_socket *rtnl, const char *ifname,
 				  mnl_cb_t cb, void *data)
 {
-	char buf[MNL_SOCKET_BUFFER_SIZE];
+	char buf[SOCKET_BUFFER_SIZE];
 	struct ifinfomsg *ifm;
 	struct nlmsghdr *nlh;
 	__u32 seq, portid;
@@ -164,7 +166,7 @@ static int rtnl_getlink_by_ifname(struct mnl_socket *rtnl, const char *ifname,
 static int rtnl_getlink_by_ifindex(struct mnl_socket *rtnl, int ifindex,
 				   mnl_cb_t cb, void *data)
 {
-	char buf[MNL_SOCKET_BUFFER_SIZE];
+	char buf[SOCKET_BUFFER_SIZE];
 	struct ifinfomsg *ifm;
 	struct nlmsghdr *nlh;
 	__u32 seq, portid;
