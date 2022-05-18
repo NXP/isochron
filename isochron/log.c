@@ -865,6 +865,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 	struct isochron_send_pkt_data *pkt_arr;
 	struct isochron_stats stats = {0};
 	struct isochron_metric_stats ms;
+	__u64 not_received = 0;
 	size_t pkt_arr_size;
 	__u32 seqid;
 	int rc = 0;
@@ -898,6 +899,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 		if (!rcv_pkt) {
 			rcv_pkt = &dummy_rcv_pkt;
 			missing = true;
+			not_received++;
 		}
 
 		isochron_printf_vars_get(send_pkt, rcv_pkt, base_time,
@@ -914,6 +916,11 @@ int isochron_print_stats(struct isochron_log *send_log,
 
 	if (!summary)
 		return 0;
+
+	if (not_received) {
+		printf("Packets not received: %llu (%.3lf%%)\n", not_received,
+		       100.0f * not_received / pkt_arr_size);
+	}
 
 	if (!stats.frame_count) {
 		printf("Could not calculate statistics, no packets were received\n");
