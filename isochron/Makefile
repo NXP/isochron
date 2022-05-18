@@ -44,7 +44,7 @@ ifeq (, $(LIBMNL_CFLAGS)$(LIBMNL_LDFLAGS))
 $(error pkg-config could not find libmnl)
 endif
 
-CFLAGS  += $(LIBMNL_CFLAGS)
+MY_CFLAGS += $(LIBMNL_CFLAGS)
 LDFLAGS += $(LIBMNL_LDFLAGS)
 
 TARGET := isochron/isochron
@@ -72,9 +72,9 @@ isochron/isochron: $(objs)
 	$(CC) $^ -o $@ $(LDFLAGS) -lm -pthread
 
 %.o: %.c
-	$(CC) $(CFLAGS) -MMD -c $< -o $@
+	$(CC) $(MY_CFLAGS) -MMD -c $< -o $@
 ifeq ($(C),1)
-	$(CHECK) $(CHECKFLAGS) $(CFLAGS) $<
+	$(CHECK) $(CHECKFLAGS) $(MY_CFLAGS) $<
 endif
 
 clean:

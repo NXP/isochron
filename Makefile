@@ -1,7 +1,7 @@
 VERSION := $(shell ./setlocalversion)
-CFLAGS := -DVERSION=\"${VERSION}\" $(EXTRA_CFLAGS)
-CFLAGS += -Wall -Wextra -Werror -Wno-error=sign-compare
-CFLAGS += $(shell ./toolchain_deps.sh "$(CC)" "$(CFLAGS)")
+MY_CFLAGS := -DVERSION=\"${VERSION}\" $(CFLAGS)
+MY_CFLAGS += -Wall -Wextra -Werror -Wno-error=sign-compare
+MY_CFLAGS += $(shell ./toolchain_deps.sh "$(CC)" "$(MY_CFLAGS)")
 CHECK := sparse
 CHECKFLAGS := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 	      -Wbitwise -Wno-return-void -Wno-unknown-attribute $(CF)
