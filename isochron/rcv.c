@@ -344,7 +344,7 @@ static int prog_forward_gm_clock_identity(struct isochron_rcv *prog)
 
 static int prog_forward_destination_mac(struct isochron_rcv *prog)
 {
-	struct isochron_destination_mac mac;
+	struct isochron_mac_addr mac;
 	int rc;
 
 	memset(&mac, 0, sizeof(mac));

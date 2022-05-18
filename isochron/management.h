@@ -81,7 +81,7 @@ struct isochron_packet_count {
 };
 
 /* ISOCHRON_MID_DESTINATION_MAC */
-struct isochron_destination_mac {
+struct isochron_mac_addr {
 	unsigned char		addr[ETH_ALEN];
 	__u8			reserved[2];
 } __attribute((packed));

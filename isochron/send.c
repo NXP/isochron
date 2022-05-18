@@ -775,7 +775,7 @@ static int prog_query_utc_offset(struct isochron_send *prog)
 
 static int prog_query_dest_mac(struct isochron_send *prog)
 {
-	struct isochron_destination_mac mac;
+	struct isochron_mac_addr mac;
 	char mac_buf[MACADDR_BUFSIZ];
 	int rc;
 
