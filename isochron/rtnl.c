@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <string.h>
 #include "common.h"
+#include "rtnl.h"
 
 struct vlan_info {
 	const char *kind;
