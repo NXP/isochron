@@ -99,74 +99,6 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 	return base_time + (n + 1) * cycle_time;
 }
 
-static int prog_collect_receiver_sync_stats(struct isochron_send *prog,
-					    bool *have_remote_stats,
-					    __s64 *sysmon_offset,
-					    __s64 *ptpmon_offset,
-					    int *utc_offset,
-					    enum port_state *port_state,
-					    struct clock_identity *gm_clkid)
-{
-	struct isochron_gm_clock_identity gm;
-	struct isochron_sysmon_offset sysmon;
-	struct isochron_ptpmon_offset ptpmon;
-	struct isochron_port_state state;
-	struct isochron_utc_offset utc;
-	int fd = prog->stats_fd;
-	int rc;
-
-	if (!prog->stats_srv.family) {
-		*have_remote_stats = false;
-		return 0;
-	}
-
-	*have_remote_stats = true;
-
-	rc = isochron_query_mid(fd, ISOCHRON_MID_SYSMON_OFFSET, &sysmon,
-				sizeof(sysmon));
-	if (rc) {
-		fprintf(stderr, "sysmon offset missing from receiver reply\n");
-		return rc;
-	}
-
-	rc = isochron_query_mid(fd, ISOCHRON_MID_PTPMON_OFFSET, &ptpmon,
-				sizeof(ptpmon));
-	if (rc) {
-		fprintf(stderr, "ptpmon offset missing from receiver reply\n");
-		return rc;
-	}
-
-	rc = isochron_query_mid(fd, ISOCHRON_MID_UTC_OFFSET, &utc,
-				sizeof(utc));
-	if (rc) {
-		fprintf(stderr, "UTC offset missing from receiver reply\n");
-		return rc;
-	}
-
-	rc = isochron_query_mid(fd, ISOCHRON_MID_PORT_STATE, &state,
-				sizeof(state));
-	if (rc) {
-		fprintf(stderr, "port state missing from receiver reply\n");
-		return rc;
-	}
-
-	rc = isochron_query_mid(fd, ISOCHRON_MID_GM_CLOCK_IDENTITY, &gm,
-				sizeof(gm));
-	if (rc) {
-		fprintf(stderr, "GM clock identity missing from receiver reply: %d\n",
-			rc);
-		return rc;
-	}
-
-	*sysmon_offset = __be64_to_cpu(sysmon.offset);
-	*ptpmon_offset = __be64_to_cpu(ptpmon.offset);
-	*utc_offset = __be16_to_cpu(utc.offset);
-	*port_state = state.state;
-	memcpy(gm_clkid, &gm.clock_identity, sizeof(*gm_clkid));
-
-	return 0;
-}
-
 static int prog_init_stats_socket(struct isochron_send *prog)
 {
 	struct sockaddr_in6 serv_addr6;
@@ -685,8 +617,8 @@ static bool prog_sync_ok(struct isochron_send *prog)
 	__s64 sysmon_offset, sysmon_delay;
 	struct parent_data_set parent_ds;
 	char now_buf[TIMESPEC_BUFSIZ];
+	bool have_remote_stats = true;
 	struct current_ds current_ds;
-	bool have_remote_stats;
 	__s64 ptpmon_offset;
 	int rcv_utc_offset;
 	__u64 sysmon_ts;
@@ -695,15 +627,15 @@ static bool prog_sync_ok(struct isochron_send *prog)
 	if (!prog->ptpmon)
 		return true;
 
-	if (prog->omit_remote_sync) {
+	if (prog->omit_remote_sync || !prog->stats_srv.family) {
 		have_remote_stats = false;
 	} else {
-		rc = prog_collect_receiver_sync_stats(prog, &have_remote_stats,
-						      &rcv_sysmon_offset,
-						      &rcv_ptpmon_offset,
-						      &rcv_utc_offset,
-						      &remote_port_state,
-						      &rcv_gm_clkid);
+		rc = isochron_collect_sync_stats(prog->stats_fd,
+						 &rcv_sysmon_offset,
+						 &rcv_ptpmon_offset,
+						 &rcv_utc_offset,
+						 &remote_port_state,
+						 &rcv_gm_clkid);
 		if (rc)
 			return false;
 	}

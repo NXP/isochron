@@ -539,3 +539,61 @@ int isochron_forward_gm_clock_identity(int fd, struct ptpmon *ptpmon)
 
 	return 0;
 }
+
+int isochron_collect_sync_stats(int fd, __s64 *sysmon_offset,
+				__s64 *ptpmon_offset, int *utc_offset,
+				enum port_state *port_state,
+				struct clock_identity *gm_clkid)
+{
+	struct isochron_gm_clock_identity gm;
+	struct isochron_sysmon_offset sysmon;
+	struct isochron_ptpmon_offset ptpmon;
+	struct isochron_port_state state;
+	struct isochron_utc_offset utc;
+	int rc;
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_SYSMON_OFFSET, &sysmon,
+				sizeof(sysmon));
+	if (rc) {
+		fprintf(stderr, "sysmon offset missing from mgmt reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_PTPMON_OFFSET, &ptpmon,
+				sizeof(ptpmon));
+	if (rc) {
+		fprintf(stderr, "ptpmon offset missing from mgmt reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_UTC_OFFSET, &utc,
+				sizeof(utc));
+	if (rc) {
+		fprintf(stderr, "UTC offset missing from mgmt reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_PORT_STATE, &state,
+				sizeof(state));
+	if (rc) {
+		fprintf(stderr, "port state missing from mgmt reply\n");
+		return rc;
+	}
+
+	rc = isochron_query_mid(fd, ISOCHRON_MID_GM_CLOCK_IDENTITY, &gm,
+				sizeof(gm));
+	if (rc) {
+		fprintf(stderr,
+			"GM clock identity missing from mgmt reply: %d\n",
+			rc);
+		return rc;
+	}
+
+	*sysmon_offset = __be64_to_cpu(sysmon.offset);
+	*ptpmon_offset = __be64_to_cpu(ptpmon.offset);
+	*utc_offset = __be16_to_cpu(utc.offset);
+	*port_state = state.state;
+	memcpy(gm_clkid, &gm.clock_identity, sizeof(*gm_clkid));
+
+	return 0;
+}

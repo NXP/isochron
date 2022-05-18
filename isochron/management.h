@@ -117,4 +117,9 @@ int isochron_forward_port_state(int fd, struct ptpmon *ptpmon,
 				const char *if_name, struct mnl_socket *rtnl);
 int isochron_forward_gm_clock_identity(int fd, struct ptpmon *ptpmon);
 
+int isochron_collect_sync_stats(int fd, __s64 *sysmon_offset,
+				__s64 *ptpmon_offset, int *utc_offset,
+				enum port_state *port_state,
+				struct clock_identity *gm_clkid);
+
 #endif
