@@ -936,21 +936,18 @@ int isochron_print_stats(struct isochron_log *send_log,
 		printf("Sender PHC not synchronized (mean PHC to system time "
 		       "diff %.3lf ns larger than 1 second)\n",
 		       stats.tx_sync_offset_mean);
-		goto out;
 	}
 	if (llabs((long long)stats.rx_sync_offset_mean) > NSEC_PER_SEC &&
 	    !omit_sync) {
 		printf("Receiver PHC not synchronized (mean PHC to system time "
 		       "diff %.3lf ns larger than 1 second)\n",
 		       stats.rx_sync_offset_mean);
-		goto out;
 	}
 	if (llabs((long long)stats.path_delay_mean) > NSEC_PER_SEC &&
 	    !omit_sync) {
 		printf("Sender and receiver not synchronized (mean path delay "
 		       "%.3lf ns larger than 1 second)\n",
 		       stats.path_delay_mean);
-		goto out;
 	}
 
 	printf("Summary:\n");
