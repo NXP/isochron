@@ -4,7 +4,9 @@
 #define _ISOCHRON_MANAGEMENT_H
 
 #include <linux/types.h>
+#include <net/if.h>
 #include <netinet/ether.h>
+#include <linux/un.h>
 #include "log.h"
 #include "ptpmon.h"
 #include "sysmon.h"
@@ -22,12 +24,56 @@ enum isochron_management_id {
 	ISOCHRON_MID_GM_CLOCK_IDENTITY,
 	ISOCHRON_MID_PACKET_COUNT,
 	ISOCHRON_MID_DESTINATION_MAC,
+	ISOCHRON_MID_SOURCE_MAC,
+	ISOCHRON_MID_NODE_ROLE,
+	ISOCHRON_MID_PACKET_SIZE,
+	ISOCHRON_MID_IF_NAME,
+	ISOCHRON_MID_PRIORITY,
+	ISOCHRON_MID_STATS_PORT,
+	ISOCHRON_MID_BASE_TIME,
+	ISOCHRON_MID_ADVANCE_TIME,
+	ISOCHRON_MID_SHIFT_TIME,
+	ISOCHRON_MID_CYCLE_TIME,
+	ISOCHRON_MID_WINDOW_SIZE,
+	ISOCHRON_MID_SYSMON_ENABLED,
+	ISOCHRON_MID_PTPMON_ENABLED,
+	ISOCHRON_MID_UDS,
+	ISOCHRON_MID_DOMAIN_NUMBER,
+	ISOCHRON_MID_TRANSPORT_SPECIFIC,
+	ISOCHRON_MID_NUM_READINGS,
+	ISOCHRON_MID_TS_ENABLED,
+	ISOCHRON_MID_VID,
+	ISOCHRON_MID_ETHERTYPE,
+	ISOCHRON_MID_QUIET_ENABLED,
+	ISOCHRON_MID_TAPRIO_ENABLED,
+	ISOCHRON_MID_TXTIME_ENABLED,
+	ISOCHRON_MID_DEADLINE_ENABLED,
+	ISOCHRON_MID_IP_DESTINATION,
+	ISOCHRON_MID_L2_ENABLED,
+	ISOCHRON_MID_L4_ENABLED,
+	ISOCHRON_MID_DATA_PORT,
+	ISOCHRON_MID_SCHED_FIFO_ENABLED,
+	ISOCHRON_MID_SCHED_RR_ENABLED,
+	ISOCHRON_MID_SCHED_PRIORITY,
+	ISOCHRON_MID_CPU_MASK,
+	ISOCHRON_MID_TEST_STATE,
+	ISOCHRON_MID_SYNC_MONITOR_ENABLED,
 };
 
 enum isochron_management_action {
 	ISOCHRON_GET = 0,
 	ISOCHRON_SET,
 	ISOCHRON_RESPONSE,
+};
+
+enum isochron_role {
+	ISOCHRON_ROLE_SEND,
+	ISOCHRON_ROLE_RCV,
+};
+
+enum test_state {
+	ISOCHRON_TEST_STATE_IDLE,
+	ISOCHRON_TEST_STATE_RUNNING,
 };
 
 enum isochron_tlv_type {
@@ -81,9 +127,118 @@ struct isochron_packet_count {
 };
 
 /* ISOCHRON_MID_DESTINATION_MAC */
+/* ISOCHRON_MID_SOURCE_MAC */
 struct isochron_mac_addr {
 	unsigned char		addr[ETH_ALEN];
 	__u8			reserved[2];
+} __attribute((packed));
+
+/* ISOCHRON_MID_NODE_ROLE */
+struct isochron_node_role {
+	__be32			role;
+} __attribute((packed));
+
+/* ISOCHRON_MID_PACKET_SIZE */
+struct isochron_packet_size {
+	__be32			size;
+} __attribute((packed));
+
+/* ISOCHRON_MID_IF_NAME */
+struct isochron_if_name {
+	char			name[IFNAMSIZ];
+} __attribute((packed));
+
+/* ISOCHRON_MID_PRIORITY */
+struct isochron_priority {
+	__be32			priority;
+} __attribute((packed));
+
+/* ISOCHRON_MID_STATS_PORT */
+/* ISOCHRON_MID_DATA_PORT */
+struct isochron_port {
+	__be16			port;
+} __attribute((packed));
+
+/* ISOCHRON_MID_BASE_TIME */
+/* ISOCHRON_MID_ADVANCE_TIME */
+/* ISOCHRON_MID_SHIFT_TIME */
+/* ISOCHRON_MID_CYCLE_TIME */
+/* ISOCHRON_MID_WINDOW_SIZE */
+struct isochron_time {
+	__be64			time;
+} __attribute((packed));
+
+/* ISOCHRON_MID_SYSMON_ENABLED */
+/* ISOCHRON_MID_PTPMON_ENABLED */
+/* ISOCHRON_MID_TS_ENABLED */
+/* ISOCHRON_MID_QUIET_ENABLED */
+/* ISOCHRON_MID_TAPRIO_ENABLED */
+/* ISOCHRON_MID_TXTIME_ENABLED */
+/* ISOCHRON_MID_DEADLINE_ENABLED */
+/* ISOCHRON_MID_L2_ENABLED */
+/* ISOCHRON_MID_L4_ENABLED */
+/* ISOCHRON_MID_SCHED_FIFO_ENABLED */
+/* ISOCHRON_MID_SCHED_RR_ENABLED */
+struct isochron_feature_enabled {
+	__u8			enabled;
+	__u8			reserved[3];
+} __attribute((packed));
+
+/* ISOCHRON_MID_UDS */
+struct isochron_uds {
+	char			name[UNIX_PATH_MAX];
+} __attribute((packed));
+
+/* ISOCHRON_MID_DOMAIN_NUMBER */
+struct isochron_domain_number {
+	__u8			domain_number;
+	__u8			reserved[3];
+} __attribute((packed));
+
+/* ISOCHRON_MID_TRANSPORT_SPECIFIC */
+struct isochron_transport_specific {
+	__u8			transport_specific;
+	__u8			reserved[3];
+} __attribute((packed));
+
+/* ISOCHRON_MID_NUM_READINGS */
+struct isochron_num_readings {
+	__be32			num_readings;
+} __attribute((packed));
+
+/* ISOCHRON_MID_VID */
+struct isochron_vid {
+	__be16			vid;
+	__u8			reserved[2];
+} __attribute((packed));
+
+/* ISOCHRON_MID_ETHERTYPE */
+struct isochron_ethertype {
+	__be16			ethertype;
+	__u8			reserved[2];
+} __attribute((packed));
+
+/* ISOCHRON_MID_IP_DESTINATION */
+struct isochron_ip_address {
+	__be32			family;
+	__u8			addr[16];
+	char			bound_if_name[IFNAMSIZ];
+} __attribute((packed));
+
+/* ISOCHRON_MID_SCHED_PRIORITY */
+struct isochron_sched_priority {
+	__be32			sched_priority;
+} __attribute((packed));
+
+/* ISOCHRON_MID_CPU_MASK */
+struct isochron_cpu_mask {
+	__be64			cpu_mask;
+} __attribute((packed));
+
+/* ISOCHRON_MID_TEST_STATE */
+struct isochron_test_state {
+	__u8			test_state;
+	__u8			reserved[3];
 } __attribute((packed));
 
 int isochron_send_tlv(int fd, enum isochron_management_action action,
@@ -94,6 +249,42 @@ int isochron_query_mid(int fd, enum isochron_management_id mid,
 		       void *data, size_t data_len);
 
 int isochron_update_packet_count(int fd, long count);
+int isochron_update_packet_size(int fd, int size);
+int isochron_update_destination_mac(int fd, unsigned char *addr);
+int isochron_update_source_mac(int fd, unsigned char *addr);
+int isochron_update_node_role(int fd, enum isochron_role role);
+int isochron_update_if_name(int fd, const char *if_name);
+int isochron_update_priority(int fd, int priority);
+int isochron_update_stats_port(int fd, __u16 port);
+int isochron_update_base_time(int fd, __u64 base_time);
+int isochron_update_advance_time(int fd, __u64 advance_time);
+int isochron_update_shift_time(int fd, __u64 shift_time);
+int isochron_update_cycle_time(int fd, __u64 cycle_time);
+int isochron_update_window_size(int fd, __u64 window_time);
+int isochron_update_domain_number(int fd, int domain_number);
+int isochron_update_transport_specific(int fd, int transport_specific);
+int isochron_update_uds(int fd, const char *uds_remote);
+int isochron_update_num_readings(int fd, int num_readings);
+int isochron_update_sysmon_enabled(int fd, bool enabled);
+int isochron_update_ptpmon_enabled(int fd, bool enabled);
+int isochron_update_sync_monitor_enabled(int fd, bool enabled);
+int isochron_update_ts_enabled(int fd, bool enabled);
+int isochron_update_vid(int fd, __u16 vid);
+int isochron_update_ethertype(int fd, __u16 etype);
+int isochron_update_quiet_enabled(int fd, bool enabled);
+int isochron_update_taprio_enabled(int fd, bool enabled);
+int isochron_update_txtime_enabled(int fd, bool enabled);
+int isochron_update_deadline_enabled(int fd, bool enabled);
+int isochron_update_utc_offset(int fd, int offset);
+int isochron_update_ip_destination(int fd, struct ip_address *addr);
+int isochron_update_l2_enabled(int fd, bool enabled);
+int isochron_update_l4_enabled(int fd, bool enabled);
+int isochron_update_data_port(int fd, __u16 port);
+int isochron_update_sched_fifo(int fd, bool enabled);
+int isochron_update_sched_rr(int fd, bool enabled);
+int isochron_update_sched_priority(int fd, int priority);
+int isochron_update_cpu_mask(int fd, unsigned long cpumask);
+int isochron_update_test_state(int fd, enum test_state state);
 
 static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 {
@@ -115,6 +306,7 @@ int isochron_forward_ptpmon_offset(int fd, struct ptpmon *ptpmon);
 int isochron_forward_utc_offset(int fd, struct ptpmon *ptpmon, int *utc_offset);
 int isochron_forward_port_state(int fd, struct ptpmon *ptpmon,
 				const char *if_name, struct mnl_socket *rtnl);
+int isochron_forward_test_state(int fd, enum test_state state);
 int isochron_forward_gm_clock_identity(int fd, struct ptpmon *ptpmon);
 
 int isochron_collect_sync_stats(int fd, __s64 *sysmon_offset,

@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "argparser.h"
 #include "common.h"
 #include "management.h"
 #include "ptpmon.h"
@@ -306,6 +307,356 @@ int isochron_update_packet_count(int fd, long count)
 				   &packet_count, sizeof(packet_count));
 }
 
+int isochron_update_packet_size(int fd, int size)
+{
+	struct isochron_packet_size p = {
+		.size = __cpu_to_be32(size),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_PACKET_SIZE,
+				   &p, sizeof(p));
+}
+
+int isochron_update_destination_mac(int fd, unsigned char *addr)
+{
+	struct isochron_mac_addr mac = {};
+
+	ether_addr_copy(mac.addr, addr);
+
+	return isochron_update_mid(fd, ISOCHRON_MID_DESTINATION_MAC, &mac,
+				   sizeof(mac));
+}
+
+int isochron_update_source_mac(int fd, unsigned char *addr)
+{
+	struct isochron_mac_addr mac = {};
+
+	ether_addr_copy(mac.addr, addr);
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SOURCE_MAC, &mac,
+				   sizeof(mac));
+}
+
+int isochron_update_node_role(int fd, enum isochron_role role)
+{
+	struct isochron_node_role r = {
+		.role = __cpu_to_be32(role),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_NODE_ROLE, &r, sizeof(r));
+}
+
+int isochron_update_if_name(int fd, const char *if_name)
+{
+	struct isochron_if_name ifn = {};
+
+	strcpy(ifn.name, if_name);
+
+	return isochron_update_mid(fd, ISOCHRON_MID_IF_NAME,
+				   &ifn, sizeof(ifn));
+}
+
+int isochron_update_priority(int fd, int priority)
+{
+	struct isochron_priority p = {
+		.priority = __cpu_to_be32(priority),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_PRIORITY, &p, sizeof(p));
+}
+
+int isochron_update_stats_port(int fd, __u16 port)
+{
+	struct isochron_port p = {
+		.port = __cpu_to_be16(port),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_STATS_PORT, &p, sizeof(p));
+}
+
+int isochron_update_base_time(int fd, __u64 base_time)
+{
+	struct isochron_time t = {
+		.time = __cpu_to_be64(base_time),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_BASE_TIME, &t, sizeof(t));
+}
+
+int isochron_update_advance_time(int fd, __u64 advance_time)
+{
+	struct isochron_time t = {
+		.time = __cpu_to_be64(advance_time),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_ADVANCE_TIME,
+				   &t, sizeof(t));
+}
+
+int isochron_update_shift_time(int fd, __u64 shift_time)
+{
+	struct isochron_time t = {
+		.time = __cpu_to_be64(shift_time),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SHIFT_TIME,
+				   &t, sizeof(t));
+}
+
+int isochron_update_cycle_time(int fd, __u64 cycle_time)
+{
+	struct isochron_time t = {
+		.time = __cpu_to_be64(cycle_time),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_CYCLE_TIME,
+				   &t, sizeof(t));
+}
+
+int isochron_update_window_size(int fd, __u64 window_time)
+{
+	struct isochron_time t = {
+		.time = __cpu_to_be64(window_time),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_WINDOW_SIZE,
+				   &t, sizeof(t));
+}
+
+int isochron_update_domain_number(int fd, int domain_number)
+{
+	struct isochron_domain_number d = {
+		.domain_number = domain_number,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_DOMAIN_NUMBER,
+				   &d, sizeof(d));
+}
+
+int isochron_update_transport_specific(int fd, int transport_specific)
+{
+	struct isochron_transport_specific t = {
+		.transport_specific = transport_specific,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_TRANSPORT_SPECIFIC,
+				   &t, sizeof(t));
+}
+
+int isochron_update_uds(int fd, const char *uds_remote)
+{
+	struct isochron_uds u = {};
+
+	strcpy(u.name, uds_remote);
+
+	return isochron_update_mid(fd, ISOCHRON_MID_UDS, &u, sizeof(u));
+}
+
+int isochron_update_num_readings(int fd, int num_readings)
+{
+	struct isochron_num_readings n = {
+		.num_readings = __cpu_to_be32(num_readings),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_NUM_READINGS,
+				   &n, sizeof(n));
+}
+
+int isochron_update_sysmon_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SYSMON_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_ptpmon_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_PTPMON_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_ts_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_TS_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_vid(int fd, __u16 vid)
+{
+	struct isochron_vid v = {
+		.vid = __cpu_to_be16(vid),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_VID, &v, sizeof(v));
+}
+
+int isochron_update_ethertype(int fd, __u16 ethertype)
+{
+	struct isochron_ethertype e = {
+		.ethertype = __cpu_to_be16(ethertype),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_ETHERTYPE, &e, sizeof(e));
+}
+
+int isochron_update_quiet_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_QUIET_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_taprio_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_TAPRIO_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_txtime_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_TXTIME_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_deadline_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_DEADLINE_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_utc_offset(int fd, int offset)
+{
+	struct isochron_utc_offset u = {
+		.offset = __cpu_to_be16(offset),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_UTC_OFFSET,
+				   &u, sizeof(u));
+}
+
+int isochron_update_ip_destination(int fd, struct ip_address *addr)
+{
+	struct isochron_ip_address i;
+
+	i.family = __cpu_to_be32(addr->family);
+	memcpy(i.addr, &addr->addr6, 16);
+	strcpy(i.bound_if_name, addr->bound_if_name);
+
+	return isochron_update_mid(fd, ISOCHRON_MID_IP_DESTINATION,
+				   &i, sizeof(i));
+}
+
+int isochron_update_l2_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_L2_ENABLED, &f, sizeof(f));
+}
+
+int isochron_update_l4_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_L4_ENABLED, &f, sizeof(f));
+}
+
+int isochron_update_data_port(int fd, __u16 port)
+{
+	struct isochron_port p = {
+		.port = __cpu_to_be16(port),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_DATA_PORT, &p, sizeof(p));
+}
+
+int isochron_update_sched_fifo(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SCHED_FIFO_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_sched_rr(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SCHED_RR_ENABLED,
+				   &f, sizeof(f));
+}
+
+int isochron_update_sched_priority(int fd, int priority)
+{
+	struct isochron_sched_priority p = {
+		.sched_priority = __cpu_to_be32(priority),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SCHED_PRIORITY,
+				   &p, sizeof(p));
+}
+
+int isochron_update_cpu_mask(int fd, unsigned long cpumask)
+{
+	struct isochron_cpu_mask c = {
+		.cpu_mask = __cpu_to_be64(cpumask),
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_CPU_MASK, &c, sizeof(c));
+}
+
+int isochron_update_test_state(int fd, enum test_state state)
+{
+	struct isochron_test_state t = {
+		.test_state = state,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_TEST_STATE, &t, sizeof(t));
+}
+
+int isochron_update_sync_monitor_enabled(int fd, bool enabled)
+{
+	struct isochron_feature_enabled f = {
+		.enabled = enabled,
+	};
+
+	return isochron_update_mid(fd, ISOCHRON_MID_SYNC_MONITOR_ENABLED,
+				   &f, sizeof(f));
+}
+
 static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 {
 	size_t tlv_size_bytes;
@@ -508,6 +859,24 @@ int isochron_forward_port_state(int fd, struct ptpmon *ptpmon,
 		return 0;
 
 	write_exact(fd, &state, sizeof(state));
+
+	return 0;
+}
+
+int isochron_forward_test_state(int fd, enum test_state state)
+{
+	struct isochron_test_state test_state = {
+		.test_state = state,
+	};
+	int rc;
+
+	rc = isochron_send_tlv(fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_TEST_STATE,
+			       sizeof(test_state));
+	if (rc)
+		return 0;
+
+	write_exact(fd, &test_state, sizeof(test_state));
 
 	return 0;
 }

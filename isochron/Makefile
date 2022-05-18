@@ -9,9 +9,11 @@ PKG_CONFIG ?= pkg-config
 src := \
 	argparser.o \
 	common.o \
+	daemon.o \
 	isochron.o \
 	log.o \
 	management.o \
+	orchestrate.o \
 	ptpmon.o \
 	rcv.o \
 	report.o \

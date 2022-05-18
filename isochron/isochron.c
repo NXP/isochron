@@ -8,16 +8,16 @@
 #include "common.h"
 #include "isochron.h"
 
-typedef int isochron_prog_main_func_t(int argc, char *argv[]);
-
-struct isochron_prog {
-	const char *prog_name;
-	const char *prog_func;
-	isochron_prog_main_func_t *main;
-};
-
 static const struct isochron_prog progs[] = {
 	{
+		.prog_name = "isochron-daemon",
+		.prog_func = "daemon",
+		.main = isochron_daemon_main,
+	}, {
+		.prog_name = "isochron-orchestrate",
+		.prog_func = "orchestrate",
+		.main = isochron_orchestrate_main,
+	}, {
 		.prog_name = "isochron-send",
 		.prog_func = "send",
 		.main = isochron_send_main,
@@ -49,8 +49,8 @@ static void isochron_usage(void)
 	fprintf(stderr, "for more details.\n");
 }
 
-static int isochron_parse_args(int *argc, char ***argv,
-			       const struct isochron_prog **prog)
+int isochron_parse_args(int *argc, char ***argv,
+			const struct isochron_prog **prog)
 {
 	char *prog_name;
 	char *prog_func;
