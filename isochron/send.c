@@ -813,7 +813,7 @@ static int prog_prepare_receiver(struct isochron_send *prog)
 	return isochron_update_packet_count(prog->stats_fd, prog->iterations);
 }
 
-static int prog_update_session_start_time(struct isochron_send *prog)
+int isochron_send_update_session_start_time(struct isochron_send *prog)
 {
 	struct timespec now_ts;
 	int rc;
@@ -958,7 +958,7 @@ static void prog_tx_timestamp_thread_destroy(struct isochron_send *prog)
 		pr_err(rc, "tx timestamp thread failed: %m\n");
 }
 
-static int prog_start_threads(struct isochron_send *prog)
+int isochron_send_start_threads(struct isochron_send *prog)
 {
 	int rc;
 
@@ -975,7 +975,7 @@ static int prog_start_threads(struct isochron_send *prog)
 	return 0;
 }
 
-static void prog_stop_threads(struct isochron_send *prog)
+void isochron_send_stop_threads(struct isochron_send *prog)
 {
 	prog_send_thread_destroy(prog);
 	prog_tx_timestamp_thread_destroy(prog);
@@ -1006,13 +1006,13 @@ static int prog_prepare_session(struct isochron_send *prog)
 		goto out_teardown_log;
 	}
 
-	rc = prog_update_session_start_time(prog);
+	rc = isochron_send_update_session_start_time(prog);
 	if (rc) {
 		pr_err(rc, "Failed to update session start time: %m\n");
 		goto out_teardown_log;
 	}
 
-	rc = prog_start_threads(prog);
+	rc = isochron_send_start_threads(prog);
 	if (rc)
 		goto out_teardown_log;
 
@@ -1051,7 +1051,7 @@ static int prog_end_session(struct isochron_send *prog, bool save_log)
 	struct isochron_log rcv_log;
 	int rc;
 
-	prog_stop_threads(prog);
+	isochron_send_stop_threads(prog);
 
 	if (!prog->stats_srv.family && !prog->quiet)
 		isochron_send_log_print(&prog->log);
@@ -1084,7 +1084,7 @@ skip_collecting_rcv_log:
 	return rc;
 }
 
-static int prog_init_ptpmon(struct isochron_send *prog)
+int isochron_send_init_ptpmon(struct isochron_send *prog)
 {
 	char uds_local[UNIX_PATH_MAX];
 	int rc;
@@ -1126,7 +1126,7 @@ out_destroy:
 	return rc;
 }
 
-static void prog_teardown_ptpmon(struct isochron_send *prog)
+void isochron_send_teardown_ptpmon(struct isochron_send *prog)
 {
 	if (!prog->ptpmon)
 		return;
@@ -1136,7 +1136,7 @@ static void prog_teardown_ptpmon(struct isochron_send *prog)
 	prog->ptpmon = NULL;
 }
 
-static int prog_init_sysmon(struct isochron_send *prog)
+int isochron_send_init_sysmon(struct isochron_send *prog)
 {
 	if (prog->omit_sync)
 		return 0;
@@ -1150,7 +1150,7 @@ static int prog_init_sysmon(struct isochron_send *prog)
 	return 0;
 }
 
-static void prog_teardown_sysmon(struct isochron_send *prog)
+void isochron_send_teardown_sysmon(struct isochron_send *prog)
 {
 	if (!prog->sysmon)
 		return;
@@ -1158,7 +1158,7 @@ static void prog_teardown_sysmon(struct isochron_send *prog)
 	sysmon_destroy(prog->sysmon);
 }
 
-static int prog_init_data_fd(struct isochron_send *prog)
+int isochron_send_init_data_fd(struct isochron_send *prog)
 {
 	struct ifreq if_idx;
 	struct ifreq if_mac;
@@ -1270,12 +1270,12 @@ out:
 	return -errno;
 }
 
-static void prog_teardown_data_fd(struct isochron_send *prog)
+void isochron_send_teardown_data_fd(struct isochron_send *prog)
 {
 	close(prog->data_fd);
 }
 
-static void prog_init_data_packet(struct isochron_send *prog)
+void isochron_send_init_data_packet(struct isochron_send *prog)
 {
 	int i;
 
@@ -1396,11 +1396,9 @@ static void prog_rtnl_close(struct isochron_send *prog)
 	mnl_socket_close(nl);
 }
 
-int isochron_send_init(struct isochron_send *prog)
+int prog_init(struct isochron_send *prog)
 {
 	int rc;
-
-	prog->clkid = CLOCK_TAI;
 
 	rc = prog_rtnl_open(prog);
 	if (rc)
@@ -1414,11 +1412,11 @@ int isochron_send_init(struct isochron_send *prog)
 	if (rc)
 		goto out_stats_socket_teardown;
 
-	rc = prog_init_data_fd(prog);
+	rc = isochron_send_init_data_fd(prog);
 	if (rc)
 		goto out_stats_socket_teardown;
 
-	prog_init_data_packet(prog);
+	isochron_send_init_data_packet(prog);
 
 	rc = prog_init_trace_mark(prog);
 	if (rc)
@@ -1433,11 +1431,11 @@ int isochron_send_init(struct isochron_send *prog)
 		goto out_close_trace_mark_fd;
 	}
 
-	rc = prog_init_ptpmon(prog);
+	rc = isochron_send_init_ptpmon(prog);
 	if (rc)
 		goto out_munlock;
 
-	rc = prog_init_sysmon(prog);
+	rc = isochron_send_init_sysmon(prog);
 	if (rc)
 		goto out_teardown_ptpmon;
 
@@ -1455,15 +1453,15 @@ int isochron_send_init(struct isochron_send *prog)
 	return rc;
 
 out_teardown_sysmon:
-	prog_teardown_sysmon(prog);
+	isochron_send_teardown_sysmon(prog);
 out_teardown_ptpmon:
-	prog_teardown_ptpmon(prog);
+	isochron_send_teardown_ptpmon(prog);
 out_munlock:
 	munlockall();
 out_close_trace_mark_fd:
 	prog_teardown_trace_mark(prog);
 out_close_data_fd:
-	prog_teardown_data_fd(prog);
+	isochron_send_teardown_data_fd(prog);
 out_stats_socket_teardown:
 	prog_teardown_stats_socket(prog);
 out_close_rtnl:
@@ -1474,15 +1472,167 @@ out:
 
 static void prog_teardown(struct isochron_send *prog)
 {
-	prog_teardown_sysmon(prog);
-	prog_teardown_ptpmon(prog);
+	isochron_send_teardown_sysmon(prog);
+	isochron_send_teardown_ptpmon(prog);
 
 	munlockall();
 
 	prog_teardown_trace_mark(prog);
-	prog_teardown_data_fd(prog);
+	isochron_send_teardown_data_fd(prog);
 	prog_teardown_stats_socket(prog);
 	prog_rtnl_close(prog);
+}
+
+void isochron_send_prepare_default_args(struct isochron_send *prog)
+{
+	prog->clkid = CLOCK_TAI;
+	prog->vid = -1;
+	prog->utc_tai_offset = -1;
+	prog->sync_threshold = -1;
+	prog->num_readings = 5;
+	prog->etype = ETH_P_ISOCHRON;
+	prog->data_port = ISOCHRON_DATA_PORT;
+	prog->stats_port = ISOCHRON_STATS_PORT;
+	sprintf(prog->output_file, "isochron.dat");
+	sprintf(prog->uds_remote, "/var/run/ptp4l");
+}
+
+int isochron_send_interpret_args(struct isochron_send *prog)
+{
+	int rc;
+
+	/* No point in leaving this one's default to zero, if we know that
+	 * means it will always be late for its gate event. So set the implicit
+	 * advance time to be one full cycle early, but make sure to avoid
+	 * premature transmission by delaying with the window size. I.e.
+	 * don't send here:
+	 *
+	 *  base-time - cycle-time            base-time
+	 * |------|--------------------------|------|--------------------------|
+	 * ^<-------------------------------> window-size
+	 * | advance-time                     <---->
+	 * |
+	 * here
+	 *
+	 * but here:
+	 *
+	 *  base-time - cycle-time            base-time
+	 * |------|--------------------------|------|--------------------------|
+	 *        ^<------------------------> window-size
+	 *        | advance-time              <---->
+	 *        |
+	 *        here
+	 */
+	if (!prog->advance_time)
+		prog->advance_time = prog->cycle_time - prog->window_size;
+
+	if (prog->advance_time > prog->cycle_time) {
+		fprintf(stderr,
+			"Advance time cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+
+	if (prog->shift_time > prog->cycle_time) {
+		fprintf(stderr,
+			"Shift time cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+
+	if (prog->window_size > prog->cycle_time) {
+		fprintf(stderr,
+			"Window size cannot be higher than cycle time\n");
+		return -EINVAL;
+	}
+
+	if (prog->txtime && prog->taprio) {
+		fprintf(stderr,
+			"Cannot enable txtime and taprio mode at the same time\n");
+		return -EINVAL;
+	}
+
+	if (prog->deadline && !prog->txtime) {
+		fprintf(stderr, "Deadline mode supported only with txtime\n");
+		return -EINVAL;
+	}
+
+	if (prog->sched_fifo && prog->sched_rr) {
+		fprintf(stderr,
+			"cannot have SCHED_FIFO and SCHED_RR at the same time\n");
+		return -EINVAL;
+	}
+
+	if (prog->tx_len > BUF_SIZ) {
+		fprintf(stderr,
+			"Frame size cannot exceed %d octets\n", BUF_SIZ);
+		return -EINVAL;
+	}
+
+	if (strlen(prog->output_file) && !prog->stats_srv.family) {
+		fprintf(stderr,
+			"--client is mandatory when --output-file is used\n");
+		return -EINVAL;
+	}
+
+	if (prog->sync_threshold < 0 && !prog->omit_sync) {
+		fprintf(stderr,
+			"--sync-threshold is mandatory unless --omit-sync is used\n");
+		return -EINVAL;
+	}
+
+	if (prog->l2 && prog->l4) {
+		fprintf(stderr, "Choose transport as either L2 or L4!\n");
+		return -EINVAL;
+	}
+
+	if (!prog->l2 && !prog->l4)
+		prog->l2 = true;
+
+	/* If we have a connection to the receiver, we can query it for the
+	 * destination MAC for this test
+	 */
+	if (prog->l2 && is_zero_ether_addr(prog->dest_mac) &&
+	    !prog->stats_srv.family) {
+		fprintf(stderr, "Please specify destination MAC address\n");
+		return -EINVAL;
+	}
+
+	if (prog->l2) {
+		if (prog->vid == -1) {
+			prog->do_vlan = false;
+			prog->l2_header_len = sizeof(struct ethhdr);
+		} else {
+			prog->do_vlan = true;
+			prog->l2_header_len = sizeof(struct vlan_ethhdr);
+		}
+	} else if (prog->vid != -1) {
+		fprintf(stderr, "Cannot insert VLAN header over IP socket\n");
+		return -EINVAL;
+	}
+
+	if (prog->do_ts && !prog->iterations) {
+		fprintf(stderr,
+			"cannot take timestamps if running indefinitely\n");
+		return -EINVAL;
+	}
+
+	if (prog->utc_tai_offset == -1) {
+		/* If we're using the ptpmon, we'll get the UTC offset
+		 * from the PTP daemon.
+		 */
+		if (prog->omit_sync) {
+			prog->utc_tai_offset = get_utc_tai_offset();
+			fprintf(stderr, "Using the kernel UTC-TAI offset which is %ld\n",
+				prog->utc_tai_offset);
+		}
+	} else {
+		rc = set_utc_tai_offset(prog->utc_tai_offset);
+		if (rc == -1) {
+			perror("set_utc_tai_offset");
+			return -errno;
+		}
+	}
+
+	return 0;
 }
 
 int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog)
@@ -1810,9 +1960,7 @@ int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog)
 	};
 	int rc;
 
-	prog->vid = -1;
-	prog->utc_tai_offset = -1;
-	prog->sync_threshold = -1;
+	isochron_send_prepare_default_args(prog);
 
 	rc = prog_parse_np_args(argc, argv, args, ARRAY_SIZE(args));
 
@@ -1832,157 +1980,10 @@ int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog)
 		return -1;
 	}
 
-	if (prog->txtime && prog->taprio) {
-		fprintf(stderr,
-			"Cannot enable txtime and taprio mode at the same time\n");
-		return -EINVAL;
-	}
-
-	if (prog->deadline && !prog->txtime) {
-		fprintf(stderr, "Deadline mode supported only with txtime\n");
-		return -EINVAL;
-	}
-
-	/* No point in leaving this one's default to zero, if we know that
-	 * means it will always be late for its gate event. So set the implicit
-	 * advance time to be one full cycle early, but make sure to avoid
-	 * premature transmission by delaying with the window size. I.e.
-	 * don't send here:
-	 *
-	 *  base-time - cycle-time            base-time
-	 * |------|--------------------------|------|--------------------------|
-	 * ^<-------------------------------> window-size
-	 * | advance-time                     <---->
-	 * |
-	 * here
-	 *
-	 * but here:
-	 *
-	 *  base-time - cycle-time            base-time
-	 * |------|--------------------------|------|--------------------------|
-	 *        ^<------------------------> window-size
-	 *        | advance-time              <---->
-	 *        |
-	 *        here
-	 */
-	if (!prog->advance_time)
-		prog->advance_time = prog->cycle_time - prog->window_size;
-
-	if (prog->advance_time > prog->cycle_time) {
-		fprintf(stderr,
-			"Advance time cannot be higher than cycle time\n");
-		return -EINVAL;
-	}
-	if (prog->shift_time > prog->cycle_time) {
-		fprintf(stderr,
-			"Shift time cannot be higher than cycle time\n");
-		return -EINVAL;
-	}
-	if (prog->window_size > prog->cycle_time) {
-		fprintf(stderr,
-			"Window size cannot be higher than cycle time\n");
-		return -EINVAL;
-	}
-
-	if (prog->sched_fifo && prog->sched_rr) {
-		fprintf(stderr,
-			"cannot have SCHED_FIFO and SCHED_RR at the same time\n");
-		return -EINVAL;
-	}
-
-	if (prog->tx_len > BUF_SIZ) {
-		fprintf(stderr,
-			"Frame size cannot exceed %d octets\n", BUF_SIZ);
-		return -EINVAL;
-	}
-
-	if (strlen(prog->output_file) && !prog->stats_srv.family) {
-		fprintf(stderr,
-			"--client is mandatory when --output-file is used\n");
-		return -EINVAL;
-	}
-
-	if (prog->sync_threshold < 0 && !prog->omit_sync) {
-		fprintf(stderr,
-			"--sync-threshold is mandatory unless --omit-sync is used\n");
-		return -EINVAL;
-	}
-
-	if (!strlen(prog->output_file))
-		sprintf(prog->output_file, "isochron.dat");
-
-	if (strlen(prog->uds_remote) == 0)
-		sprintf(prog->uds_remote, "/var/run/ptp4l");
-
-	if (!prog->stats_port)
-		prog->stats_port = ISOCHRON_STATS_PORT;
-
-	if (prog->l2 && prog->l4) {
-		fprintf(stderr, "Choose transport as either L2 or L4!\n");
-		return -EINVAL;
-	}
-
-	if (!prog->l2 && !prog->l4)
-		prog->l2 = true;
-
-	/* If we have a connection to the receiver, we can query it for the
-	 * destination MAC for this test
-	 */
-	if (prog->l2 && is_zero_ether_addr(prog->dest_mac) &&
-	    !prog->stats_srv.family) {
-		fprintf(stderr, "Please specify destination MAC address\n");
-		return -EINVAL;
-	}
-
-	if (prog->l2) {
-		if (prog->vid == -1) {
-			prog->do_vlan = false;
-			prog->l2_header_len = sizeof(struct ethhdr);
-		} else {
-			prog->do_vlan = true;
-			prog->l2_header_len = sizeof(struct vlan_ethhdr);
-		}
-	} else if (prog->vid != -1) {
-		fprintf(stderr, "Cannot insert VLAN header over IP socket\n");
-		return -EINVAL;
-	}
-
-	if (!prog->data_port)
-		prog->data_port = ISOCHRON_DATA_PORT;
-
 	/* Convert negative logic from cmdline to positive */
 	prog->do_ts = !prog->do_ts;
 
-	if (prog->do_ts && !prog->iterations) {
-		fprintf(stderr,
-			"cannot take timestamps if running indefinitely\n");
-		return -EINVAL;
-	}
-
-	if (!prog->num_readings)
-		prog->num_readings = 5;
-
-	if (!prog->etype)
-		prog->etype = ETH_P_ISOCHRON;
-
-	if (prog->utc_tai_offset == -1) {
-		/* If we're using the ptpmon, we'll get the UTC offset
-		 * from the PTP daemon.
-		 */
-		if (prog->omit_sync) {
-			prog->utc_tai_offset = get_utc_tai_offset();
-			fprintf(stderr, "Using the kernel UTC-TAI offset which is %ld\n",
-				prog->utc_tai_offset);
-		}
-	} else {
-		rc = set_utc_tai_offset(prog->utc_tai_offset);
-		if (rc == -1) {
-			perror("set_utc_tai_offset");
-			return -errno;
-		}
-	}
-
-	return 0;
+	return isochron_send_interpret_args(prog);
 }
 
 int isochron_send_main(int argc, char *argv[])
@@ -2000,7 +2001,7 @@ int isochron_send_main(int argc, char *argv[])
 		return rc;
 
 	do {
-		rc = isochron_send_init(&prog);
+		rc = prog_init(&prog);
 		if (rc)
 			return rc;
 
