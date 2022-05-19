@@ -884,6 +884,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 		struct isochron_send_pkt_data *send_pkt = &pkt_arr[seqid - 1];
 		struct isochron_rcv_pkt_data *rcv_pkt;
 		struct isochron_printf_variables v;
+		bool missing = false;
 
 		if (seqid != __be32_to_cpu(send_pkt->seqid))
 			/* Incomplete log, send_pkt->seqid is 0, exit */
@@ -894,8 +895,10 @@ int isochron_print_stats(struct isochron_log *send_log,
 		 * a dummy received packet with all RX timestamps set to zero
 		 */
 		rcv_pkt = isochron_rcv_log_find(rcv_log, send_pkt->seqid);
-		if (!rcv_pkt)
+		if (!rcv_pkt) {
 			rcv_pkt = &dummy_rcv_pkt;
+			missing = true;
+		}
 
 		isochron_printf_vars_get(send_pkt, rcv_pkt, base_time,
 					 advance_time, shift_time, cycle_time,
@@ -905,12 +908,17 @@ int isochron_print_stats(struct isochron_log *send_log,
 		if (rc)
 			goto out;
 
-		if (summary)
+		if (summary && !missing)
 			isochron_process_stat(&v, &stats, taprio, txtime);
 	}
 
 	if (!summary)
 		return 0;
+
+	if (!stats.frame_count) {
+		printf("Could not calculate statistics, no packets were received\n");
+		return 0;
+	}
 
 	stats.tx_sync_offset_mean /= stats.frame_count;
 	stats.rx_sync_offset_mean /= stats.frame_count;
