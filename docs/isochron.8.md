@@ -191,7 +191,7 @@ isochron-daemon(8)
 isochron-orchestrate(8)
 isochron-send(8)
 isochron-rcv(8)
-isochron-report(8)
+isochron-report(1)
 taprio(8)
 etf(8)
 
