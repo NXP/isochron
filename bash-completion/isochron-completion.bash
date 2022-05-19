@@ -84,7 +84,7 @@ __isochron_complete() {
 	_get_comp_words_by_ref -n : cur prev words
 
 	if [ "$(basename ${prev} 2> /dev/null)" = "isochron" ]; then
-		COMPREPLY=( $(compgen -W "send rcv report -h --help -v --version" -- "${cur}") )
+		COMPREPLY=( $(compgen -W "daemon orchestrate send rcv report -h --help -v --version" -- "${cur}") )
 		return
 	fi
 
@@ -96,7 +96,7 @@ __isochron_complete() {
 	subprog="${words[1]}"
 
 	case "${subprog}" in
-	send|rcv|report)
+	daemon|orchestrate|send|rcv|report)
 		__isochron_subprog_complete "${prog}" "${subprog}" "${prev}" "${cur}" ${words[@]}
 		;;
 	*)
