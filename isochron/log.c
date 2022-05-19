@@ -25,6 +25,8 @@
 #define ISOCHRON_FLAG_TXTIME		BIT(3)
 #define ISOCHRON_FLAG_DEADLINE		BIT(4)
 
+static const char *isochron_magic = "ISOCHRON";
+
 struct isochron_log_file_header {
 	char		magic[8];
 	__be32		version;
@@ -1101,7 +1103,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 		goto out_close;
 	}
 
-	if (strcmp(header.magic, "ISOCHRON")) {
+	if (memcmp(header.magic, isochron_magic, strlen(isochron_magic))) {
 		fprintf(stderr, "Unrecognized file format\n");
 		rc = -EINVAL;
 		goto out_close;
@@ -1206,7 +1208,7 @@ int isochron_log_save(const char *file, const struct isochron_log *send_log,
 	if (deadline)
 		flags |= ISOCHRON_FLAG_DEADLINE;
 
-	strcpy(header.magic, "ISOCHRON");
+	memcpy(header.magic, isochron_magic, strlen(isochron_magic));
 	header.flags = __cpu_to_be16(flags);
 	header.send_log_start = __cpu_to_be64(sizeof(header));
 	header.send_log_size = __cpu_to_be32(send_log->size);
