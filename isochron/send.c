@@ -1049,7 +1049,7 @@ static bool prog_monitor_sync(struct isochron_send *prog)
 static int prog_end_session(struct isochron_send *prog, bool save_log)
 {
 	struct isochron_log rcv_log;
-	int rc;
+	int rc = 0;
 
 	isochron_send_stop_threads(prog);
 
