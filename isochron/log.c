@@ -648,7 +648,7 @@ static int buf_copy_verbatim(char *dest, const char *dest_end, const char *src,
 		return -EINVAL;
 	}
 
-	strncpy(dest, src, size);
+	memcpy(dest, src, size);
 	return size;
 }
 
