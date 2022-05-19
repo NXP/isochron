@@ -67,7 +67,7 @@ SEE ALSO
 ========
 
 isochron(8)
-isochron-orchestrate(8)
+isochron-orchestrate(1)
 
 COMMENTS
 ========

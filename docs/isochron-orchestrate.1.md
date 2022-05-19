@@ -1,4 +1,4 @@
-% isochron-orchestrate(8) | ISOCHRON
+% isochron-orchestrate(1) | ISOCHRON
 
 NAME
 ====

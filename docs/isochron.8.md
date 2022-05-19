@@ -188,7 +188,7 @@ SEE ALSO
 ========
 
 isochron-daemon(8)
-isochron-orchestrate(8)
+isochron-orchestrate(1)
 isochron-send(8)
 isochron-rcv(8)
 isochron-report(1)
