@@ -1,0 +1,18 @@
+Source: tsn-scripts
+Section: utils
+Priority: optional
+Maintainer: Vladimir Oltean <olteanv@gmail.com>
+Build-Depends: debhelper-compat (= 12)
+Standards-Version: 4.4.1
+Homepage: https://github.com/vladimiroltean/tsn-scripts
+
+Package: tsn-scripts
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Tool set for Time Sensitive Networking testing
+ The tsn-scripts project contains the isochron program, a real-time application
+ for testing Time Sensitive Networking equipment. It works by monitoring the
+ network synchronization status and sending time-triggered Ethernet packets.
+ It has a server-client architecture and it measures network latency by taking
+ multiple timestamps (some hardware, some software) along the path of the
+ packets.
