@@ -828,6 +828,7 @@ static int prog_init_receiver_nodes(struct isochron_orch *prog)
 {
 	struct isochron_orch_node *node, *rcv_node, *tmp;
 	struct isochron_send *send;
+	int rc;
 
 	LIST_FOREACH_SAFE(node, &prog->nodes, list, tmp) {
 		if (node->role != ISOCHRON_ROLE_SEND)
@@ -842,7 +843,16 @@ static int prog_init_receiver_nodes(struct isochron_orch *prog)
 		if (!rcv_node)
 			return -ENOMEM;
 
-		sprintf(rcv_node->name, "%s's receiver", node->name);
+		rc = snprintf(rcv_node->name, BUFSIZ, "%s's receiver",
+			      node->name);
+		if (rc >= BUFSIZ) {
+			fprintf(stderr,
+				"Truncation while parsing node \"%s\"'s name\n",
+				node->name);
+			free(rcv_node);
+			return -EINVAL;
+		}
+
 		rcv_node->addr = send->stats_srv;
 		rcv_node->port = send->stats_port;
 		rcv_node->stats_fd = -1;
@@ -1021,6 +1031,12 @@ static int prog_parse_input_file_linewise(struct isochron_orch *prog,
 		len = strlen(line);
 		if (!len)
 			goto next;
+
+		if (len >= BUFSIZ) {
+			fprintf(stderr, "Line too long: \"%s\"\n", line);
+			rc = -EINVAL;
+			break;
+		}
 
 		end = line + len - 1;
 
