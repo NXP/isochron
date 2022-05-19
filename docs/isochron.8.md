@@ -10,7 +10,7 @@ SYNOPSIS
 
 **isochron** _VERB_ \[_OPTIONS_\]
 
-_VERB_ := { send | rcv | report }
+_VERB_ := { daemon | orchestrate | send | rcv | report }
 
 DESCRIPTION
 ===========
@@ -187,6 +187,8 @@ isochron was written by Vladimir Oltean <vladimir.oltean@nxp.com>
 SEE ALSO
 ========
 
+isochron-daemon(8)
+isochron-orchestrate(8)
 isochron-send(8)
 isochron-rcv(8)
 isochron-report(8)
