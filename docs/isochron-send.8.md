@@ -1,4 +1,4 @@
-% isochron-send(1) | ISOCHRON
+% isochron-send(8) | ISOCHRON
 
 NAME
 ====

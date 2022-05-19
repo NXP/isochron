@@ -1,4 +1,4 @@
-% isochron-rcv(1) | ISOCHRON
+% isochron-rcv(8) | ISOCHRON
 
 NAME
 ====
