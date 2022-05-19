@@ -723,7 +723,7 @@ static int prog_init_data_fd(struct isochron_rcv *prog)
 		struct ifreq if_mac;
 
 		memset(&if_mac, 0, sizeof(struct ifreq));
-		strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
+		strcpy(if_mac.ifr_name, prog->if_name);
 		if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
 			perror("SIOCGIFHWADDR");
 			goto out;

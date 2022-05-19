@@ -257,7 +257,7 @@ static int uds_send(int fd, const char *uds_remote, void *buf, int buflen)
 
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_LOCAL;
-	strncpy(sun.sun_path, uds_remote, sizeof(sun.sun_path) - 1);
+	strcpy(sun.sun_path, uds_remote);
 
 	cnt = sendto(fd, buf, buflen, 0, (struct sockaddr *)&sun, sizeof(sun));
 	if (cnt < 1)
@@ -273,7 +273,7 @@ static int uds_recv(int fd, const char *uds_remote, void *buf, int buflen)
 
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_LOCAL;
-	strncpy(sun.sun_path, uds_remote, sizeof(sun.sun_path) - 1);
+	strcpy(sun.sun_path, uds_remote);
 
 	return recvfrom(fd, buf, buflen, 0, (struct sockaddr *)&sun, &len);
 }
@@ -289,7 +289,7 @@ static int uds_bind(const char *uds_local)
 
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_LOCAL;
-	strncpy(sun.sun_path, uds_local, sizeof(sun.sun_path) - 1);
+	strcpy(sun.sun_path, uds_local);
 
 	unlink(uds_local);
 
@@ -609,14 +609,28 @@ struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
 {
 	struct ptpmon *ptpmon;
 
+	if (strlen(uds_local) >= UNIX_PATH_MAX) {
+		fprintf(stderr,
+			"Local UDS path \"%s\" too long, would truncate\n",
+			uds_local);
+		return NULL;
+	}
+
+	if (strlen(uds_remote) >= UNIX_PATH_MAX) {
+		fprintf(stderr,
+			"Remote UDS path \"%s\" too long, would truncate\n",
+			uds_remote);
+		return NULL;
+	}
+
 	ptpmon = calloc(1, sizeof(*ptpmon));
 	if (!ptpmon)
 		return NULL;
 
 	ptpmon->domain_number = domain_number;
 	ptpmon->transport_specific = transport_specific;
-	strncpy(ptpmon->uds_local, uds_local, UNIX_PATH_MAX);
-	strncpy(ptpmon->uds_remote, uds_remote, UNIX_PATH_MAX);
+	strcpy(ptpmon->uds_local, uds_local);
+	strcpy(ptpmon->uds_remote, uds_remote);
 	ptpmon->port_identity.port_number = __cpu_to_be16(getpid());
 
 	return ptpmon;

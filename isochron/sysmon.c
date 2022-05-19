@@ -77,7 +77,7 @@ static int sk_get_ts_info(const char *name, struct sk_ts_info *sk_info)
 	memset(&ifr, 0, sizeof(ifr));
 	memset(&info, 0, sizeof(info));
 	info.cmd = ETHTOOL_GET_TS_INFO;
-	strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+	strcpy(ifr.ifr_name, name);
 	ifr.ifr_data = (char *) &info;
 
 	fd = socket(AF_INET, SOCK_DGRAM, 0);

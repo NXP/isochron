@@ -1194,7 +1194,7 @@ int isochron_send_init_data_fd(struct isochron_send *prog)
 
 	/* Get the index of the interface to send on */
 	memset(&if_idx, 0, sizeof(struct ifreq));
-	strncpy(if_idx.ifr_name, prog->if_name, IFNAMSIZ - 1);
+	strcpy(if_idx.ifr_name, prog->if_name);
 	if (ioctl(fd, SIOCGIFINDEX, &if_idx) < 0) {
 		perror("SIOCGIFINDEX failed");
 		goto out_close;
@@ -1202,7 +1202,7 @@ int isochron_send_init_data_fd(struct isochron_send *prog)
 
 	/* Get the MAC address of the interface to send on */
 	memset(&if_mac, 0, sizeof(struct ifreq));
-	strncpy(if_mac.ifr_name, prog->if_name, IFNAMSIZ - 1);
+	strcpy(if_mac.ifr_name, prog->if_name);
 	if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
 		perror("SIOCGIFHWADDR failed");
 		goto out_close;
