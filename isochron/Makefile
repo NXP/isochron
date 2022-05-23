@@ -1,7 +1,6 @@
 prefix ?= /usr/local
 exec_prefix ?= ${prefix}
 bindir ?= ${exec_prefix}/bin
-etcdir ?= /etc
 datarootdir ?= ${prefix}/share
 mandir ?= ${datarootdir}/man
 PKG_CONFIG ?= pkg-config
@@ -90,7 +89,7 @@ install-manpages: $(manpages)
 install-binaries: $(TARGET)
 	install -m 0755 -D $(TARGET) $(DESTDIR)${bindir}/isochron
 
-install-completion: bash-completion/isochron-completion.bash
-	install -m 0755 -D $< $(DESTDIR)$(etcdir)/bash_completion.d/isochron-completion.bash
+install-completion: bash-completion/isochron
+	install -m 0644 -D $< $(DESTDIR)${datarootdir}/bash-completion/completions/isochron
 
 install: install-binaries install-manpages install-completion
