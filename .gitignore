@@ -1,5 +1,4 @@
 isochron/isochron
-trace.dat
 *.o
 *.d
 docs/man/
