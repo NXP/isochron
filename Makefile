@@ -2,6 +2,7 @@ VERSION := $(shell ./setlocalversion)
 MY_CFLAGS := -DVERSION=\"${VERSION}\" $(CFLAGS)
 MY_CFLAGS += -Wall -Wextra -Werror -Wno-error=sign-compare
 MY_CFLAGS += $(shell ./toolchain_deps.sh "$(CC)" "$(MY_CFLAGS)")
+MY_LDFLAGS := $(LDFLAGS)
 CHECK := sparse
 CHECKFLAGS := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 	      -Wbitwise -Wno-return-void -Wno-unknown-attribute $(CF)
@@ -60,7 +61,7 @@ $(error pkg-config could not find libmnl)
 endif
 
 MY_CFLAGS += $(LIBMNL_CFLAGS)
-LDFLAGS += $(LIBMNL_LDFLAGS)
+MY_LDFLAGS += $(LIBMNL_LDFLAGS)
 
 TARGET := isochron
 
@@ -82,7 +83,7 @@ docs/pdf/%.pdf: docs/%.md
 -include $(deps)
 
 $(TARGET): $(objs)
-	$(CC) $^ -o $@ $(LDFLAGS) -lm -pthread
+	$(CC) $^ -o $@ $(MY_LDFLAGS) -lm -pthread
 
 %.o: %.c
 	$(CC) $(MY_CFLAGS) -MMD -c $< -o $@
