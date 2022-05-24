@@ -14,10 +14,12 @@ IEEE 802.1CB
 ============
 
 This portion contains a demonstration of 802.1CB on the NXP LS1028A-RDB board.
-It has been tested on the OpenIL master branch (commit `4d07120a2c89
-("configs/nxp_ls1021atsn_optee-sb: fix optee-os build issue")`).
+It assumes running on a kernel patched to support the tsntool genetlink,
+like the one below:
+https://source.codeaurora.org/external/qoriq/qoriq-components/linux/log/?h=lf-5.15.y
 
-Perform the following changes to `nxp_ls1028ardb-64b_defconfig`:
+Assuming a Buildroot/OpenIL user space, perform the following changes to
+`nxp_ls1028ardb-64b_defconfig`:
 
 ```
 diff --git a/configs/nxp_ls1028ardb-64b_defconfig b/configs/nxp_ls1028ardb-64b_defconfig
