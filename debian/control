@@ -2,7 +2,7 @@ Source: isochron
 Section: utils
 Priority: optional
 Maintainer: Vladimir Oltean <olteanv@gmail.com>
-Build-Depends: debhelper-compat (= 12), pkg-config, pandoc, texlive-latex-base
+Build-Depends: debhelper-compat (= 12), pkg-config, libmnl-dev, pandoc, texlive-latex-base
 Standards-Version: 4.4.1
 Homepage: https://github.com/vladimiroltean/isochron
 
