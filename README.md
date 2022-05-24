@@ -10,52 +10,6 @@ Its full documentation is available in the `docs/` folder.
 isochron links with the following libraries:
 * libmnl (https://git.netfilter.org/libmnl/)
 
-IEEE 802.1Qbv
-=============
-
-This portion contains a demonstration of 802.1Qbv on the NXP LS1028A-RDB board.
-It covers both the standalone ENETC port as well as the Felix switch ports.
-
-It is being developed and tested on the openil 1.6-community rootfs image
-(https://github.com/vladimiroltean/openil-community), but it likely to be able
-to run on other distributions as well.
-
-Copy this folder to the home directory of the root user on two boards and run
-as follows:
-
-```
-[user@pc]# for board in 10.0.0.101 10.0.0.102 103; do rsync -avr ./ root@${board}:tsn-scripts/; done
-```
-
-Hint:
-The openil-community images have a command called "passwordless-ssh-login"
-which can simplify the SSH login process, at the expense of insecurity by
-default. Use at your own risk.
-
-```
-[root@board1]# ./tsn-scripts/time-test 1 prepare
-[root@board2]# ./tsn-scripts/time-test 2 prepare
-[root@board1]# ./tsn-scripts/time-test 1 run
-```
-
-Optional:
-
-```
-[root@board3]# ./time-test.sh 3 prepare
-```
-
-A Qbv latency report will be generated.
-
-Systemd services for the linuxptp package suite will be installed on the target
-board during the "prepare" phase. Be aware of this as they might overwrite
-other such services (although NXP rootfs images do not provide them by
-default).
-
-To change the scenario between ENETC and Felix, you need to edit the "scenario"
-Bash variable from time-test.sh.
-
-For cabling and further information, see the comments inside time-test.sh.
-
 IEEE 802.1CB
 ============
 
