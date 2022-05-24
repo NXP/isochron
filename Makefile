@@ -34,7 +34,7 @@ src := \
 	send.o \
 	sysmon.o
 
-objs := $(addprefix isochron/, $(src))
+objs := $(addprefix src/, $(src))
 deps := $(patsubst %.o, %.d, $(objs))
 
 md_docs  := $(wildcard docs/*.md)
@@ -62,11 +62,9 @@ endif
 MY_CFLAGS += $(LIBMNL_CFLAGS)
 LDFLAGS += $(LIBMNL_LDFLAGS)
 
-TARGET := isochron/isochron
+TARGET := isochron
 
-all: isochron man pdf
-
-isochron: $(TARGET)
+all: $(TARGET) man pdf
 
 man: $(manpages)
 
@@ -83,7 +81,7 @@ docs/pdf/%.pdf: docs/%.md
 # include all .d files
 -include $(deps)
 
-isochron/isochron: $(objs)
+$(TARGET): $(objs)
 	$(CC) $^ -o $@ $(LDFLAGS) -lm -pthread
 
 %.o: %.c
