@@ -39,7 +39,6 @@ objs := $(addprefix src/, $(src))
 deps := $(patsubst %.o, %.d, $(objs))
 
 md_docs  := $(wildcard docs/*.md)
-pdf_docs := $(patsubst docs/%.md, docs/pdf/%.pdf, $(md_docs))
 manpages := $(patsubst docs/%.md, docs/man/%, $(md_docs))
 
 # Input: path to manpage file from sources
@@ -65,19 +64,13 @@ MY_LDFLAGS += $(LIBMNL_LDFLAGS)
 
 TARGET := isochron
 
-all: $(TARGET) man pdf
+all: $(TARGET) man
 
 man: $(manpages)
-
-pdf: $(pdf_docs)
 
 docs/man/%: docs/%.md
 	@mkdir -p $(@D)
 	pandoc --standalone --to man $^ -o $@
-
-docs/pdf/%.pdf: docs/%.md
-	@mkdir -p $(@D)
-	pandoc --standalone -t latex $^ -o $@
 
 # include all .d files
 -include $(deps)
@@ -93,7 +86,7 @@ endif
 
 clean:
 	rm -f $(objs) $(deps) $(TARGET)
-	rm -f docs/pdf/* docs/man/*
+	rm -f docs/man/*
 
 install-manpages: $(manpages)
 	$(foreach manpage, $^, install -m 0644 -D $(manpage) \
