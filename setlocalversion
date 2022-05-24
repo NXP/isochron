@@ -87,6 +87,8 @@ scm_version()
 
 		# All done with git
 		return
+	else
+		cat VERSION
 	fi
 }
 
