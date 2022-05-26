@@ -293,20 +293,20 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 
 	len = write_exact(fd, &log_version, sizeof(log_version));
 	if (len <= 0) {
-		perror("log_version write failed");
+		perror("Failed to write log version to socket");
 		return -errno;
 	}
 
 	len = write_exact(fd, &buf_len, sizeof(buf_len));
 	if (len <= 0) {
-		perror("buf_len write failed");
+		perror("Failed to write log length to socket");
 		return -errno;
 	}
 
 	if (log->size) {
 		len = write_exact(fd, log->buf, log->size);
 		if (len <= 0) {
-			perror("log write failed");
+			perror("Failed to write log to socket");
 			return -errno;
 		}
 	}
@@ -1098,7 +1098,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, &header, sizeof(header));
 	if (len <= 0) {
-		perror("isochron log header read");
+		perror("Failed to read log header from file");
 		rc = len;
 		goto out_close;
 	}
@@ -1125,7 +1125,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 	*window_size = (__s64 )__be64_to_cpu(header.window_size);
 
 	if (lseek(fd, __be64_to_cpu(header.send_log_start), SEEK_SET) < 0) {
-		perror("isochron send log lseek");
+		perror("Failed to seek to the sender log");
 		rc = -errno;
 		goto out_close;
 	}
@@ -1138,13 +1138,13 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, send_log->buf, send_log->size);
 	if (len <= 0) {
-		perror("isochron send log read");
+		perror("Failed to read sender log");
 		rc = len;
 		goto out_send_log_teardown;
 	}
 
 	if (lseek(fd, __be64_to_cpu(header.rcv_log_start), SEEK_SET) < 0) {
-		perror("isochron rcv log lseek");
+		perror("Failed to seek to the receiver log");
 		rc = -errno;
 		goto out_send_log_teardown;
 	}
@@ -1157,7 +1157,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, rcv_log->buf, rcv_log->size);
 	if (len <= 0) {
-		perror("isochron rcv log read");
+		perror("Failed to read receiver log");
 		rc = len;
 		goto out_rcv_log_teardown;
 	}
@@ -1223,19 +1223,19 @@ int isochron_log_save(const char *file, const struct isochron_log *send_log,
 
 	len = write_exact(fd, &header, sizeof(header));
 	if (len <= 0) {
-		perror("isochron log header write");
+		perror("Failed to write log header to file");
 		return len;
 	}
 
 	len = write_exact(fd, send_log->buf, send_log->size);
 	if (len <= 0) {
-		perror("isochron send log write");
+		perror("Failed to write send log to file");
 		return len;
 	}
 
 	len = write_exact(fd, rcv_log->buf, rcv_log->size);
 	if (len <= 0) {
-		perror("isochron rcv log write");
+		perror("Failed to write receive log to file");
 		return len;
 	}
 
