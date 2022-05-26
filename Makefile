@@ -1,6 +1,6 @@
 VERSION := $(shell ./setlocalversion)
 MY_CFLAGS := -DVERSION=\"${VERSION}\" $(CFLAGS)
-MY_CFLAGS += -Wall -Wextra -Werror -Wno-error=sign-compare
+MY_CFLAGS += -Wall -Wextra -Werror -Wno-error=sign-compare -Wno-error=missing-field-initializers
 MY_CFLAGS += $(shell ./toolchain_deps.sh "$(CC)" "$(MY_CFLAGS)")
 MY_LDFLAGS := $(LDFLAGS)
 CHECK := sparse
