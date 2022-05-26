@@ -1891,7 +1891,7 @@ int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog)
 			},
 			.optional = true,
 		}, {
-			.short_opt = "-P",
+			.short_opt = "-W",
 			.long_opt = "--data-port",
 			.type = PROG_ARG_LONG,
 			.long_ptr = {

@@ -260,7 +260,7 @@ OPTIONS
     packets. Optional, defaults to false. Cannot be used together with
     `--l2`.
 
-`-P`, `--data-port` <`NUMBER`>
+`-W`, `--data-port` <`NUMBER`>
 
 :   if the UDP transport is used, this option specifies the destination
     UDP port for test packets. Optional, defaults to 6000.
