@@ -102,11 +102,6 @@ OPTIONS
     packets. Optional, defaults to false. Cannot be used together with
     `--l2`.
 
-`-P`, `--data-port` <`NUMBER`>
-
-:   if the UDP transport is used, this option specifies the destination
-    UDP port for test packets. Optional, defaults to 6000.
-
 `-U`, `--unix-domain-socket` <`PATH`>
 
 :   isochron queries ptp4l's state by creating and sending PTP
