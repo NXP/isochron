@@ -131,11 +131,13 @@ static void prog_close_client_stats_session(struct isochron_daemon *prog)
 static int prog_client_connect_event(struct isochron_daemon *prog)
 {
 	char client_addr[INET6_ADDRSTRLEN];
-	struct sockaddr_in addr;
-	socklen_t addr_len;
+	union {
+		struct sockaddr_in6 addr6;
+		struct sockaddr_in addr4;
+	} u;
+	socklen_t addr_len = sizeof(u);
 
-	addr_len = sizeof(struct sockaddr_in);
-	prog->stats_fd = accept(prog->stats_listenfd, (struct sockaddr *)&addr,
+	prog->stats_fd = accept(prog->stats_listenfd, (struct sockaddr *)&u,
 				&addr_len);
 	if (prog->stats_fd < 0) {
 		if (errno != EINTR)
@@ -143,8 +145,8 @@ static int prog_client_connect_event(struct isochron_daemon *prog)
 		return -errno;
 	}
 
-	if (!inet_ntop(addr.sin_family, &addr.sin_addr.s_addr,
-		       client_addr, addr_len)) {
+	if (!inet_ntop(AF_INET6, &u.addr6.sin6_addr, client_addr,
+		       INET6_ADDRSTRLEN)) {
 		perror("inet_pton failed");
 		prog_close_client_stats_session(prog);
 		return -errno;
@@ -1181,16 +1183,15 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 
 static int prog_init_stats_listenfd(struct isochron_daemon *prog)
 {
-	struct sockaddr_in serv_addr = {
-		.sin_family = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_ANY),
-		.sin_port = htons(prog->stats_port),
-		.sin_zero = {0},
+	struct sockaddr_in6 serv_addr = {
+		.sin6_family = AF_INET6,
+		.sin6_addr = in6addr_any,
+		.sin6_port = htons(prog->stats_port),
 	};
 	int sockopt = 1;
 	int fd, rc;
 
-	fd = socket(AF_INET, SOCK_STREAM, 0);
+	fd = socket(AF_INET6, SOCK_STREAM, 0);
 	if (fd < 0) {
 		perror("listener: stats socket");
 		return -errno;
