@@ -122,7 +122,7 @@ static int prog_init_stats_socket(struct isochron_send *prog)
 
 	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
 	if (stats_fd < 0) {
-		perror("opening stats socket failed");
+		perror("Failed to open management socket to receiver");
 		return -errno;
 	}
 
@@ -131,7 +131,7 @@ static int prog_init_stats_socket(struct isochron_send *prog)
 				prog->stats_srv.bound_if_name,
 				IFNAMSIZ - 1);
 		if (rc < 0) {
-			perror("setsockopt(SO_BINDTODEVICE) on stats socket failed");
+			perror("Failed to setsockopt(SO_BINDTODEVICE) on received management socket");
 			close(stats_fd);
 			return -errno;
 		}
@@ -139,7 +139,7 @@ static int prog_init_stats_socket(struct isochron_send *prog)
 
 	rc = connect(stats_fd, serv_addr, size);
 	if (rc < 0) {
-		perror("connecting to stats socket failed");
+		perror("Failed to connect to receiver management socket");
 		close(stats_fd);
 		return -errno;
 	}
@@ -1188,7 +1188,7 @@ int isochron_send_init_data_fd(struct isochron_send *prog)
 		fd = socket(prog->ip_destination.family, SOCK_DGRAM,
 			    IPPROTO_UDP);
 	if (fd < 0) {
-		perror("opening data socket failed");
+		perror("Failed to open data socket");
 		goto out;
 	}
 
