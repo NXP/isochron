@@ -28,7 +28,6 @@
 #include <pthread.h>
 #include <sched.h>
 #include <sys/mman.h>
-#include <signal.h>
 #include "argparser.h"
 #include "common.h"
 #include "isochron.h"
@@ -44,8 +43,6 @@ struct isochron_txtime_postmortem_priv {
 	struct isochron_send *prog;
 	__u64 txtime;
 };
-
-static int signal_received;
 
 static void trace(struct isochron_send *prog, const char *fmt, ...)
 {
@@ -592,18 +589,6 @@ static void *prog_tx_timestamp_thread(void *arg)
 	prog->tx_timestamp_tid_rc = wait_for_txtimestamps(prog);
 
 	return &prog->tx_timestamp_tid_rc;
-}
-
-static void sig_handler(int signo)
-{
-	switch (signo) {
-	case SIGTERM:
-	case SIGINT:
-		signal_received = 1;
-		break;
-	default:
-		break;
-	}
 }
 
 static bool prog_sync_ok(struct isochron_send *prog)
@@ -1991,10 +1976,6 @@ int isochron_send_main(int argc, char *argv[])
 	struct isochron_send prog = {0};
 	bool sync_ok;
 	int rc;
-
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
 
 	rc = isochron_send_parse_args(argc, argv, &prog);
 	if (rc < 0)

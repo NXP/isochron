@@ -14,7 +14,6 @@
 #include <sys/ioctl.h>
 #include <sys/timerfd.h>
 #include <net/if.h>
-#include <signal.h>
 #include <errno.h>
 #include <poll.h>
 #include "argparser.h"
@@ -62,8 +61,6 @@ struct isochron_rcv {
 	long sync_threshold;
 	long num_readings;
 };
-
-static int signal_received;
 
 static int prog_rearm_data_timeout_fd(struct isochron_rcv *prog)
 {
@@ -557,18 +554,6 @@ static int server_loop(struct isochron_rcv *prog)
 	}
 
 	return rc;
-}
-
-static void sig_handler(int signo)
-{
-	switch (signo) {
-	case SIGTERM:
-	case SIGINT:
-		signal_received = 1;
-		break;
-	default:
-		break;
-	}
 }
 
 static int prog_init_ptpmon(struct isochron_rcv *prog)
@@ -1092,10 +1077,6 @@ int isochron_rcv_main(int argc, char *argv[])
 {
 	struct isochron_rcv prog = {0};
 	int rc;
-
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)

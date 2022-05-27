@@ -22,4 +22,6 @@ int isochron_report_main(int argc, char *argv[]);
 int isochron_parse_args(int *argc, char ***argv,
 			const struct isochron_prog **prog);
 
+extern bool signal_received;
+
 #endif

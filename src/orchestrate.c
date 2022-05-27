@@ -4,7 +4,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -53,20 +52,6 @@ struct isochron_orch {
 	LIST_HEAD(nodes_head, isochron_orch_node) nodes;
 	char input_filename[PATH_MAX];
 };
-
-static int signal_received;
-
-static void sig_handler(int signo)
-{
-	switch (signo) {
-	case SIGTERM:
-	case SIGINT:
-		signal_received = 1;
-		break;
-	default:
-		break;
-	}
-}
 
 static bool prog_sync_ok(struct isochron_orch *prog)
 {
@@ -1193,10 +1178,6 @@ int isochron_orchestrate_main(int argc, char *argv[])
 {
 	struct isochron_orch prog = {0};
 	int rc;
-
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)

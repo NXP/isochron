@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <linux/limits.h>
 #include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -31,20 +30,6 @@ struct isochron_daemon {
 	struct mnl_socket *rtnl;
 	bool test_running;
 };
-
-static int signal_received;
-
-static void sig_handler(int signo)
-{
-	switch (signo) {
-	case SIGTERM:
-	case SIGINT:
-		signal_received = 1;
-		break;
-	default:
-		break;
-	}
-}
 
 static int prog_prepare_session(struct isochron_send *send)
 {
@@ -1419,10 +1404,6 @@ int isochron_daemon_main(int argc, char *argv[])
 {
 	struct isochron_daemon prog = {0};
 	int rc;
-
-	rc = isochron_handle_signals(sig_handler);
-	if (rc)
-		return rc;
 
 	rc = prog_parse_args(argc, argv, &prog);
 	if (rc < 0)

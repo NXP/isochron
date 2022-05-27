@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright 2020 NXP */
 
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -31,6 +32,20 @@ static const struct isochron_prog progs[] = {
 		.main = isochron_report_main,
 	},
 };
+
+bool signal_received;
+
+static void isochron_signal_handler(int signo)
+{
+	switch (signo) {
+	case SIGTERM:
+	case SIGINT:
+		signal_received = true;
+		break;
+	default:
+		break;
+	}
+}
 
 static void isochron_usage(void)
 {
@@ -106,10 +121,44 @@ int isochron_parse_args(int *argc, char ***argv,
 	return -EINVAL;
 }
 
+static int isochron_handle_signals(void (*handler)(int signo))
+{
+	struct sigaction sa;
+	int rc;
+
+	sa.sa_handler = handler;
+	sa.sa_flags = 0;
+	sigemptyset(&sa.sa_mask);
+
+	rc = sigaction(SIGTERM, &sa, NULL);
+	if (rc < 0) {
+		perror("can't catch SIGTERM");
+		return -errno;
+	}
+
+	rc = sigaction(SIGINT, &sa, NULL);
+	if (rc < 0) {
+		perror("can't catch SIGINT");
+		return -errno;
+	}
+
+	rc = sigaction(SIGPIPE, &sa, NULL);
+	if (rc < 0) {
+		perror("can't catch SIGPIPE");
+		return -errno;
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	const struct isochron_prog *prog;
 	int rc;
+
+	rc = isochron_handle_signals(isochron_signal_handler);
+	if (rc)
+		return rc;
 
 	rc = isochron_parse_args(&argc, &argv, &prog);
 	if (rc)
