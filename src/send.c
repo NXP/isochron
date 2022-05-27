@@ -1072,6 +1072,7 @@ skip_collecting_rcv_log:
 int isochron_send_init_ptpmon(struct isochron_send *prog)
 {
 	char uds_local[UNIX_PATH_MAX];
+	int retries = 3;
 	int rc;
 
 	if (prog->omit_sync)
@@ -1093,6 +1094,11 @@ int isochron_send_init_ptpmon(struct isochron_send *prog)
 	while (prog_query_utc_offset(prog) == -ENOENT) {
 		if (signal_received) {
 			rc = -EINTR;
+			goto out_close;
+		}
+		if (!retries--) {
+			fprintf(stderr, "Timed out waiting for ptp4l\n");
+			rc = -ETIMEDOUT;
 			goto out_close;
 		}
 
