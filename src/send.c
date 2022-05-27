@@ -1478,7 +1478,6 @@ void isochron_send_prepare_default_args(struct isochron_send *prog)
 	prog->etype = ETH_P_ISOCHRON;
 	prog->data_port = ISOCHRON_DATA_PORT;
 	prog->stats_port = ISOCHRON_STATS_PORT;
-	sprintf(prog->output_file, "isochron.dat");
 	sprintf(prog->uds_remote, "/var/run/ptp4l");
 }
 
@@ -1557,6 +1556,9 @@ int isochron_send_interpret_args(struct isochron_send *prog)
 			"--client is mandatory when --output-file is used\n");
 		return -EINVAL;
 	}
+
+	if (!strlen(prog->output_file))
+		sprintf(prog->output_file, "isochron.dat");
 
 	if (prog->sync_threshold < 0 && !prog->omit_sync) {
 		fprintf(stderr,
