@@ -754,7 +754,8 @@ static int prog_open_node_connection(struct isochron_orch_node *node)
 
 	stats_fd = socket(node->addr.family, SOCK_STREAM, 0);
 	if (stats_fd < 0) {
-		perror("opening stats socket failed");
+		fprintf(stderr, "Failed to open socket to node %s: %m\n",
+			node->name);
 		return -errno;
 	}
 
@@ -763,7 +764,9 @@ static int prog_open_node_connection(struct isochron_orch_node *node)
 				node->addr.bound_if_name,
 				IFNAMSIZ - 1);
 		if (rc < 0) {
-			perror("setsockopt(SO_BINDTODEVICE) on stats socket failed");
+			fprintf(stderr,
+				"Failed to setsockopt(SO_BINDTODEVICE) on node %s socket: %m\n",
+				node->name);
 			close(stats_fd);
 			return -errno;
 		}
@@ -771,7 +774,8 @@ static int prog_open_node_connection(struct isochron_orch_node *node)
 
 	rc = connect(stats_fd, serv_addr, size);
 	if (rc < 0) {
-		perror("connecting to stats socket failed");
+		fprintf(stderr, "Failed to connect to node %s: %m\n",
+			node->name);
 		close(stats_fd);
 		return -errno;
 	}
