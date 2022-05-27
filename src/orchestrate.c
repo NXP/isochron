@@ -175,7 +175,8 @@ static int prog_query_test_state(struct isochron_orch_node *node,
 	rc = isochron_query_mid(node->stats_fd, ISOCHRON_MID_TEST_STATE,
 				&t, sizeof(t));
 	if (rc) {
-		fprintf(stderr, "test state missing from reply\n");
+		fprintf(stderr, "Test state missing from node %s reply\n",
+			node->name);
 		return rc;
 	}
 
@@ -649,7 +650,9 @@ static int prog_query_receiver_mac_address(struct isochron_orch_node *node)
 	rc = isochron_query_mid(node->stats_fd, ISOCHRON_MID_DESTINATION_MAC,
 				&mac, sizeof(mac));
 	if (rc) {
-		fprintf(stderr, "destination MAC missing from receiver reply\n");
+		fprintf(stderr,
+			"Destination MAC missing from node %s reply\n",
+			node->name);
 		return rc;
 	}
 
