@@ -231,7 +231,7 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 	rc = ioctl(fd, SIOCSHWTSTAMP, &ifreq);
 	if (rc < 0) {
 		perror("ioctl SIOCSHWTSTAMP failed");
-		return rc;
+		return -errno;
 	}
 
 	if (cfg.tx_type != tx_type)
