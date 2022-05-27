@@ -30,6 +30,7 @@ struct isochron_orch_node {
 	int stats_fd;
 	long sync_threshold;
 	struct clock_identity gm_clkid;
+	enum port_link_state link_state;
 	enum port_state port_state;
 	bool collect_sync_stats;
 	__s64 ptpmon_offset;
@@ -53,6 +54,35 @@ struct isochron_orch {
 	char input_filename[PATH_MAX];
 };
 
+static int prog_query_link_state(struct isochron_orch_node *node)
+{
+	struct isochron_port_link_state s;
+	enum port_link_state link_state;
+	int rc;
+
+	rc = isochron_query_mid(node->stats_fd, ISOCHRON_MID_PORT_LINK_STATE,
+				&s, sizeof(s));
+	if (rc) {
+		fprintf(stderr,
+			"Port link state missing from node %s reply\n",
+			node->name);
+		return rc;
+	}
+
+	link_state = s.link_state;
+
+	if (node->link_state == link_state)
+		return 0;
+
+	node->link_state = link_state;
+	if (node->link_state == PORT_LINK_STATE_RUNNING)
+		printf("Link state of node %s is running\n", node->name);
+	if (node->link_state == PORT_LINK_STATE_DOWN)
+		printf("Link state of node %s is down\n", node->name);
+
+	return 0;
+}
+
 static bool prog_sync_ok(struct isochron_orch *prog)
 {
 	bool port_transient_state, any_port_transient_state = false;
@@ -62,6 +92,7 @@ static bool prog_sync_ok(struct isochron_orch *prog)
 	struct isochron_orch_node *node, *sender;
 	char now_buf[TIMESPEC_BUFSIZ];
 	enum port_state port_state;
+	bool any_link_down = false;
 	struct timespec now_ts;
 	bool same_gm = true;
 	int utc_offset;
@@ -73,6 +104,13 @@ static bool prog_sync_ok(struct isochron_orch *prog)
 	ns_sprintf(now_buf, now);
 
 	LIST_FOREACH(node, &prog->nodes, list) {
+		rc = prog_query_link_state(node);
+		if (rc)
+			return false;
+
+		if (node->link_state != PORT_LINK_STATE_RUNNING)
+			any_link_down = true;
+
 		if (!node->collect_sync_stats)
 			continue;
 
@@ -142,7 +180,7 @@ static bool prog_sync_ok(struct isochron_orch *prog)
 		}
 	}
 
-	return !any_port_transient_state && same_gm &&
+	return !any_link_down && !any_port_transient_state && same_gm &&
 	       all_ptpmon_sync_done && all_sysmon_sync_done;
 }
 

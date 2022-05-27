@@ -22,6 +22,7 @@
 #include "log.h"
 #include "management.h"
 #include "ptpmon.h"
+#include "rtnl.h"
 #include "sysmon.h"
 
 #define BUF_SIZ		10000
@@ -333,6 +334,12 @@ static int prog_forward_port_state(struct isochron_rcv *prog)
 					   prog->if_name, prog->rtnl);
 }
 
+static int prog_forward_port_link_state(struct isochron_rcv *prog)
+{
+	return isochron_forward_port_link_state(prog->stats_fd, prog->if_name,
+						prog->rtnl);
+}
+
 static int prog_forward_gm_clock_identity(struct isochron_rcv *prog)
 {
 	return isochron_forward_gm_clock_identity(prog->stats_fd,
@@ -428,6 +435,8 @@ static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 		return prog_forward_utc_offset(prog);
 	case ISOCHRON_MID_PORT_STATE:
 		return prog_forward_port_state(prog);
+	case ISOCHRON_MID_PORT_LINK_STATE:
+		return prog_forward_port_link_state(prog);
 	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
 		return prog_forward_gm_clock_identity(prog);
 	case ISOCHRON_MID_DESTINATION_MAC:
@@ -806,6 +815,27 @@ static void prog_rtnl_close(struct isochron_rcv *prog)
 	mnl_socket_close(nl);
 }
 
+static int prog_check_admin_state(struct isochron_rcv *prog)
+{
+	bool up;
+	int rc;
+
+	rc = rtnl_query_admin_state(prog->rtnl, prog->if_name, &up);
+	if (rc) {
+		pr_err(rc, "Failed to query port %s admin state: %m\n",
+		       prog->if_name);
+		return rc;
+	}
+
+	if (!up) {
+		fprintf(stderr, "Interface %s is administratively down\n",
+			prog->if_name);
+		return -ENETDOWN;
+	}
+
+	return 0;
+}
+
 static int prog_init(struct isochron_rcv *prog)
 {
 	int rc;
@@ -813,6 +843,10 @@ static int prog_init(struct isochron_rcv *prog)
 	rc = prog_rtnl_open(prog);
 	if (rc)
 		return rc;
+
+	rc = prog_check_admin_state(prog);
+	if (rc)
+		goto out_close_rtnl;
 
 	rc = prog_init_ptpmon(prog);
 	if (rc)

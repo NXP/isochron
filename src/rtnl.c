@@ -2,6 +2,7 @@
 /* Copyright 2022 NXP */
 #include <linux/if_link.h>
 #include <linux/rtnetlink.h>
+#include <net/if.h>
 #include <errno.h>
 #include <string.h>
 #include "common.h"
@@ -20,6 +21,14 @@ struct ifname_info {
 
 struct ifindex_info {
 	int ifindex;
+};
+
+struct if_admin_info {
+	bool up;
+};
+
+struct if_oper_info {
+	bool running;
 };
 
 static int rtnl_parse_vlan_linkinfo(const struct nlattr *attr, void *data)
@@ -118,6 +127,26 @@ static int rtnl_parse_ifindex_nlh(const struct nlmsghdr *nlh, void *data)
 	struct ifindex_info *i = data;
 
 	i->ifindex = ifm->ifi_index;
+
+	return MNL_CB_STOP;
+}
+
+static int rtnl_parse_if_up_nlh(const struct nlmsghdr *nlh, void *data)
+{
+	struct ifinfomsg *ifm = mnl_nlmsg_get_payload(nlh);
+	struct if_admin_info *i = data;
+
+	i->up = !!(ifm->ifi_flags & IFF_UP);
+
+	return MNL_CB_STOP;
+}
+
+static int rtnl_parse_if_running_nlh(const struct nlmsghdr *nlh, void *data)
+{
+	struct ifinfomsg *ifm = mnl_nlmsg_get_payload(nlh);
+	struct if_oper_info *i = data;
+
+	i->running = !!(ifm->ifi_flags & IFF_RUNNING);
 
 	return MNL_CB_STOP;
 }
@@ -249,6 +278,37 @@ int vlan_resolve_real_dev(struct mnl_socket *rtnl, const char *vlan_ifname,
 		return rc;
 
 	strcpy(real_ifname, ifname.ifname);
+
+	return 0;
+}
+
+int rtnl_query_admin_state(struct mnl_socket *rtnl, const char *if_name,
+			   bool *up)
+{
+	struct if_admin_info i = {};
+	int rc;
+
+	rc = rtnl_getlink_by_ifname(rtnl, if_name, rtnl_parse_if_up_nlh, &i);
+	if (rc)
+		return rc;
+
+	*up = i.up;
+
+	return 0;
+}
+
+int rtnl_query_link_state(struct mnl_socket *rtnl, const char *if_name,
+			  bool *running)
+{
+	struct if_oper_info i = {};
+	int rc;
+
+	rc = rtnl_getlink_by_ifname(rtnl, if_name, rtnl_parse_if_running_nlh,
+				    &i);
+	if (rc)
+		return rc;
+
+	*running = i.running;
 
 	return 0;
 }

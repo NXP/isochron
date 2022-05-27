@@ -58,6 +58,7 @@ enum isochron_management_id {
 	ISOCHRON_MID_CPU_MASK,
 	ISOCHRON_MID_TEST_STATE,
 	ISOCHRON_MID_SYNC_MONITOR_ENABLED,
+	ISOCHRON_MID_PORT_LINK_STATE,
 };
 
 enum isochron_management_action {
@@ -74,6 +75,12 @@ enum isochron_role {
 enum test_state {
 	ISOCHRON_TEST_STATE_IDLE,
 	ISOCHRON_TEST_STATE_RUNNING,
+};
+
+enum port_link_state {
+	PORT_LINK_STATE_UNKNOWN,
+	PORT_LINK_STATE_DOWN,
+	PORT_LINK_STATE_RUNNING,
 };
 
 enum isochron_tlv_type {
@@ -241,6 +248,12 @@ struct isochron_test_state {
 	__u8			reserved[3];
 } __attribute((packed));
 
+/* ISOCHRON_MID_PORT_LINK_STATE */
+struct isochron_port_link_state {
+	__u8			link_state;
+	__u8			reserved[3];
+} __attribute((packed));
+
 int isochron_send_tlv(int fd, enum isochron_management_action action,
 		      enum isochron_management_id mid, size_t size);
 void isochron_send_empty_tlv(int fd, enum isochron_management_id mid);
@@ -307,6 +320,8 @@ int isochron_forward_utc_offset(int fd, struct ptpmon *ptpmon, int *utc_offset);
 int isochron_forward_port_state(int fd, struct ptpmon *ptpmon,
 				const char *if_name, struct mnl_socket *rtnl);
 int isochron_forward_test_state(int fd, enum test_state state);
+int isochron_forward_port_link_state(int fd, const char *if_name,
+				     struct mnl_socket *rtnl);
 int isochron_forward_gm_clock_identity(int fd, struct ptpmon *ptpmon);
 
 int isochron_collect_sync_stats(int fd, __s64 *sysmon_offset,

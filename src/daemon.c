@@ -16,6 +16,7 @@
 #include "isochron.h"
 #include "management.h"
 #include "ptpmon.h"
+#include "rtnl.h"
 #include "send.h"
 #include "sysmon.h"
 
@@ -30,6 +31,28 @@ struct isochron_daemon {
 	struct mnl_socket *rtnl;
 	bool test_running;
 };
+
+static int prog_check_admin_state(struct isochron_daemon *prog)
+{
+	const char *if_name = prog->send->if_name;
+	bool up;
+	int rc;
+
+	rc = rtnl_query_admin_state(prog->rtnl, if_name, &up);
+	if (rc) {
+		pr_err(rc, "Failed to query port %s admin state: %m\n",
+		       if_name);
+		return rc;
+	}
+
+	if (!up) {
+		fprintf(stderr, "Interface %s is administratively down\n",
+			if_name);
+		return -ENETDOWN;
+	}
+
+	return 0;
+}
 
 static int prog_prepare_session(struct isochron_send *send)
 {
@@ -731,6 +754,10 @@ static int prog_update_test_state(void *priv, void *ptr)
 			return -EINVAL;
 		}
 
+		rc = prog_check_admin_state(prog);
+		if (rc)
+			return rc;
+
 		rc = prog_prepare_session(prog->send);
 		if (rc)
 			return rc;
@@ -1018,6 +1045,19 @@ static int prog_forward_port_state(struct isochron_daemon *prog)
 					   prog->send->if_name, prog->rtnl);
 }
 
+static int prog_forward_port_link_state(struct isochron_daemon *prog)
+{
+	struct isochron_send *send = prog->send;
+
+	if (!send) {
+		fprintf(stderr, "Sender role not instantiated\n");
+		return -EINVAL;
+	}
+
+	return isochron_forward_port_link_state(prog->stats_fd, send->if_name,
+						prog->rtnl);
+}
+
 static int prog_forward_gm_clock_identity(struct isochron_daemon *prog)
 {
 	if (!prog->send) {
@@ -1067,6 +1107,8 @@ static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 		return prog_forward_utc_offset(prog);
 	case ISOCHRON_MID_PORT_STATE:
 		return prog_forward_port_state(prog);
+	case ISOCHRON_MID_PORT_LINK_STATE:
+		return prog_forward_port_link_state(prog);
 	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
 		return prog_forward_gm_clock_identity(prog);
 	case ISOCHRON_MID_TEST_STATE:

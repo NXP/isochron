@@ -7,6 +7,7 @@
 #include "common.h"
 #include "management.h"
 #include "ptpmon.h"
+#include "rtnl.h"
 #include "sysmon.h"
 
 int isochron_send_tlv(int fd, enum isochron_management_action action,
@@ -877,6 +878,34 @@ int isochron_forward_test_state(int fd, enum test_state state)
 		return 0;
 
 	write_exact(fd, &test_state, sizeof(test_state));
+
+	return 0;
+}
+
+int isochron_forward_port_link_state(int fd, const char *if_name,
+				     struct mnl_socket *rtnl)
+{
+	struct isochron_port_link_state s = {
+		.link_state = PORT_LINK_STATE_UNKNOWN,
+	};
+	bool running;
+	int rc;
+
+	rc = rtnl_query_link_state(rtnl, if_name, &running);
+	if (rc) {
+		pr_err(rc, "Failed to query port %s link state: %m\n",
+		       if_name);
+	} else {
+		s.link_state = running ? PORT_LINK_STATE_RUNNING :
+					 PORT_LINK_STATE_DOWN;
+	}
+
+	rc = isochron_send_tlv(fd, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_PORT_LINK_STATE, sizeof(s));
+	if (rc)
+		return 0;
+
+	write_exact(fd, &s, sizeof(s));
 
 	return 0;
 }

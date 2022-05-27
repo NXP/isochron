@@ -34,6 +34,7 @@
 #include "log.h"
 #include "management.h"
 #include "send.h"
+#include "rtnl.h"
 #include <linux/net_tstamp.h>
 
 #define TIME_FMT_LEN	27 /* "[%s] " */
@@ -591,6 +592,31 @@ static void *prog_tx_timestamp_thread(void *arg)
 	return &prog->tx_timestamp_tid_rc;
 }
 
+static bool prog_monitor_link_state(struct isochron_send *prog)
+{
+	bool running;
+	int rc;
+
+	rc = rtnl_query_link_state(prog->rtnl, prog->if_name, &running);
+	if (rc) {
+		pr_err(rc, "Failed to query port %s link state: %m\n",
+		       prog->if_name);
+		return false;
+	}
+
+	if (running && prog->link_state != PORT_LINK_STATE_RUNNING) {
+		printf("Port %s is running\n", prog->if_name);
+		prog->link_state = PORT_LINK_STATE_RUNNING;
+	}
+
+	if (!running && prog->link_state != PORT_LINK_STATE_DOWN) {
+		printf("Port %s is down\n", prog->if_name);
+		prog->link_state = PORT_LINK_STATE_DOWN;
+	}
+
+	return running;
+}
+
 static bool prog_sync_ok(struct isochron_send *prog)
 {
 	bool local_port_transient_state, remote_port_transient_state;
@@ -610,7 +636,7 @@ static bool prog_sync_ok(struct isochron_send *prog)
 	int rc;
 
 	if (!prog->ptpmon)
-		return true;
+		return prog_monitor_link_state(prog);
 
 	if (prog->omit_remote_sync || !prog->stats_srv.family) {
 		have_remote_stats = false;
@@ -1387,6 +1413,27 @@ static void prog_rtnl_close(struct isochron_send *prog)
 	mnl_socket_close(nl);
 }
 
+static int prog_check_admin_state(struct isochron_send *prog)
+{
+	bool up;
+	int rc;
+
+	rc = rtnl_query_admin_state(prog->rtnl, prog->if_name, &up);
+	if (rc) {
+		pr_err(rc, "Failed to query port %s admin state: %m\n",
+		       prog->if_name);
+		return rc;
+	}
+
+	if (!up) {
+		fprintf(stderr, "Interface %s is administratively down\n",
+			prog->if_name);
+		return -ENETDOWN;
+	}
+
+	return 0;
+}
+
 int prog_init(struct isochron_send *prog)
 {
 	int rc;
@@ -1394,6 +1441,10 @@ int prog_init(struct isochron_send *prog)
 	rc = prog_rtnl_open(prog);
 	if (rc)
 		goto out;
+
+	rc = prog_check_admin_state(prog);
+	if (rc)
+		goto out_close_rtnl;
 
 	rc = prog_init_stats_socket(prog);
 	if (rc)

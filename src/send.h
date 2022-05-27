@@ -25,6 +25,7 @@ struct isochron_send {
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
 	struct mnl_socket *rtnl;
+	enum port_link_state link_state;
 	enum port_state last_local_port_state;
 	enum port_state last_remote_port_state;
 	struct cmsghdr *cmsg;
