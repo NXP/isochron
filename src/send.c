@@ -1614,6 +1614,12 @@ int isochron_send_interpret_args(struct isochron_send *prog)
 		return -EINVAL;
 	}
 
+	if (prog->l4 && !prog->ip_destination.family) {
+		fprintf(stderr,
+			"--ip-destination is mandatory with --l4\n");
+		return -EINVAL;
+	}
+
 	if (!strlen(prog->output_file))
 		sprintf(prog->output_file, "isochron.dat");
 
