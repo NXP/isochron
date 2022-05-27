@@ -389,8 +389,7 @@ static int prog_marshall_data_to_receiver(struct isochron_orch_node *node)
 {
 	struct isochron_orch_node *sender = node->sender;
 
-	return isochron_update_packet_count(node->stats_fd,
-					    sender->send->iterations);
+	return isochron_prepare_receiver(sender->send, node->stats_fd);
 }
 
 static int prog_marshall_data_to_sender(struct isochron_orch_node *node)

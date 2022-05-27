@@ -816,12 +816,27 @@ static int prog_query_dest_mac(struct isochron_send *prog)
 	return 0;
 }
 
+int isochron_prepare_receiver(struct isochron_send *prog, int fd)
+{
+	int rc;
+
+	rc = isochron_update_l2_enabled(fd, prog->l2);
+	if (rc)
+		return rc;
+
+	rc = isochron_update_l4_enabled(fd, prog->l4);
+	if (rc)
+		return rc;
+
+	return isochron_update_packet_count(fd, prog->iterations);
+}
+
 static int prog_prepare_receiver(struct isochron_send *prog)
 {
 	if (!prog->stats_srv.family)
 		return 0;
 
-	return isochron_update_packet_count(prog->stats_fd, prog->iterations);
+	return isochron_prepare_receiver(prog, prog->stats_fd);
 }
 
 int isochron_send_update_session_start_time(struct isochron_send *prog)

@@ -93,14 +93,14 @@ OPTIONS
 `-2`, `--l2`
 
 :   this option specifies that the plain Ethernet transport should be
-    used for the test packets. Optional, defaults to true. Cannot be
-    used together with `--l4`.
+    used for the test packets. Optional, defaults to true unless the
+    sender overrides this via the management socket.
 
 `-4`, `--l4`
 
 :   this option specifies that the UDP transport should be used for test
-    packets. Optional, defaults to false. Cannot be used together with
-    `--l2`.
+    packets. Optional, defaults to false unless the sender overrides
+    this via the management socket.
 
 `-U`, `--unix-domain-socket` <`PATH`>
 

@@ -40,7 +40,8 @@ struct isochron_rcv {
 	struct mnl_socket *rtnl;
 	int stats_listenfd;
 	int stats_fd;
-	int data_fd;
+	int l2_data_fd;
+	int l4_data_fd;
 	int data_timeout_fd;
 	bool have_client;
 	bool client_waiting_for_log;
@@ -113,7 +114,7 @@ static int prog_forward_isochron_log(struct isochron_rcv *prog)
 }
 
 static int app_loop(struct isochron_rcv *prog, __u8 *rcvbuf, size_t len,
-		    const struct isochron_timestamp *tstamp)
+		    bool l2, const struct isochron_timestamp *tstamp)
 {
 	struct isochron_rcv_pkt_data rcv_pkt = {0};
 	struct timespec now_ts;
@@ -129,7 +130,7 @@ static int app_loop(struct isochron_rcv *prog, __u8 *rcvbuf, size_t len,
 
 	now = timespec_to_ns(&now_ts);
 	rcv_pkt.arrival = __cpu_to_be64(now);
-	if (prog->l2) {
+	if (l2) {
 		struct ethhdr *eth_hdr = (struct ethhdr *)rcvbuf;
 		struct isochron_header *hdr = (struct isochron_header *)(eth_hdr + 1);
 
@@ -224,24 +225,182 @@ static int multicast_listen(int fd, unsigned int if_index,
 	return -1;
 }
 
-static int prog_data_event(struct isochron_rcv *prog)
+static int prog_init_l2_data_fd(struct isochron_rcv *prog)
+{
+	int sockopt = 1;
+	int fd, rc;
+
+	if (!prog->l2)
+		return 0;
+
+	/* Open PF_PACKET socket, listening for the specified EtherType */
+	fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
+	if (fd < 0) {
+		perror("listener: data socket");
+		return -errno;
+	}
+
+	/* Allow the socket to be reused, in case the connection
+	 * is closed prematurely
+	 */
+	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
+	if (rc < 0) {
+		perror("setsockopt");
+		goto out;
+	}
+
+	/* Bind to device */
+	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
+			IFNAMSIZ - 1);
+	if (rc < 0) {
+		perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
+		goto out;
+	}
+
+	if (is_zero_ether_addr(prog->dest_mac)) {
+		struct ifreq if_mac;
+
+		memset(&if_mac, 0, sizeof(struct ifreq));
+		strcpy(if_mac.ifr_name, prog->if_name);
+		if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
+			perror("SIOCGIFHWADDR");
+			goto out;
+		}
+
+		ether_addr_copy(prog->dest_mac,
+			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
+	}
+
+	if (is_multicast_ether_addr(prog->dest_mac)) {
+		rc = multicast_listen(fd, prog->if_index, prog->dest_mac, true);
+		if (rc) {
+			perror("multicast_listen");
+			goto out;
+		}
+	}
+
+	rc = sk_validate_ts_info(prog->if_name);
+	if (rc) {
+		errno = -rc;
+		goto out;
+	}
+
+	rc = sk_timestamping_init(fd, prog->if_name, true);
+	if (rc) {
+		errno = -rc;
+		goto out;
+	}
+
+	prog->l2_data_fd = fd;
+
+	return 0;
+
+out:
+	close(fd);
+	return -errno;
+}
+
+static int prog_init_l4_data_fd(struct isochron_rcv *prog)
+{
+	struct sockaddr_in6 serv_data_addr = {
+		.sin6_family = AF_INET6,
+		.sin6_addr = in6addr_any,
+		.sin6_port = htons(prog->data_port),
+	};
+	int sockopt = 1;
+	int fd, rc;
+
+	if (!prog->l4)
+		return 0;
+
+	fd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	if (fd < 0) {
+		perror("listener: data socket");
+		return -errno;
+	}
+
+	/* Allow the socket to be reused, in case the connection
+	 * is closed prematurely
+	 */
+	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
+	if (rc < 0) {
+		perror("setsockopt");
+		goto out;
+	}
+
+	/* Bind to device */
+	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
+			IFNAMSIZ - 1);
+	if (rc < 0) {
+		perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
+		goto out;
+	}
+
+	rc = bind(fd, (struct sockaddr *)&serv_data_addr,
+		  sizeof(serv_data_addr));
+	if (rc < 0) {
+		perror("bind");
+		goto out;
+	}
+
+	rc = sk_validate_ts_info(prog->if_name);
+	if (rc) {
+		errno = -rc;
+		goto out;
+	}
+
+	rc = sk_timestamping_init(fd, prog->if_name, true);
+	if (rc) {
+		errno = -rc;
+		goto out;
+	}
+
+	prog->l4_data_fd = fd;
+
+	return 0;
+
+out:
+	close(fd);
+	return -errno;
+}
+
+static void prog_teardown_l2_data_fd(struct isochron_rcv *prog)
+{
+	if (!prog->l2)
+		return;
+
+	if (is_multicast_ether_addr(prog->dest_mac))
+		multicast_listen(prog->l2_data_fd, prog->if_index,
+				 prog->dest_mac, false);
+
+	close(prog->l2_data_fd);
+}
+
+static void prog_teardown_l4_data_fd(struct isochron_rcv *prog)
+{
+	if (!prog->l4)
+		return;
+
+	close(prog->l4_data_fd);
+}
+
+static int prog_data_event(struct isochron_rcv *prog, int fd, bool l2)
 {
 	struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
 	struct isochron_timestamp tstamp = {0};
 	ssize_t len;
 
-	len = sk_receive(prog->data_fd, prog->rcvbuf,
-			 BUF_SIZ, &tstamp, 0, 0);
+	len = sk_receive(fd, prog->rcvbuf, BUF_SIZ, &tstamp, 0, 0);
 	/* Suppress "Interrupted system call" message */
 	if (len < 0 && errno != EINTR) {
 		perror("recvfrom failed");
 		return -errno;
 	}
 
-	if (prog->l2 && !ether_addr_equal(prog->dest_mac, eth_hdr->h_dest))
+	if (l2 && !ether_addr_equal(prog->dest_mac, eth_hdr->h_dest))
 		return 0;
 
-	return app_loop(prog, prog->rcvbuf, len, &tstamp);
+	return app_loop(prog, prog->rcvbuf, len, l2, &tstamp);
 }
 
 static int prog_data_fd_timeout(struct isochron_rcv *prog)
@@ -397,6 +556,44 @@ static int prog_set_packet_count(void *priv, void *ptr)
 	return 0;
 }
 
+static int prog_update_l2_enabled(void *priv, void *ptr)
+{
+	struct isochron_feature_enabled *f = ptr;
+	struct isochron_rcv *prog = priv;
+	int rc = 0;
+
+	if (prog->l2 == f->enabled)
+		return 0;
+
+	prog->l2 = f->enabled;
+
+	if (prog->l2)
+		rc = prog_init_l2_data_fd(prog);
+	else
+		prog_teardown_l2_data_fd(prog);
+
+	return rc;
+}
+
+static int prog_update_l4_enabled(void *priv, void *ptr)
+{
+	struct isochron_feature_enabled *f = ptr;
+	struct isochron_rcv *prog = priv;
+	int rc = 0;
+
+	if (prog->l4 == f->enabled)
+		return 0;
+
+	prog->l4 = f->enabled;
+
+	if (prog->l4)
+		rc = prog_init_l4_data_fd(prog);
+	else
+		prog_teardown_l4_data_fd(prog);
+
+	return rc;
+}
+
 static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
@@ -408,6 +605,14 @@ static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
 					     sizeof(struct isochron_packet_count),
 					     prog_set_packet_count);
+	case ISOCHRON_MID_L2_ENABLED:
+		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+					     sizeof(struct isochron_feature_enabled),
+					     prog_update_l2_enabled);
+	case ISOCHRON_MID_L4_ENABLED:
+		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+					     sizeof(struct isochron_feature_enabled),
+					     prog_update_l4_enabled);
 	default:
 		isochron_send_empty_tlv(prog->stats_fd, mid);
 		return 0;
@@ -449,24 +654,62 @@ static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 	}
 }
 
+enum pollfd_type {
+	PFD_MGMT,
+	PFD_DATA_TIMEOUT,
+	PFD_DATA1,
+	PFD_DATA2,
+	__PFD_MAX,
+};
+
+static void prog_fill_dynamic_pfds(struct isochron_rcv *prog,
+				   struct pollfd *pfd, int *pfd_num,
+				   int *l2_pfd, int *l4_pfd)
+{
+	*pfd_num = PFD_DATA1;
+	*l2_pfd = -1;
+	*l4_pfd = -1;
+
+	if (prog->have_client)
+		pfd[PFD_MGMT].fd = prog->stats_fd;
+	else
+		pfd[PFD_MGMT].fd = prog->stats_listenfd;
+
+	if (prog->l2) {
+		*l2_pfd = *pfd_num;
+		pfd[(*pfd_num)++].fd = prog->l2_data_fd;
+	}
+
+	if (prog->l4) {
+		*l4_pfd = *pfd_num;
+		pfd[(*pfd_num)++].fd = prog->l4_data_fd;
+	}
+}
+
 static int server_loop(struct isochron_rcv *prog)
 {
-	struct pollfd pfd[3] = {
-		[0] = {
-			.fd = prog->data_fd,
-			.events = POLLIN | POLLERR | POLLPRI,
-		},
-		[1] = {
+	struct pollfd pfd[__PFD_MAX] = {
+		[PFD_MGMT] = {
 			/* .fd to be filled in dynamically */
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
-		[2] = {
+		[PFD_DATA_TIMEOUT] = {
 			.fd = prog->data_timeout_fd,
+			.events = POLLIN | POLLERR | POLLPRI,
+		},
+		[PFD_DATA1] = {
+			/* .fd to be filled in dynamically */
+			.events = POLLIN | POLLERR | POLLPRI,
+		},
+		[PFD_DATA2] = {
+			/* .fd to be filled in dynamically */
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 	};
 	__u32 sched_policy = SCHED_OTHER;
 	bool socket_closed;
+	int l2_pfd, l4_pfd;
+	int pfd_num;
 	int rc = 0;
 	int cnt;
 
@@ -489,12 +732,9 @@ static int server_loop(struct isochron_rcv *prog)
 	}
 
 	do {
-		if (prog->have_client)
-			pfd[1].fd = prog->stats_fd;
-		else
-			pfd[1].fd = prog->stats_listenfd;
+		prog_fill_dynamic_pfds(prog, pfd, &pfd_num, &l2_pfd, &l4_pfd);
 
-		cnt = poll(pfd, ARRAY_SIZE(pfd), -1);
+		cnt = poll(pfd, pfd_num, -1);
 		if (cnt < 0) {
 			if (errno == EINTR) {
 				break;
@@ -507,13 +747,19 @@ static int server_loop(struct isochron_rcv *prog)
 			break;
 		}
 
-		if (pfd[0].revents & (POLLIN | POLLERR | POLLPRI)) {
-			rc = prog_data_event(prog);
+		if (l2_pfd >= 0 && pfd[l2_pfd].revents & (POLLIN | POLLERR | POLLPRI)) {
+			rc = prog_data_event(prog, prog->l2_data_fd, true);
 			if (rc)
 				break;
 		}
 
-		if (pfd[1].revents & (POLLIN | POLLERR | POLLPRI)) {
+		if (l4_pfd >= 0 && pfd[l4_pfd].revents & (POLLIN | POLLERR | POLLPRI)) {
+			rc = prog_data_event(prog, prog->l4_data_fd, false);
+			if (rc)
+				break;
+		}
+
+		if (pfd[PFD_MGMT].revents & (POLLIN | POLLERR | POLLPRI)) {
 			if (prog->have_client) {
 				rc = isochron_mgmt_event(prog->stats_fd, prog,
 							 isochron_get_parse_one_tlv,
@@ -530,7 +776,7 @@ static int server_loop(struct isochron_rcv *prog)
 			}
 		}
 
-		if (pfd[2].revents & (POLLIN | POLLERR | POLLPRI)) {
+		if (pfd[PFD_DATA_TIMEOUT].revents & (POLLIN | POLLERR | POLLPRI)) {
 			__u64 expiry_count;
 
 			rc = read_exact(prog->data_timeout_fd, &expiry_count,
@@ -667,104 +913,6 @@ static void prog_teardown_stats_listenfd(struct isochron_rcv *prog)
 	close(prog->stats_listenfd);
 }
 
-static int prog_init_data_fd(struct isochron_rcv *prog)
-{
-	struct sockaddr_in6 serv_data_addr = {
-		.sin6_family = AF_INET6,
-		.sin6_addr = in6addr_any,
-		.sin6_port = htons(prog->data_port),
-	};
-	int sockopt = 1;
-	int fd, rc;
-
-	if (prog->l2)
-		/* Open PF_PACKET socket, listening for the specified EtherType */
-		fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
-	else
-		fd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-	if (fd < 0) {
-		perror("listener: data socket");
-		return -errno;
-	}
-
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt");
-		goto out;
-	}
-
-	/* Bind to device */
-	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
-			IFNAMSIZ - 1);
-	if (rc < 0) {
-		perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
-		goto out;
-	}
-
-	if (!prog->l2) {
-		rc = bind(fd, (struct sockaddr *)&serv_data_addr,
-			  sizeof(serv_data_addr));
-		if (rc < 0) {
-			perror("bind");
-			goto out;
-		}
-	}
-
-	if (is_zero_ether_addr(prog->dest_mac)) {
-		struct ifreq if_mac;
-
-		memset(&if_mac, 0, sizeof(struct ifreq));
-		strcpy(if_mac.ifr_name, prog->if_name);
-		if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
-			perror("SIOCGIFHWADDR");
-			goto out;
-		}
-
-		ether_addr_copy(prog->dest_mac,
-			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
-	}
-
-	if (is_multicast_ether_addr(prog->dest_mac)) {
-		rc = multicast_listen(fd, prog->if_index, prog->dest_mac, true);
-		if (rc) {
-			perror("multicast_listen");
-			goto out;
-		}
-	}
-
-	rc = sk_validate_ts_info(prog->if_name);
-	if (rc) {
-		errno = -rc;
-		goto out;
-	}
-
-	rc = sk_timestamping_init(fd, prog->if_name, true);
-	if (rc) {
-		errno = -rc;
-		goto out;
-	}
-
-	prog->data_fd = fd;
-
-	return 0;
-
-out:
-	close(fd);
-	return -errno;
-}
-
-static void prog_teardown_data_fd(struct isochron_rcv *prog)
-{
-	if (is_multicast_ether_addr(prog->dest_mac))
-		multicast_listen(prog->data_fd, prog->if_index,
-				 prog->dest_mac, false);
-
-	close(prog->data_fd);
-}
-
 static int prog_init_data_timeout_fd(struct isochron_rcv *prog)
 {
 	int fd;
@@ -869,18 +1017,24 @@ static int prog_init(struct isochron_rcv *prog)
 	if (rc)
 		goto out_teardown_sysmon;
 
-	rc = prog_init_data_fd(prog);
+	rc = prog_init_l2_data_fd(prog);
 	if (rc)
 		goto out_teardown_stats_listenfd;
 
+	rc = prog_init_l4_data_fd(prog);
+	if (rc)
+		goto out_teardown_l2_data_fd;
+
 	rc = prog_init_data_timeout_fd(prog);
 	if (rc)
-		goto out_teardown_data_fd;
+		goto out_teardown_l4_data_fd;
 
 	return 0;
 
-out_teardown_data_fd:
-	prog_teardown_data_fd(prog);
+out_teardown_l4_data_fd:
+	prog_teardown_l4_data_fd(prog);
+out_teardown_l2_data_fd:
+	prog_teardown_l2_data_fd(prog);
 out_teardown_stats_listenfd:
 	prog_teardown_stats_listenfd(prog);
 out_teardown_sysmon:
@@ -1058,11 +1212,6 @@ static int prog_parse_args(int argc, char **argv, struct isochron_rcv *prog)
 	if (!prog->stats_port)
 		prog->stats_port = ISOCHRON_STATS_PORT;
 
-	if (prog->l2 && prog->l4) {
-		fprintf(stderr, "Choose transport as either L2 or L4!\n");
-		return -EINVAL;
-	}
-
 	if (!prog->l2 && !prog->l4)
 		prog->l2 = true;
 
@@ -1100,7 +1249,8 @@ static void prog_teardown(struct isochron_rcv *prog)
 	isochron_log_teardown(&prog->log);
 
 	prog_teardown_data_timeout_fd(prog);
-	prog_teardown_data_fd(prog);
+	prog_teardown_l4_data_fd(prog);
+	prog_teardown_l2_data_fd(prog);
 	prog_teardown_stats_listenfd(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
