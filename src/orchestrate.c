@@ -467,18 +467,20 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 		return rc;
 	}
 
-	rc = isochron_update_sysmon_enabled(fd, true);
-	if (rc) {
-		fprintf(stderr, "failed to enable sysmon for node %s\n",
-			node->name);
-		return rc;
-	}
+	if (!send->omit_sync) {
+		rc = isochron_update_sysmon_enabled(fd, true);
+		if (rc) {
+			fprintf(stderr, "failed to enable sysmon for node %s\n",
+				node->name);
+			return rc;
+		}
 
-	rc = isochron_update_ptpmon_enabled(fd, true);
-	if (rc) {
-		fprintf(stderr, "failed to enable ptpmon for node %s\n",
-			node->name);
-		return rc;
+		rc = isochron_update_ptpmon_enabled(fd, true);
+		if (rc) {
+			fprintf(stderr, "failed to enable ptpmon for node %s\n",
+				node->name);
+			return rc;
+		}
 	}
 
 	rc = isochron_update_sync_monitor_enabled(fd, false);
