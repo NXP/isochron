@@ -285,26 +285,26 @@ int isochron_log_rcv_pkt(struct isochron_log *log,
 	return 0;
 }
 
-int isochron_log_xmit(struct isochron_log *log, int fd)
+int isochron_log_xmit(struct isochron_log *log, const struct sk *sock)
 {
 	__be32 log_version = __cpu_to_be32(ISOCHRON_LOG_VERSION);
 	__be32 buf_len = __cpu_to_be32(log->size);
 	ssize_t len;
 
-	len = write_exact(fd, &log_version, sizeof(log_version));
+	len = sk_send(sock, &log_version, sizeof(log_version));
 	if (len <= 0) {
 		perror("Failed to write log version to socket");
 		return -errno;
 	}
 
-	len = write_exact(fd, &buf_len, sizeof(buf_len));
+	len = sk_send(sock, &buf_len, sizeof(buf_len));
 	if (len <= 0) {
 		perror("Failed to write log length to socket");
 		return -errno;
 	}
 
 	if (log->size) {
-		len = write_exact(fd, log->buf, log->size);
+		len = sk_send(sock, log->buf, log->size);
 		if (len <= 0) {
 			perror("Failed to write log to socket");
 			return -errno;
@@ -314,14 +314,14 @@ int isochron_log_xmit(struct isochron_log *log, int fd)
 	return 0;
 }
 
-int isochron_log_recv(struct isochron_log *log, int fd)
+int isochron_log_recv(struct isochron_log *log, const struct sk *sock)
 {
 	__be32 log_version;
 	__be32 buf_len;
 	ssize_t len;
 	int rc;
 
-	len = read_exact(fd, &log_version, sizeof(log_version));
+	len = sk_recv(sock, &log_version, sizeof(log_version), 0);
 	if (len <= 0) {
 		perror("could not read log version");
 		return -errno;
@@ -334,7 +334,7 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 		return -EINVAL;
 	}
 
-	len = read_exact(fd, &buf_len, sizeof(buf_len));
+	len = sk_recv(sock, &buf_len, sizeof(buf_len), 0);
 	if (len <= 0) {
 		perror("could not read buffer length");
 		return -errno;
@@ -346,7 +346,7 @@ int isochron_log_recv(struct isochron_log *log, int fd)
 
 	log->size = __be32_to_cpu(buf_len);
 	if (log->size) {
-		len = read_exact(fd, log->buf, log->size);
+		len = sk_recv(sock, log->buf, log->size, 0);
 		if (len <= 0) {
 			perror("could not read log");
 			isochron_log_teardown(log);

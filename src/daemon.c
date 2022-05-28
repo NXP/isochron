@@ -18,14 +18,15 @@
 #include "ptpmon.h"
 #include "rtnl.h"
 #include "send.h"
+#include "sk.h"
 #include "sysmon.h"
 
 struct isochron_daemon {
 	long stats_port;
 	char pid_filename[PATH_MAX];
 	char log_filename[PATH_MAX];
-	int stats_listenfd;
-	int stats_fd;
+	struct sk *mgmt_listen_sock;
+	struct sk *mgmt_sock;
 	bool have_client;
 	struct isochron_send *send;
 	struct mnl_socket *rtnl;
@@ -124,35 +125,17 @@ static void isochron_teardown_sender(struct isochron_daemon *prog)
 static void prog_close_client_stats_session(struct isochron_daemon *prog)
 {
 	isochron_teardown_sender(prog);
-	close(prog->stats_fd);
+	sk_close(prog->mgmt_sock);
 	prog->have_client = false;
 }
 
 static int prog_client_connect_event(struct isochron_daemon *prog)
 {
-	char client_addr[INET6_ADDRSTRLEN];
-	union {
-		struct sockaddr_in6 addr6;
-		struct sockaddr_in addr4;
-	} u;
-	socklen_t addr_len = sizeof(u);
+	int rc;
 
-	prog->stats_fd = accept(prog->stats_listenfd, (struct sockaddr *)&u,
-				&addr_len);
-	if (prog->stats_fd < 0) {
-		if (errno != EINTR)
-			perror("accept failed");
-		return -errno;
-	}
-
-	if (!inet_ntop(AF_INET6, &u.addr6.sin6_addr, client_addr,
-		       INET6_ADDRSTRLEN)) {
-		perror("inet_pton failed");
-		prog_close_client_stats_session(prog);
-		return -errno;
-	}
-
-	printf("Accepted connection from %s\n", client_addr);
+	rc = sk_accept(prog->mgmt_listen_sock, &prog->mgmt_sock);
+	if (rc)
+		return rc;
 
 	prog->have_client = true;
 
@@ -789,160 +772,160 @@ static int prog_mgmt_tlv_set(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
 	struct isochron_daemon *prog = priv;
-	int fd = prog->stats_fd;
+	struct sk *sock = prog->mgmt_sock;
 
 	switch (mid) {
 	case ISOCHRON_MID_NODE_ROLE:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_node_role),
 					     prog_update_role);
 	case ISOCHRON_MID_UTC_OFFSET:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_utc_offset),
 					     prog_update_utc_offset);
 	case ISOCHRON_MID_PACKET_COUNT:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_packet_count),
 					     prog_update_packet_count);
 	case ISOCHRON_MID_PACKET_SIZE:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_packet_size),
 					     prog_update_packet_size);
 	case ISOCHRON_MID_DESTINATION_MAC:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_mac_addr),
 					     prog_update_destination_mac);
 	case ISOCHRON_MID_SOURCE_MAC:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_mac_addr),
 					     prog_update_source_mac);
 	case ISOCHRON_MID_IF_NAME:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_if_name),
 					     prog_update_if_name);
 	case ISOCHRON_MID_PRIORITY:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_priority),
 					     prog_update_priority);
 	case ISOCHRON_MID_STATS_PORT:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_port),
 					     prog_update_stats_port);
 	case ISOCHRON_MID_BASE_TIME:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_time),
 					     prog_update_base_time);
 	case ISOCHRON_MID_ADVANCE_TIME:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_time),
 					     prog_update_advance_time);
 	case ISOCHRON_MID_SHIFT_TIME:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_time),
 					     prog_update_shift_time);
 	case ISOCHRON_MID_CYCLE_TIME:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_time),
 					     prog_update_cycle_time);
 	case ISOCHRON_MID_WINDOW_SIZE:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_time),
 					     prog_update_window_size);
 	case ISOCHRON_MID_SYSMON_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_sysmon_enabled);
 	case ISOCHRON_MID_PTPMON_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_ptpmon_enabled);
 	case ISOCHRON_MID_UDS:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_uds),
 					     prog_update_uds);
 	case ISOCHRON_MID_DOMAIN_NUMBER:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_domain_number),
 					     prog_update_domain_number);
 	case ISOCHRON_MID_TRANSPORT_SPECIFIC:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_transport_specific),
 					     prog_update_transport_specific);
 	case ISOCHRON_MID_NUM_READINGS:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_num_readings),
 					     prog_update_num_readings);
 	case ISOCHRON_MID_TS_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_ts_enabled);
 	case ISOCHRON_MID_VID:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_vid),
 					     prog_update_vid);
 	case ISOCHRON_MID_ETHERTYPE:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_ethertype),
 					     prog_update_ethertype);
 	case ISOCHRON_MID_QUIET_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_quiet_enabled);
 	case ISOCHRON_MID_TAPRIO_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_taprio_enabled);
 	case ISOCHRON_MID_TXTIME_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_txtime_enabled);
 	case ISOCHRON_MID_DEADLINE_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_deadline_enabled);
 	case ISOCHRON_MID_IP_DESTINATION:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_ip_address),
 					     prog_update_ip_destination);
 	case ISOCHRON_MID_L2_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_l2_enabled);
 	case ISOCHRON_MID_L4_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_l4_enabled);
 	case ISOCHRON_MID_DATA_PORT:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_port),
 					     prog_update_data_port);
 	case ISOCHRON_MID_SCHED_FIFO_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_sched_fifo);
 	case ISOCHRON_MID_SCHED_RR_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_sched_rr);
 	case ISOCHRON_MID_SCHED_PRIORITY:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_sched_priority),
 					     prog_update_sched_priority);
 	case ISOCHRON_MID_CPU_MASK:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_cpu_mask),
 					     prog_update_cpu_mask);
 	case ISOCHRON_MID_TEST_STATE:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_test_state),
 					     prog_update_test_state);
 	case ISOCHRON_MID_SYNC_MONITOR_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_sync_monitor_enabled);
 	default:
 		fprintf(stderr, "Unhandled SET for MID %d\n", mid);
-		isochron_send_empty_tlv(prog->stats_fd, mid);
+		isochron_send_empty_tlv(sock, mid);
 		return 0;
 	}
 }
@@ -957,13 +940,13 @@ static int prog_forward_isochron_log(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+	rc = isochron_send_tlv(prog->mgmt_sock, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_LOG,
 			       isochron_log_buf_tlv_size(&send->log));
 	if (rc)
 		return 0;
 
-	isochron_log_xmit(&send->log, prog->stats_fd);
+	isochron_log_xmit(&send->log, prog->mgmt_sock);
 	isochron_log_teardown(&send->log);
 	return isochron_log_init(&send->log, send->iterations *
 				 sizeof(struct isochron_send_pkt_data));
@@ -981,7 +964,7 @@ static int prog_forward_sysmon_offset(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	return isochron_forward_sysmon_offset(prog->stats_fd,
+	return isochron_forward_sysmon_offset(prog->mgmt_sock,
 					      prog->send->sysmon);
 }
 
@@ -997,7 +980,7 @@ static int prog_forward_ptpmon_offset(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	return isochron_forward_ptpmon_offset(prog->stats_fd,
+	return isochron_forward_ptpmon_offset(prog->mgmt_sock,
 					      prog->send->ptpmon);
 }
 
@@ -1015,7 +998,7 @@ static int prog_forward_utc_offset(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	rc = isochron_forward_utc_offset(prog->stats_fd, prog->send->ptpmon,
+	rc = isochron_forward_utc_offset(prog->mgmt_sock, prog->send->ptpmon,
 					 &utc_offset);
 	if (rc)
 		return rc;
@@ -1043,7 +1026,7 @@ static int prog_forward_port_state(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	return isochron_forward_port_state(prog->stats_fd, prog->send->ptpmon,
+	return isochron_forward_port_state(prog->mgmt_sock, prog->send->ptpmon,
 					   prog->send->if_name, prog->rtnl);
 }
 
@@ -1056,7 +1039,7 @@ static int prog_forward_port_link_state(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	return isochron_forward_port_link_state(prog->stats_fd, send->if_name,
+	return isochron_forward_port_link_state(prog->mgmt_sock, send->if_name,
 						prog->rtnl);
 }
 
@@ -1072,7 +1055,7 @@ static int prog_forward_gm_clock_identity(struct isochron_daemon *prog)
 		return -EINVAL;
 	}
 
-	return isochron_forward_gm_clock_identity(prog->stats_fd,
+	return isochron_forward_gm_clock_identity(prog->mgmt_sock,
 						  prog->send->ptpmon);
 }
 
@@ -1090,7 +1073,7 @@ static int prog_forward_test_state(struct isochron_daemon *prog)
 	else
 		state = ISOCHRON_TEST_STATE_RUNNING;
 
-	return isochron_forward_test_state(prog->stats_fd, state);
+	return isochron_forward_test_state(prog->mgmt_sock, state);
 }
 
 static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
@@ -1117,7 +1100,7 @@ static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 		return prog_forward_test_state(prog);
 	default:
 		fprintf(stderr, "Unhandled GET for MID %d\n", mid);
-		isochron_send_empty_tlv(prog->stats_fd, mid);
+		isochron_send_empty_tlv(prog->mgmt_sock, mid);
 		return 0;
 	}
 }
@@ -1136,9 +1119,9 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 
 	do {
 		if (prog->have_client)
-			pfd[0].fd = prog->stats_fd;
+			pfd[0].fd = sk_fd(prog->mgmt_sock);
 		else
-			pfd[0].fd = prog->stats_listenfd;
+			pfd[0].fd = sk_fd(prog->mgmt_listen_sock);
 
 		cnt = poll(pfd, ARRAY_SIZE(pfd), -1);
 		if (cnt < 0) {
@@ -1156,7 +1139,7 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 
 		if (pfd[0].revents & (POLLIN | POLLERR | POLLPRI)) {
 			if (prog->have_client) {
-				rc = isochron_mgmt_event(prog->stats_fd, prog,
+				rc = isochron_mgmt_event(prog->mgmt_sock, prog,
 							 prog_mgmt_tlv_get,
 							 prog_mgmt_tlv_set,
 							 &socket_closed);
@@ -1181,55 +1164,14 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 	return rc;
 }
 
-static int prog_init_stats_listenfd(struct isochron_daemon *prog)
+static int prog_init_mgmt_listen_sock(struct isochron_daemon *prog)
 {
-	struct sockaddr_in6 serv_addr = {
-		.sin6_family = AF_INET6,
-		.sin6_addr = in6addr_any,
-		.sin6_port = htons(prog->stats_port),
-	};
-	int sockopt = 1;
-	int fd, rc;
-
-	fd = socket(AF_INET6, SOCK_STREAM, 0);
-	if (fd < 0) {
-		perror("listener: stats socket");
-		return -errno;
-	}
-
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt: stats socket");
-		goto out;
-	}
-
-	rc = bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-	if (rc < 0) {
-		perror("bind: stats socket");
-		goto out;
-	}
-
-	rc = listen(fd, 1);
-	if (rc < 0) {
-		perror("listen: stats socket");
-		goto out;
-	}
-
-	prog->stats_listenfd = fd;
-
-	return 0;
-
-out:
-	close(fd);
-	return -errno;
+	return sk_listen_tcp_any(prog->stats_port, 1, &prog->mgmt_listen_sock);
 }
 
-static void prog_teardown_stats_listenfd(struct isochron_daemon *prog)
+static void prog_teardown_mgmt_listen_sock(struct isochron_daemon *prog)
 {
-	close(prog->stats_listenfd);
+	sk_close(prog->mgmt_listen_sock);
 }
 
 static int prog_redirect_output(struct isochron_daemon *prog)
@@ -1343,9 +1285,9 @@ static int prog_init(struct isochron_daemon *prog)
 	if (rc)
 		goto err_rtnl;
 
-	rc = prog_init_stats_listenfd(prog);
+	rc = prog_init_mgmt_listen_sock(prog);
 	if (rc)
-		goto err_statsfd;
+		goto err_mgmt_sock;
 
 	rc = prog_daemonize(prog);
 	if (rc) {
@@ -1363,8 +1305,8 @@ static int prog_init(struct isochron_daemon *prog)
 
 err_mlockall:
 err_daemonize:
-	prog_teardown_stats_listenfd(prog);
-err_statsfd:
+	prog_teardown_mgmt_listen_sock(prog);
+err_mgmt_sock:
 	prog_rtnl_close(prog);
 err_rtnl:
 	return rc;
@@ -1373,7 +1315,7 @@ err_rtnl:
 static void prog_teardown(struct isochron_daemon *prog)
 {
 	munlockall();
-	prog_teardown_stats_listenfd(prog);
+	prog_teardown_mgmt_listen_sock(prog);
 	prog_rtnl_close(prog);
 }
 

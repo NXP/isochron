@@ -16,6 +16,7 @@
 #include "isochron.h"
 #include "management.h"
 #include "send.h"
+#include "sk.h"
 
 #define SYNC_CHECKS_TO_GO 3
 
@@ -27,7 +28,7 @@ struct isochron_orch_node {
 	char name[BUFSIZ];
 	struct ip_address addr;
 	unsigned long port;
-	int stats_fd;
+	struct sk *mgmt_sock;
 	long sync_threshold;
 	struct clock_identity gm_clkid;
 	enum port_link_state link_state;
@@ -60,7 +61,7 @@ static int prog_query_link_state(struct isochron_orch_node *node)
 	enum port_link_state link_state;
 	int rc;
 
-	rc = isochron_query_mid(node->stats_fd, ISOCHRON_MID_PORT_LINK_STATE,
+	rc = isochron_query_mid(node->mgmt_sock, ISOCHRON_MID_PORT_LINK_STATE,
 				&s, sizeof(s));
 	if (rc) {
 		fprintf(stderr,
@@ -114,7 +115,7 @@ static bool prog_sync_ok(struct isochron_orch *prog)
 		if (!node->collect_sync_stats)
 			continue;
 
-		rc = isochron_collect_sync_stats(node->stats_fd,
+		rc = isochron_collect_sync_stats(node->mgmt_sock,
 						 &node->sysmon_offset,
 						 &node->ptpmon_offset,
 						 &utc_offset,
@@ -210,7 +211,7 @@ static int prog_query_test_state(struct isochron_orch_node *node,
 	struct isochron_test_state t;
 	int rc;
 
-	rc = isochron_query_mid(node->stats_fd, ISOCHRON_MID_TEST_STATE,
+	rc = isochron_query_mid(node->mgmt_sock, ISOCHRON_MID_TEST_STATE,
 				&t, sizeof(t));
 	if (rc) {
 		fprintf(stderr, "Test state missing from node %s reply\n",
@@ -278,7 +279,7 @@ static int prog_start_senders(struct isochron_orch *prog)
 		if (node->role != ISOCHRON_ROLE_SEND)
 			continue;
 
-		rc = isochron_update_test_state(node->stats_fd,
+		rc = isochron_update_test_state(node->mgmt_sock,
 						ISOCHRON_TEST_STATE_RUNNING);
 		if (rc)
 			return rc;
@@ -298,7 +299,7 @@ static int prog_stop_senders(struct isochron_orch *prog)
 		if (node->role != ISOCHRON_ROLE_SEND)
 			continue;
 
-		rc = isochron_update_test_state(node->stats_fd,
+		rc = isochron_update_test_state(node->mgmt_sock,
 						ISOCHRON_TEST_STATE_IDLE);
 		if (rc)
 			return rc;
@@ -351,14 +352,14 @@ static int prog_collect_logs(struct isochron_orch *prog)
 		send = sender->send;
 
 		printf("Collecting stats from %s\n", sender->name);
-		rc = isochron_collect_rcv_log(sender->stats_fd, &send_log);
+		rc = isochron_collect_rcv_log(sender->mgmt_sock, &send_log);
 		if (rc) {
 			pr_err(rc, "Failed to collect sender stats: %m\n");
 			return rc;
 		}
 
 		printf("Collecting stats from %s\n", node->name);
-		rc = isochron_collect_rcv_log(node->stats_fd, &rcv_log);
+		rc = isochron_collect_rcv_log(node->mgmt_sock, &rcv_log);
 		if (rc) {
 			pr_err(rc, "Failed to collect receiver stats: %m\n");
 			isochron_log_teardown(&send_log);
@@ -389,101 +390,101 @@ static int prog_marshall_data_to_receiver(struct isochron_orch_node *node)
 {
 	struct isochron_orch_node *sender = node->sender;
 
-	return isochron_prepare_receiver(sender->send, node->stats_fd);
+	return isochron_prepare_receiver(sender->send, node->mgmt_sock);
 }
 
 static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 {
 	struct isochron_send *send = node->send;
 	const char *if_name = send->if_name;
-	int fd = node->stats_fd;
+	struct sk *sock = node->mgmt_sock;
 	int rc;
 
-	rc = isochron_update_node_role(fd, ISOCHRON_ROLE_SEND);
+	rc = isochron_update_node_role(sock, ISOCHRON_ROLE_SEND);
 	if (rc) {
 		fprintf(stderr, "failed to update role for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_if_name(fd, if_name);
+	rc = isochron_update_if_name(sock, if_name);
 	if (rc) {
 		fprintf(stderr, "failed to update interface name for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_destination_mac(fd, send->dest_mac);
+	rc = isochron_update_destination_mac(sock, send->dest_mac);
 	if (rc) {
 		fprintf(stderr, "failed to update MAC DA for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_source_mac(fd, send->src_mac);
+	rc = isochron_update_source_mac(sock, send->src_mac);
 	if (rc) {
 		fprintf(stderr, "failed to update MAC SA for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_priority(fd, send->priority);
+	rc = isochron_update_priority(sock, send->priority);
 	if (rc) {
 		fprintf(stderr, "failed to update priority for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_stats_port(fd, send->stats_port);
+	rc = isochron_update_stats_port(sock, send->stats_port);
 	if (rc) {
 		fprintf(stderr, "failed to update stats port for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_base_time(fd, send->base_time);
+	rc = isochron_update_base_time(sock, send->base_time);
 	if (rc) {
 		fprintf(stderr, "failed to update base time for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_advance_time(fd, send->advance_time);
+	rc = isochron_update_advance_time(sock, send->advance_time);
 	if (rc) {
 		fprintf(stderr, "failed to update advance time for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_shift_time(fd, send->shift_time);
+	rc = isochron_update_shift_time(sock, send->shift_time);
 	if (rc) {
 		fprintf(stderr, "failed to update shift time for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_cycle_time(fd, send->cycle_time);
+	rc = isochron_update_cycle_time(sock, send->cycle_time);
 	if (rc) {
 		fprintf(stderr, "failed to update cycle time for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_window_size(fd, send->window_size);
+	rc = isochron_update_window_size(sock, send->window_size);
 	if (rc) {
 		fprintf(stderr, "failed to update window size for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_domain_number(fd, send->domain_number);
+	rc = isochron_update_domain_number(sock, send->domain_number);
 	if (rc) {
 		fprintf(stderr, "failed to update domain number for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_transport_specific(fd,
+	rc = isochron_update_transport_specific(sock,
 						send->transport_specific);
 	if (rc) {
 		fprintf(stderr, "failed to update transport specific for node %s\n",
@@ -491,14 +492,14 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 		return rc;
 	}
 
-	rc = isochron_update_uds(fd, send->uds_remote);
+	rc = isochron_update_uds(sock, send->uds_remote);
 	if (rc) {
 		fprintf(stderr, "failed to update UDS for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_num_readings(fd, send->num_readings);
+	rc = isochron_update_num_readings(sock, send->num_readings);
 	if (rc) {
 		fprintf(stderr, "failed to update number of readings for node %s\n",
 			node->name);
@@ -506,14 +507,14 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 	}
 
 	if (!send->omit_sync) {
-		rc = isochron_update_sysmon_enabled(fd, true);
+		rc = isochron_update_sysmon_enabled(sock, true);
 		if (rc) {
 			fprintf(stderr, "failed to enable sysmon for node %s\n",
 				node->name);
 			return rc;
 		}
 
-		rc = isochron_update_ptpmon_enabled(fd, true);
+		rc = isochron_update_ptpmon_enabled(sock, true);
 		if (rc) {
 			fprintf(stderr, "failed to enable ptpmon for node %s\n",
 				node->name);
@@ -521,7 +522,7 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 		}
 	}
 
-	rc = isochron_update_sync_monitor_enabled(fd, false);
+	rc = isochron_update_sync_monitor_enabled(sock, false);
 	if (rc) {
 		fprintf(stderr,
 			"failed to disable local sync monitoring for node %s\n",
@@ -529,14 +530,14 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 		return rc;
 	}
 
-	rc = isochron_update_packet_size(fd, send->tx_len);
+	rc = isochron_update_packet_size(sock, send->tx_len);
 	if (rc) {
 		fprintf(stderr, "failed to update packet size for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_ts_enabled(fd, send->do_ts);
+	rc = isochron_update_ts_enabled(sock, send->do_ts);
 	if (rc) {
 		fprintf(stderr, "failed to enable timestamping for node %s\n",
 			node->name);
@@ -544,7 +545,7 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 	}
 
 	if (send->vid >= 0) {
-		rc = isochron_update_vid(fd, send->vid);
+		rc = isochron_update_vid(sock, send->vid);
 		if (rc) {
 			fprintf(stderr,
 				"failed to update VLAN ID for node %s\n",
@@ -554,7 +555,7 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 	}
 
 	if (send->etype >= 0) {
-		rc = isochron_update_ethertype(fd, send->etype);
+		rc = isochron_update_ethertype(sock, send->etype);
 		if (rc) {
 			fprintf(stderr,
 				"failed to update EtherType for node %s\n",
@@ -563,35 +564,35 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 		}
 	}
 
-	rc = isochron_update_quiet_enabled(fd, send->quiet);
+	rc = isochron_update_quiet_enabled(sock, send->quiet);
 	if (rc) {
 		fprintf(stderr, "failed to make node %s quiet\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_taprio_enabled(fd, send->taprio);
+	rc = isochron_update_taprio_enabled(sock, send->taprio);
 	if (rc) {
 		fprintf(stderr, "failed to enable taprio for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_txtime_enabled(fd, send->txtime);
+	rc = isochron_update_txtime_enabled(sock, send->txtime);
 	if (rc) {
 		fprintf(stderr, "failed to enable txtime for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_deadline_enabled(fd, send->deadline);
+	rc = isochron_update_deadline_enabled(sock, send->deadline);
 	if (rc) {
 		fprintf(stderr, "failed to enable deadline for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_packet_count(fd, send->iterations);
+	rc = isochron_update_packet_count(sock, send->iterations);
 	if (rc) {
 		fprintf(stderr, "failed to update packet count for node %s\n",
 			node->name);
@@ -599,7 +600,7 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 	}
 
 	if (send->utc_tai_offset >= 0) {
-		rc = isochron_update_utc_offset(fd, send->utc_tai_offset);
+		rc = isochron_update_utc_offset(sock, send->utc_tai_offset);
 		if (rc) {
 			fprintf(stderr,
 				"failed to update UTC offset for node %s\n",
@@ -609,7 +610,7 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 	}
 
 	if (send->ip_destination.family) {
-		rc = isochron_update_ip_destination(fd,
+		rc = isochron_update_ip_destination(sock,
 						    &send->ip_destination);
 		if (rc) {
 			fprintf(stderr,
@@ -619,49 +620,49 @@ static int prog_marshall_data_to_sender(struct isochron_orch_node *node)
 		}
 	}
 
-	rc = isochron_update_l2_enabled(fd, send->l2);
+	rc = isochron_update_l2_enabled(sock, send->l2);
 	if (rc) {
 		fprintf(stderr, "failed to enable L2 transport for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_l4_enabled(fd, send->l4);
+	rc = isochron_update_l4_enabled(sock, send->l4);
 	if (rc) {
 		fprintf(stderr, "failed to enable L4 transport for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_data_port(fd, send->data_port);
+	rc = isochron_update_data_port(sock, send->data_port);
 	if (rc) {
 		fprintf(stderr, "failed to set data port for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_sched_fifo(fd, send->sched_fifo);
+	rc = isochron_update_sched_fifo(sock, send->sched_fifo);
 	if (rc) {
 		fprintf(stderr, "failed to enable SCHED_FIFO for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_sched_rr(fd, send->sched_rr);
+	rc = isochron_update_sched_rr(sock, send->sched_rr);
 	if (rc) {
 		fprintf(stderr, "failed to enable SCHED_RR for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_sched_priority(fd, send->sched_priority);
+	rc = isochron_update_sched_priority(sock, send->sched_priority);
 	if (rc) {
 		fprintf(stderr, "failed to update sched priority for node %s\n",
 			node->name);
 		return rc;
 	}
 
-	rc = isochron_update_cpu_mask(fd, send->cpumask);
+	rc = isochron_update_cpu_mask(sock, send->cpumask);
 	if (rc) {
 		fprintf(stderr, "failed to set CPU mask for node %s\n",
 			node->name);
@@ -684,7 +685,7 @@ static int prog_query_receiver_mac_address(struct isochron_orch_node *node)
 	if (!is_zero_ether_addr(sender->send->dest_mac))
 		return 0;
 
-	rc = isochron_query_mid(node->stats_fd, ISOCHRON_MID_DESTINATION_MAC,
+	rc = isochron_query_mid(node->mgmt_sock, ISOCHRON_MID_DESTINATION_MAC,
 				&mac, sizeof(mac));
 	if (rc) {
 		fprintf(stderr,
@@ -706,7 +707,7 @@ static int prog_drain_receiver_log(struct isochron_orch_node *node)
 	struct isochron_log rcv_log;
 	int rc;
 
-	rc = isochron_collect_rcv_log(node->stats_fd, &rcv_log);
+	rc = isochron_collect_rcv_log(node->mgmt_sock, &rcv_log);
 	if (rc)
 		return rc;
 
@@ -768,61 +769,24 @@ static int prog_marshall_data_to_nodes(struct isochron_orch *prog)
 
 static int prog_open_node_connection(struct isochron_orch_node *node)
 {
-	struct sockaddr_in6 serv_addr6;
-	struct sockaddr_in serv_addr4;
-	struct sockaddr *serv_addr;
-	int stats_fd, size, rc;
+	int rc;
 
 	if (!node->port)
 		node->port = ISOCHRON_STATS_PORT;
 
-	if (node->addr.family == AF_INET) {
-		serv_addr = (struct sockaddr *)&serv_addr4;
-		serv_addr4.sin_addr = node->addr.addr;
-		serv_addr4.sin_port = htons(node->port);
-		serv_addr4.sin_family = AF_INET;
-		size = sizeof(struct sockaddr_in);
-	} else if (node->addr.family == AF_INET6) {
-		serv_addr = (struct sockaddr *)&serv_addr6;
-		serv_addr6.sin6_addr = node->addr.addr6;
-		serv_addr6.sin6_port = htons(node->port);
-		serv_addr6.sin6_family = AF_INET6;
-		size = sizeof(struct sockaddr_in6);
-	} else {
+	if (node->addr.family != AF_INET && node->addr.family == AF_INET6) {
 		fprintf(stderr, "Node %s missing an \"addr\" property\n",
 			node->name);
 		return -EINVAL;
 	}
 
-	stats_fd = socket(node->addr.family, SOCK_STREAM, 0);
-	if (stats_fd < 0) {
-		fprintf(stderr, "Failed to open socket to node %s: %m\n",
-			node->name);
-		return -errno;
-	}
-
-	if (strlen(node->addr.bound_if_name)) {
-		rc = setsockopt(stats_fd, SOL_SOCKET, SO_BINDTODEVICE,
-				node->addr.bound_if_name,
-				IFNAMSIZ - 1);
-		if (rc < 0) {
-			fprintf(stderr,
-				"Failed to setsockopt(SO_BINDTODEVICE) on node %s socket: %m\n",
-				node->name);
-			close(stats_fd);
-			return -errno;
-		}
-	}
-
-	rc = connect(stats_fd, serv_addr, size);
-	if (rc < 0) {
+	rc = sk_connect_tcp(&node->addr, node->port, &node->mgmt_sock);
+	if (rc) {
 		fprintf(stderr, "Failed to connect to node %s: %m\n",
 			node->name);
-		close(stats_fd);
-		return -errno;
+		return rc;
 	}
 
-	node->stats_fd = stats_fd;
 	printf("Connected to node %s\n", node->name);
 
 	return 0;
@@ -886,7 +850,6 @@ static int prog_init_receiver_nodes(struct isochron_orch *prog)
 
 		rcv_node->addr = send->stats_srv;
 		rcv_node->port = send->stats_port;
-		rcv_node->stats_fd = -1;
 		rcv_node->collect_sync_stats = !send->omit_sync &&
 					       !send->omit_remote_sync;
 		rcv_node->sync_threshold = send->sync_threshold;
@@ -900,10 +863,10 @@ static int prog_init_receiver_nodes(struct isochron_orch *prog)
 
 static void prog_close_node_connection(struct isochron_orch_node *node)
 {
-	if (node->stats_fd < 0)
+	if (!node->mgmt_sock)
 		return;
 
-	close(node->stats_fd);
+	sk_close(node->mgmt_sock);
 }
 
 static int prog_open_node_connections(struct isochron_orch *prog)
@@ -1096,7 +1059,6 @@ static int prog_parse_input_file_linewise(struct isochron_orch *prog,
 			memcpy(curr_node->name, line + 1, len - 2);
 			LIST_INSERT_HEAD(&prog->nodes, curr_node, list);
 			curr_node->role = ISOCHRON_ROLE_SEND;
-			curr_node->stats_fd = -1;
 			curr_node->send = send;
 			goto next;
 		}

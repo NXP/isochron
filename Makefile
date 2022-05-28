@@ -33,6 +33,7 @@ src := \
 	report.o \
 	rtnl.o \
 	send.o \
+	sk.o \
 	sysmon.o
 
 objs := $(addprefix src/, $(src))

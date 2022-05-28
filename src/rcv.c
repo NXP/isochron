@@ -23,6 +23,7 @@
 #include "management.h"
 #include "ptpmon.h"
 #include "rtnl.h"
+#include "sk.h"
 #include "sysmon.h"
 
 #define BUF_SIZ		10000
@@ -38,8 +39,8 @@ struct isochron_rcv {
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
 	struct mnl_socket *rtnl;
-	int stats_listenfd;
-	int stats_fd;
+	struct sk *mgmt_listen_sock;
+	struct sk *mgmt_sock;
 	int l2_data_fd;
 	int l4_data_fd;
 	int data_timeout_fd;
@@ -101,13 +102,13 @@ static int prog_forward_isochron_log(struct isochron_rcv *prog)
 {
 	int rc;
 
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+	rc = isochron_send_tlv(prog->mgmt_sock, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_LOG,
 			       isochron_log_buf_tlv_size(&prog->log));
 	if (rc)
 		return 0;
 
-	isochron_log_xmit(&prog->log, prog->stats_fd);
+	isochron_log_xmit(&prog->log, prog->mgmt_sock);
 	isochron_log_teardown(&prog->log);
 	return isochron_log_init(&prog->log, prog->iterations *
 				 sizeof(struct isochron_rcv_pkt_data));
@@ -425,7 +426,7 @@ static int prog_data_fd_timeout(struct isochron_rcv *prog)
 static void prog_close_client_stats_session(struct isochron_rcv *prog)
 {
 	prog_disarm_data_timeout_fd(prog);
-	close(prog->stats_fd);
+	sk_close(prog->mgmt_sock);
 	prog->have_client = false;
 	prog->data_fd_timed_out = false;
 	prog->client_waiting_for_log = false;
@@ -435,29 +436,11 @@ static void prog_close_client_stats_session(struct isochron_rcv *prog)
 
 static int prog_client_connect_event(struct isochron_rcv *prog)
 {
-	char client_addr[INET6_ADDRSTRLEN];
-	union {
-		struct sockaddr_in6 addr6;
-		struct sockaddr_in addr4;
-	} u;
-	socklen_t addr_len = sizeof(u);
+	int rc;
 
-	prog->stats_fd = accept(prog->stats_listenfd, (struct sockaddr *)&u,
-				&addr_len);
-	if (prog->stats_fd < 0) {
-		if (errno != EINTR)
-			perror("accept failed");
-		return -errno;
-	}
-
-	if (!inet_ntop(AF_INET6, &u.addr6.sin6_addr, client_addr,
-		       INET6_ADDRSTRLEN)) {
-		perror("inet_ntop failed");
-		prog_close_client_stats_session(prog);
-		return -errno;
-	}
-
-	printf("Accepted connection from %s\n", client_addr);
+	rc = sk_accept(prog->mgmt_listen_sock, &prog->mgmt_sock);
+	if (rc)
+		return rc;
 
 	prog->have_client = true;
 
@@ -466,19 +449,19 @@ static int prog_client_connect_event(struct isochron_rcv *prog)
 
 static int prog_forward_sysmon_offset(struct isochron_rcv *prog)
 {
-	return isochron_forward_sysmon_offset(prog->stats_fd, prog->sysmon);
+	return isochron_forward_sysmon_offset(prog->mgmt_sock, prog->sysmon);
 }
 
 static int prog_forward_ptpmon_offset(struct isochron_rcv *prog)
 {
-	return isochron_forward_ptpmon_offset(prog->stats_fd, prog->ptpmon);
+	return isochron_forward_ptpmon_offset(prog->mgmt_sock, prog->ptpmon);
 }
 
 static int prog_forward_utc_offset(struct isochron_rcv *prog)
 {
 	int rc, utc_offset;
 
-	rc = isochron_forward_utc_offset(prog->stats_fd, prog->ptpmon,
+	rc = isochron_forward_utc_offset(prog->mgmt_sock, prog->ptpmon,
 					 &utc_offset);
 	if (rc)
 		return rc;
@@ -491,19 +474,19 @@ static int prog_forward_utc_offset(struct isochron_rcv *prog)
 
 static int prog_forward_port_state(struct isochron_rcv *prog)
 {
-	return isochron_forward_port_state(prog->stats_fd, prog->ptpmon,
+	return isochron_forward_port_state(prog->mgmt_sock, prog->ptpmon,
 					   prog->if_name, prog->rtnl);
 }
 
 static int prog_forward_port_link_state(struct isochron_rcv *prog)
 {
-	return isochron_forward_port_link_state(prog->stats_fd, prog->if_name,
-						prog->rtnl);
+	return isochron_forward_port_link_state(prog->mgmt_sock,
+						prog->if_name, prog->rtnl);
 }
 
 static int prog_forward_gm_clock_identity(struct isochron_rcv *prog)
 {
-	return isochron_forward_gm_clock_identity(prog->stats_fd,
+	return isochron_forward_gm_clock_identity(prog->mgmt_sock,
 						  prog->ptpmon);
 }
 
@@ -515,13 +498,13 @@ static int prog_forward_destination_mac(struct isochron_rcv *prog)
 	memset(&mac, 0, sizeof(mac));
 	ether_addr_copy(mac.addr, prog->dest_mac);
 
-	rc = isochron_send_tlv(prog->stats_fd, ISOCHRON_RESPONSE,
+	rc = isochron_send_tlv(prog->mgmt_sock, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_DESTINATION_MAC,
 			       sizeof(mac));
 	if (rc)
 		return 0;
 
-	write_exact(prog->stats_fd, &mac, sizeof(mac));
+	sk_send(prog->mgmt_sock, &mac, sizeof(mac));
 
 	return 0;
 }
@@ -598,23 +581,23 @@ static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
 	struct isochron_rcv *prog = priv;
-	int fd = prog->stats_fd;
+	struct sk *sock = prog->mgmt_sock;
 
 	switch (mid) {
 	case ISOCHRON_MID_PACKET_COUNT:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_packet_count),
 					     prog_set_packet_count);
 	case ISOCHRON_MID_L2_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_l2_enabled);
 	case ISOCHRON_MID_L4_ENABLED:
-		return isochron_mgmt_tlv_set(fd, tlv, prog, mid,
+		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_l4_enabled);
 	default:
-		isochron_send_empty_tlv(prog->stats_fd, mid);
+		isochron_send_empty_tlv(sock, mid);
 		return 0;
 	}
 }
@@ -649,7 +632,7 @@ static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 	case ISOCHRON_MID_DESTINATION_MAC:
 		return prog_forward_destination_mac(prog);
 	default:
-		isochron_send_empty_tlv(prog->stats_fd, mid);
+		isochron_send_empty_tlv(prog->mgmt_sock, mid);
 		return 0;
 	}
 }
@@ -671,9 +654,9 @@ static void prog_fill_dynamic_pfds(struct isochron_rcv *prog,
 	*l4_pfd = -1;
 
 	if (prog->have_client)
-		pfd[PFD_MGMT].fd = prog->stats_fd;
+		pfd[PFD_MGMT].fd = sk_fd(prog->mgmt_sock);
 	else
-		pfd[PFD_MGMT].fd = prog->stats_listenfd;
+		pfd[PFD_MGMT].fd = sk_fd(prog->mgmt_listen_sock);
 
 	if (prog->l2) {
 		*l2_pfd = *pfd_num;
@@ -761,7 +744,7 @@ static int server_loop(struct isochron_rcv *prog)
 
 		if (pfd[PFD_MGMT].revents & (POLLIN | POLLERR | POLLPRI)) {
 			if (prog->have_client) {
-				rc = isochron_mgmt_event(prog->stats_fd, prog,
+				rc = isochron_mgmt_event(prog->mgmt_sock, prog,
 							 isochron_get_parse_one_tlv,
 							 isochron_set_parse_one_tlv,
 							 &socket_closed);
@@ -862,55 +845,14 @@ static void prog_teardown_sysmon(struct isochron_rcv *prog)
 	sysmon_destroy(prog->sysmon);
 }
 
-static int prog_init_stats_listenfd(struct isochron_rcv *prog)
+static int prog_init_mgmt_listen_sock(struct isochron_rcv *prog)
 {
-	struct sockaddr_in6 serv_addr = {
-		.sin6_family = AF_INET6,
-		.sin6_addr = in6addr_any,
-		.sin6_port = htons(prog->stats_port),
-	};
-	int sockopt = 1;
-	int fd, rc;
-
-	fd = socket(PF_INET6, SOCK_STREAM, 0);
-	if (fd < 0) {
-		perror("listener: stats socket");
-		return -errno;
-	}
-
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt: stats socket");
-		goto out;
-	}
-
-	rc = bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-	if (rc < 0) {
-		perror("bind: stats socket");
-		goto out;
-	}
-
-	rc = listen(fd, 1);
-	if (rc < 0) {
-		perror("listen: stats socket");
-		goto out;
-	}
-
-	prog->stats_listenfd = fd;
-
-	return 0;
-
-out:
-	close(fd);
-	return -errno;
+	return sk_listen_tcp_any(prog->stats_port, 1, &prog->mgmt_listen_sock);
 }
 
-static void prog_teardown_stats_listenfd(struct isochron_rcv *prog)
+static void prog_teardown_mgmt_listen_sock(struct isochron_rcv *prog)
 {
-	close(prog->stats_listenfd);
+	sk_close(prog->mgmt_listen_sock);
 }
 
 static int prog_init_data_timeout_fd(struct isochron_rcv *prog)
@@ -1013,13 +955,13 @@ static int prog_init(struct isochron_rcv *prog)
 		goto out_teardown_sysmon;
 	}
 
-	rc = prog_init_stats_listenfd(prog);
+	rc = prog_init_mgmt_listen_sock(prog);
 	if (rc)
 		goto out_teardown_sysmon;
 
 	rc = prog_init_l2_data_fd(prog);
 	if (rc)
-		goto out_teardown_stats_listenfd;
+		goto out_teardown_mgmt_listen_sock;
 
 	rc = prog_init_l4_data_fd(prog);
 	if (rc)
@@ -1035,8 +977,8 @@ out_teardown_l4_data_fd:
 	prog_teardown_l4_data_fd(prog);
 out_teardown_l2_data_fd:
 	prog_teardown_l2_data_fd(prog);
-out_teardown_stats_listenfd:
-	prog_teardown_stats_listenfd(prog);
+out_teardown_mgmt_listen_sock:
+	prog_teardown_mgmt_listen_sock(prog);
 out_teardown_sysmon:
 	prog_teardown_sysmon(prog);
 out_teardown_ptpmon:
@@ -1251,7 +1193,7 @@ static void prog_teardown(struct isochron_rcv *prog)
 	prog_teardown_data_timeout_fd(prog);
 	prog_teardown_l4_data_fd(prog);
 	prog_teardown_l2_data_fd(prog);
-	prog_teardown_stats_listenfd(prog);
+	prog_teardown_mgmt_listen_sock(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);
 	prog_rtnl_close(prog);

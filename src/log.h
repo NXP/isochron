@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <sys/queue.h>
 #include <sys/types.h>
+#include "sk.h"
 
 #define ISOCHRON_LOG_PRINTF_MAX_NUM_ARGS		256
 #define ISOCHRON_LOG_PRINTF_BUF_SIZE			4096
@@ -38,8 +39,8 @@ struct isochron_log {
 int isochron_log_init(struct isochron_log *log, size_t size);
 void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
 			     int index);
-int isochron_log_xmit(struct isochron_log *log, int fd);
-int isochron_log_recv(struct isochron_log *log, int fd);
+int isochron_log_xmit(struct isochron_log *log, const struct sk *sock);
+int isochron_log_recv(struct isochron_log *log, const struct sk *sock);
 void isochron_log_teardown(struct isochron_log *log);
 void isochron_rcv_log_print(struct isochron_log *log);
 void isochron_send_log_print(struct isochron_log *log);

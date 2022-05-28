@@ -40,21 +40,6 @@ void pr_err(int rc, const char *fmt, ...)
 	va_end(ap);
 }
 
-ssize_t recv_exact(int sockfd, void *buf, size_t len, int flags)
-{
-	size_t received = 0;
-	ssize_t ret;
-
-	do {
-		ret = recv(sockfd, buf + received, len - received, flags);
-		if (ret <= 0)
-			return ret;
-		received += ret;
-	} while (received != len);
-
-	return received;
-}
-
 ssize_t read_exact(int fd, void *buf, size_t count)
 {
 	size_t total_read = 0;

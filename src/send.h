@@ -52,7 +52,7 @@ struct isochron_send {
 	long priority;
 	long tx_len;
 	int data_fd;
-	int stats_fd;
+	struct sk *mgmt_sock;
 	long vid;
 	bool do_ts;
 	bool quiet;
@@ -102,6 +102,6 @@ void isochron_send_teardown_ptpmon(struct isochron_send *prog);
 int isochron_send_update_session_start_time(struct isochron_send *prog);
 int isochron_send_start_threads(struct isochron_send *prog);
 void isochron_send_stop_threads(struct isochron_send *prog);
-int isochron_prepare_receiver(struct isochron_send *prog, int fd);
+int isochron_prepare_receiver(struct isochron_send *prog, struct sk *mgmt_sock);
 
 #endif

@@ -99,54 +99,11 @@ static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
 
 static int prog_init_stats_socket(struct isochron_send *prog)
 {
-	struct sockaddr_in6 serv_addr6;
-	struct sockaddr_in serv_addr4;
-	struct sockaddr *serv_addr;
-	int stats_fd, size, rc;
-
-	if (prog->stats_srv.family == AF_INET) {
-		serv_addr = (struct sockaddr *)&serv_addr4;
-		serv_addr4.sin_addr = prog->stats_srv.addr;
-		serv_addr4.sin_port = htons(prog->stats_port);
-		serv_addr4.sin_family = AF_INET;
-		size = sizeof(struct sockaddr_in);
-	} else if (prog->stats_srv.family == AF_INET6) {
-		serv_addr = (struct sockaddr *)&serv_addr6;
-		serv_addr6.sin6_addr = prog->stats_srv.addr6;
-		serv_addr6.sin6_port = htons(prog->stats_port);
-		serv_addr6.sin6_family = AF_INET6;
-		size = sizeof(struct sockaddr_in6);
-	} else {
+	if (!prog->stats_srv.family)
 		return 0;
-	}
 
-	stats_fd = socket(prog->stats_srv.family, SOCK_STREAM, 0);
-	if (stats_fd < 0) {
-		perror("Failed to open management socket to receiver");
-		return -errno;
-	}
-
-	if (strlen(prog->stats_srv.bound_if_name)) {
-		rc = setsockopt(stats_fd, SOL_SOCKET, SO_BINDTODEVICE,
-				prog->stats_srv.bound_if_name,
-				IFNAMSIZ - 1);
-		if (rc < 0) {
-			perror("Failed to setsockopt(SO_BINDTODEVICE) on received management socket");
-			close(stats_fd);
-			return -errno;
-		}
-	}
-
-	rc = connect(stats_fd, serv_addr, size);
-	if (rc < 0) {
-		perror("Failed to connect to receiver management socket");
-		close(stats_fd);
-		return -errno;
-	}
-
-	prog->stats_fd = stats_fd;
-
-	return 0;
+	return sk_connect_tcp(&prog->stats_srv, prog->stats_port,
+			      &prog->mgmt_sock);
 }
 
 static void prog_teardown_stats_socket(struct isochron_send *prog)
@@ -154,7 +111,7 @@ static void prog_teardown_stats_socket(struct isochron_send *prog)
 	if (!prog->stats_srv.family)
 		return;
 
-	close(prog->stats_fd);
+	sk_close(prog->mgmt_sock);
 }
 
 static __s64 prog_first_base_time(struct isochron_send *prog)
@@ -641,7 +598,7 @@ static bool prog_sync_ok(struct isochron_send *prog)
 	if (prog->omit_remote_sync || !prog->stats_srv.family) {
 		have_remote_stats = false;
 	} else {
-		rc = isochron_collect_sync_stats(prog->stats_fd,
+		rc = isochron_collect_sync_stats(prog->mgmt_sock,
 						 &rcv_sysmon_offset,
 						 &rcv_ptpmon_offset,
 						 &rcv_utc_offset,
@@ -801,7 +758,7 @@ static int prog_query_dest_mac(struct isochron_send *prog)
 		return -EINVAL;
 	}
 
-	rc = isochron_query_mid(prog->stats_fd, ISOCHRON_MID_DESTINATION_MAC,
+	rc = isochron_query_mid(prog->mgmt_sock, ISOCHRON_MID_DESTINATION_MAC,
 				&mac, sizeof(mac));
 	if (rc) {
 		fprintf(stderr, "destination MAC missing from receiver reply\n");
@@ -816,19 +773,19 @@ static int prog_query_dest_mac(struct isochron_send *prog)
 	return 0;
 }
 
-int isochron_prepare_receiver(struct isochron_send *prog, int fd)
+int isochron_prepare_receiver(struct isochron_send *prog, struct sk *mgmt_sock)
 {
 	int rc;
 
-	rc = isochron_update_l2_enabled(fd, prog->l2);
+	rc = isochron_update_l2_enabled(mgmt_sock, prog->l2);
 	if (rc)
 		return rc;
 
-	rc = isochron_update_l4_enabled(fd, prog->l4);
+	rc = isochron_update_l4_enabled(mgmt_sock, prog->l4);
 	if (rc)
 		return rc;
 
-	return isochron_update_packet_count(fd, prog->iterations);
+	return isochron_update_packet_count(mgmt_sock, prog->iterations);
 }
 
 static int prog_prepare_receiver(struct isochron_send *prog)
@@ -836,7 +793,7 @@ static int prog_prepare_receiver(struct isochron_send *prog)
 	if (!prog->stats_srv.family)
 		return 0;
 
-	return isochron_prepare_receiver(prog, prog->stats_fd);
+	return isochron_prepare_receiver(prog, prog->mgmt_sock);
 }
 
 int isochron_send_update_session_start_time(struct isochron_send *prog)
@@ -1087,7 +1044,7 @@ static int prog_end_session(struct isochron_send *prog, bool save_log)
 
 	printf("Collecting receiver stats\n");
 
-	rc = isochron_collect_rcv_log(prog->stats_fd, &rcv_log);
+	rc = isochron_collect_rcv_log(prog->mgmt_sock, &rcv_log);
 	if (rc) {
 		pr_err(rc, "Failed to collect receiver stats: %m\n");
 		return rc;
@@ -1500,7 +1457,7 @@ int prog_init(struct isochron_send *prog)
 	if (prog->stats_srv.family) {
 		struct isochron_log rcv_log;
 
-		rc = isochron_collect_rcv_log(prog->stats_fd, &rcv_log);
+		rc = isochron_collect_rcv_log(prog->mgmt_sock, &rcv_log);
 		if (rc)
 			goto out_teardown_sysmon;
 

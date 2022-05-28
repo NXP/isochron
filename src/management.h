@@ -9,6 +9,7 @@
 #include <linux/un.h>
 #include "log.h"
 #include "ptpmon.h"
+#include "sk.h"
 #include "sysmon.h"
 
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
@@ -254,50 +255,50 @@ struct isochron_port_link_state {
 	__u8			reserved[3];
 } __attribute((packed));
 
-int isochron_send_tlv(int fd, enum isochron_management_action action,
+int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 		      enum isochron_management_id mid, size_t size);
-void isochron_send_empty_tlv(int fd, enum isochron_management_id mid);
-int isochron_collect_rcv_log(int fd, struct isochron_log *rcv_log);
-int isochron_query_mid(int fd, enum isochron_management_id mid,
+void isochron_send_empty_tlv(struct sk *sock, enum isochron_management_id mid);
+int isochron_collect_rcv_log(struct sk *sock, struct isochron_log *rcv_log);
+int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		       void *data, size_t data_len);
 
-int isochron_update_packet_count(int fd, long count);
-int isochron_update_packet_size(int fd, int size);
-int isochron_update_destination_mac(int fd, unsigned char *addr);
-int isochron_update_source_mac(int fd, unsigned char *addr);
-int isochron_update_node_role(int fd, enum isochron_role role);
-int isochron_update_if_name(int fd, const char *if_name);
-int isochron_update_priority(int fd, int priority);
-int isochron_update_stats_port(int fd, __u16 port);
-int isochron_update_base_time(int fd, __u64 base_time);
-int isochron_update_advance_time(int fd, __u64 advance_time);
-int isochron_update_shift_time(int fd, __u64 shift_time);
-int isochron_update_cycle_time(int fd, __u64 cycle_time);
-int isochron_update_window_size(int fd, __u64 window_time);
-int isochron_update_domain_number(int fd, int domain_number);
-int isochron_update_transport_specific(int fd, int transport_specific);
-int isochron_update_uds(int fd, const char *uds_remote);
-int isochron_update_num_readings(int fd, int num_readings);
-int isochron_update_sysmon_enabled(int fd, bool enabled);
-int isochron_update_ptpmon_enabled(int fd, bool enabled);
-int isochron_update_sync_monitor_enabled(int fd, bool enabled);
-int isochron_update_ts_enabled(int fd, bool enabled);
-int isochron_update_vid(int fd, __u16 vid);
-int isochron_update_ethertype(int fd, __u16 etype);
-int isochron_update_quiet_enabled(int fd, bool enabled);
-int isochron_update_taprio_enabled(int fd, bool enabled);
-int isochron_update_txtime_enabled(int fd, bool enabled);
-int isochron_update_deadline_enabled(int fd, bool enabled);
-int isochron_update_utc_offset(int fd, int offset);
-int isochron_update_ip_destination(int fd, struct ip_address *addr);
-int isochron_update_l2_enabled(int fd, bool enabled);
-int isochron_update_l4_enabled(int fd, bool enabled);
-int isochron_update_data_port(int fd, __u16 port);
-int isochron_update_sched_fifo(int fd, bool enabled);
-int isochron_update_sched_rr(int fd, bool enabled);
-int isochron_update_sched_priority(int fd, int priority);
-int isochron_update_cpu_mask(int fd, unsigned long cpumask);
-int isochron_update_test_state(int fd, enum test_state state);
+int isochron_update_packet_count(struct sk *sock, long count);
+int isochron_update_packet_size(struct sk *sock, int size);
+int isochron_update_destination_mac(struct sk *sock, unsigned char *addr);
+int isochron_update_source_mac(struct sk *sock, unsigned char *addr);
+int isochron_update_node_role(struct sk *sock, enum isochron_role role);
+int isochron_update_if_name(struct sk *sock, const char *if_name);
+int isochron_update_priority(struct sk *sock, int priority);
+int isochron_update_stats_port(struct sk *sock, __u16 port);
+int isochron_update_base_time(struct sk *sock, __u64 base_time);
+int isochron_update_advance_time(struct sk *sock, __u64 advance_time);
+int isochron_update_shift_time(struct sk *sock, __u64 shift_time);
+int isochron_update_cycle_time(struct sk *sock, __u64 cycle_time);
+int isochron_update_window_size(struct sk *sock, __u64 window_time);
+int isochron_update_domain_number(struct sk *sock, int domain_number);
+int isochron_update_transport_specific(struct sk *sock, int transport_specific);
+int isochron_update_uds(struct sk *sock, const char *uds_remote);
+int isochron_update_num_readings(struct sk *sock, int num_readings);
+int isochron_update_sysmon_enabled(struct sk *sock, bool enabled);
+int isochron_update_ptpmon_enabled(struct sk *sock, bool enabled);
+int isochron_update_sync_monitor_enabled(struct sk *sock, bool enabled);
+int isochron_update_ts_enabled(struct sk *sock, bool enabled);
+int isochron_update_vid(struct sk *sock, __u16 vid);
+int isochron_update_ethertype(struct sk *sock, __u16 etype);
+int isochron_update_quiet_enabled(struct sk *sock, bool enabled);
+int isochron_update_taprio_enabled(struct sk *sock, bool enabled);
+int isochron_update_txtime_enabled(struct sk *sock, bool enabled);
+int isochron_update_deadline_enabled(struct sk *sock, bool enabled);
+int isochron_update_utc_offset(struct sk *sock, int offset);
+int isochron_update_ip_destination(struct sk *sock, struct ip_address *addr);
+int isochron_update_l2_enabled(struct sk *sock, bool enabled);
+int isochron_update_l4_enabled(struct sk *sock, bool enabled);
+int isochron_update_data_port(struct sk *sock, __u16 port);
+int isochron_update_sched_fifo(struct sk *sock, bool enabled);
+int isochron_update_sched_rr(struct sk *sock, bool enabled);
+int isochron_update_sched_priority(struct sk *sock, int priority);
+int isochron_update_cpu_mask(struct sk *sock, unsigned long cpumask);
+int isochron_update_test_state(struct sk *sock, enum test_state state);
 
 static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 {
@@ -307,24 +308,25 @@ static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 typedef int isochron_tlv_cb_t(void *priv, struct isochron_tlv *tlv);
 typedef int isochron_mgmt_tlv_set_cb_t(void *priv, void *ptr);
 
-int isochron_mgmt_event(int fd, void *priv, isochron_tlv_cb_t get_cb,
+int isochron_mgmt_event(struct sk *sock, void *priv, isochron_tlv_cb_t get_cb,
 			isochron_tlv_cb_t set_cb, bool *socket_closed);
-int isochron_mgmt_tlv_set(int fd, struct isochron_tlv *tlv, void *priv,
+int isochron_mgmt_tlv_set(struct sk *sock, struct isochron_tlv *tlv, void *priv,
 			  enum isochron_management_id mid,
 			  size_t struct_size, isochron_mgmt_tlv_set_cb_t cb);
 
-int isochron_forward_log(int fd, struct isochron_log *log, size_t size);
-int isochron_forward_sysmon_offset(int fd, struct sysmon *sysmon);
-int isochron_forward_ptpmon_offset(int fd, struct ptpmon *ptpmon);
-int isochron_forward_utc_offset(int fd, struct ptpmon *ptpmon, int *utc_offset);
-int isochron_forward_port_state(int fd, struct ptpmon *ptpmon,
+int isochron_forward_log(struct sk *sock, struct isochron_log *log, size_t size);
+int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon);
+int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon);
+int isochron_forward_utc_offset(struct sk *sock, struct ptpmon *ptpmon,
+				int *utc_offset);
+int isochron_forward_port_state(struct sk *sock, struct ptpmon *ptpmon,
 				const char *if_name, struct mnl_socket *rtnl);
-int isochron_forward_test_state(int fd, enum test_state state);
-int isochron_forward_port_link_state(int fd, const char *if_name,
+int isochron_forward_test_state(struct sk *sock, enum test_state state);
+int isochron_forward_port_link_state(struct sk *sock, const char *if_name,
 				     struct mnl_socket *rtnl);
-int isochron_forward_gm_clock_identity(int fd, struct ptpmon *ptpmon);
+int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon);
 
-int isochron_collect_sync_stats(int fd, __s64 *sysmon_offset,
+int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 				__s64 *ptpmon_offset, int *utc_offset,
 				enum port_state *port_state,
 				struct clock_identity *gm_clkid);
