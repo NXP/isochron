@@ -11,7 +11,6 @@
 #include <inttypes.h>
 #include <time.h>
 #include <linux/errqueue.h>
-#include <linux/if_packet.h>
 #include <linux/limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -292,7 +291,7 @@ static int prog_validate_tx_hwts(struct isochron_send *prog,
 	return 0;
 }
 
-/* Propagates the return code from sk_receive, i.e. the number of bytes
+/* Propagates the return code from sk_recvmsg, i.e. the number of bytes
  * read from the socket (if we could successfully read a timestamp),
  * or a negative error code.
  */
@@ -305,8 +304,8 @@ static int prog_poll_txtstamps(struct isochron_send *prog, int timeout)
 	__u64 txtime;
 	int len, rc;
 
-	len = sk_receive(prog->data_fd, err_pkt, BUF_SIZ, &tstamp, MSG_ERRQUEUE,
-			timeout);
+	len = sk_recvmsg(prog->data_sock, err_pkt, BUF_SIZ, &tstamp,
+			 MSG_ERRQUEUE, timeout);
 	if (len <= 0)
 		return len;
 
@@ -386,16 +385,16 @@ static int do_work(struct isochron_send *prog, int iteration, __s64 scheduled,
 	hdr->seqid = __cpu_to_be32(iteration);
 
 	if (prog->txtime)
-		*((__u64 *)CMSG_DATA(prog->cmsg)) = (__u64)(scheduled);
+		*((__u64 *)CMSG_DATA(prog->txtime_cmsg)) = (__u64)(scheduled);
 
 	rc = prog_log_packet_no_tstamp(prog, hdr);
 	if (rc)
 		return rc;
 
 	/* Send packet */
-	rc = sendmsg(prog->data_fd, &prog->msg, 0);
+	rc = sk_sendmsg(prog->data_sock, prog->msg, 0);
 	if (rc < 0)
-		return rc;
+		return -errno;
 
 	trace(prog, "send seqid %d end\n", iteration);
 
@@ -1147,7 +1146,7 @@ void isochron_send_teardown_sysmon(struct isochron_send *prog)
 	sysmon_destroy(prog->sysmon);
 }
 
-int isochron_send_init_data_fd(struct isochron_send *prog)
+int isochron_send_init_data_sock(struct isochron_send *prog)
 {
 	struct ifreq if_idx;
 	struct ifreq if_mac;
@@ -1155,24 +1154,13 @@ int isochron_send_init_data_fd(struct isochron_send *prog)
 
 	/* Open socket to send on */
 	if (prog->l2)
-		fd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
+		rc = sk_l2(prog->etype, &prog->data_sock);
 	else
-		fd = socket(prog->ip_destination.family, SOCK_DGRAM,
-			    IPPROTO_UDP);
-	if (fd < 0) {
-		perror("Failed to open data socket");
+		rc = sk_udp(&prog->ip_destination, &prog->data_sock);
+	if (rc)
 		goto out;
-	}
 
-	if (prog->l4 && strlen(prog->ip_destination.bound_if_name)) {
-		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
-				prog->ip_destination.bound_if_name,
-				IFNAMSIZ - 1);
-		if (rc < 0) {
-			perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
-			goto out_close;
-		}
-	}
+	fd = sk_fd(prog->data_sock);
 
 	rc = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
 			sizeof(int));
@@ -1225,43 +1213,48 @@ int isochron_send_init_data_fd(struct isochron_send *prog)
 			goto out_close;
 		}
 
-		rc = sk_timestamping_init(fd, prog->if_name, true);
+		rc = sk_timestamping_init(prog->data_sock, prog->if_name, true);
 		if (rc < 0)
 			goto out_close;
 	}
 
-	if (prog->l2) {
-		/* Index of the network device */
-		prog->sockaddr.l2.sll_ifindex = if_idx.ifr_ifindex;
-		/* Address length */
-		prog->sockaddr.l2.sll_halen = ETH_ALEN;
-		/* Destination MAC */
-		ether_addr_copy(prog->sockaddr.l2.sll_addr, prog->dest_mac);
-		prog->sockaddr_size = sizeof(struct sockaddr_ll);
-	} else if (prog->ip_destination.family == AF_INET) {
-		prog->sockaddr.udp4.sin_addr = prog->ip_destination.addr;
-		prog->sockaddr.udp4.sin_port = htons(prog->data_port);
-		prog->sockaddr.udp4.sin_family = AF_INET;
-		prog->sockaddr_size = sizeof(struct sockaddr_in);
-	} else {
-		prog->sockaddr.udp6.sin6_addr = prog->ip_destination.addr6;
-		prog->sockaddr.udp6.sin6_port = htons(prog->data_port);
-		prog->sockaddr.udp6.sin6_family = AF_INET6;
-		prog->sockaddr_size = sizeof(struct sockaddr_in6);
+	if (prog->l2)
+		prog->sa = sk_addr_create_l2(prog->dest_mac,
+					     if_idx.ifr_ifindex);
+	else
+		prog->sa = sk_addr_create_udp(&prog->ip_destination,
+					      prog->data_port);
+	if (!prog->sa) {
+		errno = -ENOMEM;
+		goto out_close;
 	}
 
-	prog->data_fd = fd;
+	prog->msg = sk_msg_create(prog->sa, prog->sendbuf, prog->tx_len);
+	if (!prog->msg) {
+		errno = -ENOMEM;
+		goto out_free_sa;
+	}
+
+	if (prog->txtime)
+		prog->txtime_cmsg = sk_msg_add_cmsg(prog->msg, SOL_SOCKET,
+						    SCM_TXTIME,
+						    CMSG_LEN(sizeof(__u64)));
+
 	return 0;
 
+out_free_sa:
+	sk_addr_destroy(prog->sa);
 out_close:
-	close(fd);
+	sk_close(prog->data_sock);
 out:
 	return -errno;
 }
 
-void isochron_send_teardown_data_fd(struct isochron_send *prog)
+void isochron_send_teardown_data_sock(struct isochron_send *prog)
 {
-	close(prog->data_fd);
+	sk_addr_destroy(prog->sa);
+	sk_msg_destroy(prog->msg);
+	sk_close(prog->data_sock);
 }
 
 void isochron_send_init_data_packet(struct isochron_send *prog)
@@ -1305,25 +1298,6 @@ void isochron_send_init_data_packet(struct isochron_send *prog)
 		prog->sendbuf[i++] = 0xad;
 		prog->sendbuf[i++] = 0xbe;
 		prog->sendbuf[i++] = 0xef;
-	}
-
-	prog->iov.iov_base = prog->sendbuf;
-	prog->iov.iov_len = prog->tx_len;
-
-	memset(&prog->msg, 0, sizeof(prog->msg));
-	prog->msg.msg_name = (struct sockaddr *)&prog->sockaddr;
-	prog->msg.msg_namelen = prog->sockaddr_size;
-	prog->msg.msg_iov = &prog->iov;
-	prog->msg.msg_iovlen = 1;
-
-	if (prog->txtime) {
-		prog->msg.msg_control = prog->msg_control;
-		prog->msg.msg_controllen = sizeof(prog->msg_control);
-
-		prog->cmsg = CMSG_FIRSTHDR(&prog->msg);
-		prog->cmsg->cmsg_level = SOL_SOCKET;
-		prog->cmsg->cmsg_type = SCM_TXTIME;
-		prog->cmsg->cmsg_len = CMSG_LEN(sizeof(__u64));
 	}
 }
 
@@ -1426,7 +1400,7 @@ int prog_init(struct isochron_send *prog)
 	if (rc)
 		goto out_stats_socket_teardown;
 
-	rc = isochron_send_init_data_fd(prog);
+	rc = isochron_send_init_data_sock(prog);
 	if (rc)
 		goto out_stats_socket_teardown;
 
@@ -1434,7 +1408,7 @@ int prog_init(struct isochron_send *prog)
 
 	rc = prog_init_trace_mark(prog);
 	if (rc)
-		goto out_close_data_fd;
+		goto out_close_data_sock;
 
 	/* Prevent the process's virtual memory from being swapped out, by
 	 * locking all current and future pages
@@ -1474,8 +1448,8 @@ out_munlock:
 	munlockall();
 out_close_trace_mark_fd:
 	prog_teardown_trace_mark(prog);
-out_close_data_fd:
-	isochron_send_teardown_data_fd(prog);
+out_close_data_sock:
+	isochron_send_teardown_data_sock(prog);
 out_stats_socket_teardown:
 	prog_teardown_stats_socket(prog);
 out_close_rtnl:
@@ -1492,7 +1466,7 @@ static void prog_teardown(struct isochron_send *prog)
 	munlockall();
 
 	prog_teardown_trace_mark(prog);
-	isochron_send_teardown_data_fd(prog);
+	isochron_send_teardown_data_sock(prog);
 	prog_teardown_stats_socket(prog);
 	prog_rtnl_close(prog);
 }

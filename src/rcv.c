@@ -41,6 +41,8 @@ struct isochron_rcv {
 	struct mnl_socket *rtnl;
 	struct sk *mgmt_listen_sock;
 	struct sk *mgmt_sock;
+	struct sk *l4_sock;
+	struct sk *l2_sock;
 	int l2_data_fd;
 	int l4_data_fd;
 	int data_timeout_fd;
@@ -226,29 +228,18 @@ static int multicast_listen(int fd, unsigned int if_index,
 	return -1;
 }
 
-static int prog_init_l2_data_fd(struct isochron_rcv *prog)
+static int prog_init_l2_sock(struct isochron_rcv *prog)
 {
-	int sockopt = 1;
 	int fd, rc;
 
 	if (!prog->l2)
 		return 0;
 
-	/* Open PF_PACKET socket, listening for the specified EtherType */
-	fd = socket(PF_PACKET, SOCK_RAW, htons(prog->etype));
-	if (fd < 0) {
-		perror("listener: data socket");
-		return -errno;
-	}
+	rc = sk_l2(prog->etype, &prog->l2_sock);
+	if (rc)
+		return rc;
 
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt");
-		goto out;
-	}
+	fd = sk_fd(prog->l2_sock);
 
 	/* Bind to device */
 	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
@@ -280,13 +271,7 @@ static int prog_init_l2_data_fd(struct isochron_rcv *prog)
 		}
 	}
 
-	rc = sk_validate_ts_info(prog->if_name);
-	if (rc) {
-		errno = -rc;
-		goto out;
-	}
-
-	rc = sk_timestamping_init(fd, prog->if_name, true);
+	rc = sk_timestamping_init(prog->l2_sock, prog->if_name, true);
 	if (rc) {
 		errno = -rc;
 		goto out;
@@ -297,37 +282,22 @@ static int prog_init_l2_data_fd(struct isochron_rcv *prog)
 	return 0;
 
 out:
-	close(fd);
+	sk_close(prog->l2_sock);
 	return -errno;
 }
 
-static int prog_init_l4_data_fd(struct isochron_rcv *prog)
+static int prog_init_l4_sock(struct isochron_rcv *prog)
 {
-	struct sockaddr_in6 serv_data_addr = {
-		.sin6_family = AF_INET6,
-		.sin6_addr = in6addr_any,
-		.sin6_port = htons(prog->data_port),
-	};
-	int sockopt = 1;
 	int fd, rc;
 
 	if (!prog->l4)
 		return 0;
 
-	fd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-	if (fd < 0) {
-		perror("listener: data socket");
-		return -errno;
-	}
+	rc = sk_bind_udp_any(prog->data_port, &prog->l4_sock);
+	if (rc)
+		return rc;
 
-	/* Allow the socket to be reused, in case the connection
-	 * is closed prematurely
-	 */
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt");
-		goto out;
-	}
+	fd = sk_fd(prog->l4_sock);
 
 	/* Bind to device */
 	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
@@ -337,20 +307,7 @@ static int prog_init_l4_data_fd(struct isochron_rcv *prog)
 		goto out;
 	}
 
-	rc = bind(fd, (struct sockaddr *)&serv_data_addr,
-		  sizeof(serv_data_addr));
-	if (rc < 0) {
-		perror("bind");
-		goto out;
-	}
-
-	rc = sk_validate_ts_info(prog->if_name);
-	if (rc) {
-		errno = -rc;
-		goto out;
-	}
-
-	rc = sk_timestamping_init(fd, prog->if_name, true);
+	rc = sk_timestamping_init(prog->l4_sock, prog->if_name, true);
 	if (rc) {
 		errno = -rc;
 		goto out;
@@ -365,33 +322,35 @@ out:
 	return -errno;
 }
 
-static void prog_teardown_l2_data_fd(struct isochron_rcv *prog)
+static void prog_teardown_l2_sock(struct isochron_rcv *prog)
 {
-	if (!prog->l2)
+	if (!prog->l2_sock)
 		return;
 
 	if (is_multicast_ether_addr(prog->dest_mac))
 		multicast_listen(prog->l2_data_fd, prog->if_index,
 				 prog->dest_mac, false);
 
-	close(prog->l2_data_fd);
+	sk_close(prog->l2_sock);
+	prog->l2_sock = NULL;
 }
 
-static void prog_teardown_l4_data_fd(struct isochron_rcv *prog)
+static void prog_teardown_l4_sock(struct isochron_rcv *prog)
 {
-	if (!prog->l4)
+	if (!prog->l4_sock)
 		return;
 
-	close(prog->l4_data_fd);
+	sk_close(prog->l4_sock);
+	prog->l4_sock = NULL;
 }
 
-static int prog_data_event(struct isochron_rcv *prog, int fd, bool l2)
+static int prog_data_event(struct isochron_rcv *prog, struct sk *sock, bool l2)
 {
 	struct ethhdr *eth_hdr = (struct ethhdr *)prog->rcvbuf;
 	struct isochron_timestamp tstamp = {0};
 	ssize_t len;
 
-	len = sk_receive(fd, prog->rcvbuf, BUF_SIZ, &tstamp, 0, 0);
+	len = sk_recvmsg(sock, prog->rcvbuf, BUF_SIZ, &tstamp, 0, 0);
 	/* Suppress "Interrupted system call" message */
 	if (len < 0 && errno != EINTR) {
 		perror("recvfrom failed");
@@ -551,9 +510,9 @@ static int prog_update_l2_enabled(void *priv, void *ptr)
 	prog->l2 = f->enabled;
 
 	if (prog->l2)
-		rc = prog_init_l2_data_fd(prog);
+		rc = prog_init_l2_sock(prog);
 	else
-		prog_teardown_l2_data_fd(prog);
+		prog_teardown_l2_sock(prog);
 
 	return rc;
 }
@@ -570,9 +529,9 @@ static int prog_update_l4_enabled(void *priv, void *ptr)
 	prog->l4 = f->enabled;
 
 	if (prog->l4)
-		rc = prog_init_l4_data_fd(prog);
+		rc = prog_init_l4_sock(prog);
 	else
-		prog_teardown_l4_data_fd(prog);
+		prog_teardown_l4_sock(prog);
 
 	return rc;
 }
@@ -731,13 +690,13 @@ static int server_loop(struct isochron_rcv *prog)
 		}
 
 		if (l2_pfd >= 0 && pfd[l2_pfd].revents & (POLLIN | POLLERR | POLLPRI)) {
-			rc = prog_data_event(prog, prog->l2_data_fd, true);
+			rc = prog_data_event(prog, prog->l2_sock, true);
 			if (rc)
 				break;
 		}
 
 		if (l4_pfd >= 0 && pfd[l4_pfd].revents & (POLLIN | POLLERR | POLLPRI)) {
-			rc = prog_data_event(prog, prog->l4_data_fd, false);
+			rc = prog_data_event(prog, prog->l4_sock, false);
 			if (rc)
 				break;
 		}
@@ -938,6 +897,10 @@ static int prog_init(struct isochron_rcv *prog)
 	if (rc)
 		goto out_close_rtnl;
 
+	rc = sk_validate_ts_info(prog->if_name);
+	if (rc)
+		goto out_close_rtnl;
+
 	rc = prog_init_ptpmon(prog);
 	if (rc)
 		goto out_close_rtnl;
@@ -959,24 +922,24 @@ static int prog_init(struct isochron_rcv *prog)
 	if (rc)
 		goto out_teardown_sysmon;
 
-	rc = prog_init_l2_data_fd(prog);
+	rc = prog_init_l2_sock(prog);
 	if (rc)
 		goto out_teardown_mgmt_listen_sock;
 
-	rc = prog_init_l4_data_fd(prog);
+	rc = prog_init_l4_sock(prog);
 	if (rc)
-		goto out_teardown_l2_data_fd;
+		goto out_teardown_l2_sock;
 
 	rc = prog_init_data_timeout_fd(prog);
 	if (rc)
-		goto out_teardown_l4_data_fd;
+		goto out_teardown_l4_sock;
 
 	return 0;
 
-out_teardown_l4_data_fd:
-	prog_teardown_l4_data_fd(prog);
-out_teardown_l2_data_fd:
-	prog_teardown_l2_data_fd(prog);
+out_teardown_l4_sock:
+	prog_teardown_l4_sock(prog);
+out_teardown_l2_sock:
+	prog_teardown_l2_sock(prog);
 out_teardown_mgmt_listen_sock:
 	prog_teardown_mgmt_listen_sock(prog);
 out_teardown_sysmon:
@@ -1191,8 +1154,8 @@ static void prog_teardown(struct isochron_rcv *prog)
 	isochron_log_teardown(&prog->log);
 
 	prog_teardown_data_timeout_fd(prog);
-	prog_teardown_l4_data_fd(prog);
-	prog_teardown_l2_data_fd(prog);
+	prog_teardown_l4_sock(prog);
+	prog_teardown_l2_sock(prog);
 	prog_teardown_mgmt_listen_sock(prog);
 	prog_teardown_sysmon(prog);
 	prog_teardown_ptpmon(prog);

@@ -138,22 +138,9 @@ struct vlan_ethhdr {
 #define VLAN_VID_MASK		0x0fff /* VLAN Identifier */
 #define VLAN_N_VID		4096
 
-struct isochron_timestamp {
-	struct timespec hw;
-	struct timespec sw;
-	struct timespec sched;
-	struct timespec txtime;
-	__u32 tskey;
-	__u32 tstype;
-};
-
 ssize_t read_exact(int fd, void *buf, size_t count);
 ssize_t write_exact(int fd, const void *buf, size_t count);
 
-int sk_validate_ts_info(const char *if_name);
-int sk_timestamping_init(int fd, const char *if_name, bool on);
-int sk_receive(int fd, void *buf, int buflen, struct isochron_timestamp *tstamp,
-	       int flags, int timeout);
 __s64 timespec_to_ns(const struct timespec *ts);
 struct timespec ns_to_timespec(__s64 ns);
 void mac_addr_sprintf(char *buf, unsigned char *addr);

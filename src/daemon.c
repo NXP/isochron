@@ -63,9 +63,9 @@ static int prog_prepare_session(struct isochron_send *send)
 	if (rc)
 		return rc;
 
-	rc = isochron_send_init_data_fd(send);
+	rc = isochron_send_init_data_sock(send);
 	if (rc)
-		goto err_init_data_fd;
+		goto err_init_data_sock;
 
 	isochron_send_init_data_packet(send);
 
@@ -94,8 +94,8 @@ err_start_threads:
 err_update_session_start:
 	isochron_log_teardown(&send->log);
 err_log_init:
-	isochron_send_teardown_data_fd(send);
-err_init_data_fd:
+	isochron_send_teardown_data_sock(send);
+err_init_data_sock:
 	return rc;
 }
 
@@ -109,7 +109,7 @@ static void isochron_teardown_sender(struct isochron_daemon *prog)
 	if (prog->test_running) {
 		isochron_send_stop_threads(send);
 		isochron_log_teardown(&send->log);
-		isochron_send_teardown_data_fd(send);
+		isochron_send_teardown_data_sock(send);
 		prog->test_running = false;
 	}
 
