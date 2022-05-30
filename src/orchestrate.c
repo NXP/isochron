@@ -774,8 +774,8 @@ static int prog_open_node_connection(struct isochron_orch_node *node)
 	if (!node->port)
 		node->port = ISOCHRON_STATS_PORT;
 
-	if (node->addr.family != AF_INET && node->addr.family == AF_INET6) {
-		fprintf(stderr, "Node %s missing an \"addr\" property\n",
+	if (node->addr.family != AF_INET && node->addr.family != AF_INET6) {
+		fprintf(stderr, "Node %s missing a \"host\" property\n",
 			node->name);
 		return -EINVAL;
 	}
