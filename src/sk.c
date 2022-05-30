@@ -81,7 +81,7 @@ int sk_listen_tcp_any(int port, int backlog, struct sk **listen_sock)
 		if (fd < 0) {
 			perror("Failed to create IPv6 or IPv4 socket");
 			free(*listen_sock);
-			return -errno;
+			goto out;
 		}
 		ipv4_fallback = true;
 	}
@@ -92,7 +92,7 @@ int sk_listen_tcp_any(int port, int backlog, struct sk **listen_sock)
 	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
 	if (rc < 0) {
 		perror("Failed to setsockopt(SO_REUSEADDR)");
-		goto out;
+		goto out_close;
 	}
 
 	if (ipv4_fallback)
@@ -101,22 +101,24 @@ int sk_listen_tcp_any(int port, int backlog, struct sk **listen_sock)
 		rc = sk_bind_ipv6_any(fd, port);
 	if (rc < 0) {
 		fprintf(stderr, "Failed to bind to TCP port %d: %m", port);
-		goto out;
+		goto out_close;
 	}
 
 	rc = listen(fd, backlog);
 	if (rc < 0) {
 		fprintf(stderr, "Failed to listen on TCP port %d: %m", port);
-		goto out;
+		goto out_close;
 	}
 
 	(*listen_sock)->fd = fd;
 	(*listen_sock)->family = ipv4_fallback ? PF_INET : PF_INET6;
 
 	return 0;
-out:
+out_close:
 	close(fd);
+out:
 	free(*listen_sock);
+	*listen_sock = NULL;
 	return -errno;
 }
 
@@ -256,6 +258,7 @@ err_close:
 	close(fd);
 err:
 	free(*sock);
+	*sock = NULL;
 	return -errno;
 }
 
@@ -302,6 +305,7 @@ int sk_bind_udp_any(int port, struct sk **sock)
 out:
 	close(fd);
 	free(*sock);
+	*sock = NULL;
 	return -errno;
 }
 
@@ -438,6 +442,7 @@ int sk_l2(__u16 ethertype, struct sk **sock)
 	if (fd < 0) {
 		perror("Failed to create PF_PACKET socket");
 		free(*sock);
+		*sock = NULL;
 		return -errno;
 	}
 
@@ -478,6 +483,7 @@ out_close:
 	close(fd);
 out:
 	free(*sock);
+	*sock = NULL;
 	return -errno;
 }
 
