@@ -10,6 +10,100 @@
 #include "rtnl.h"
 #include "sysmon.h"
 
+static const char *mid_to_string(enum isochron_management_id mid)
+{
+	switch (mid) {
+	case ISOCHRON_MID_LOG:
+		return "LOG";
+	case ISOCHRON_MID_SYSMON_OFFSET:
+		return "SYSMON_OFFSET";
+	case ISOCHRON_MID_PTPMON_OFFSET:
+		return "PTPMON_OFFSET";
+	case ISOCHRON_MID_UTC_OFFSET:
+		return "UTC_OFFSET";
+	case ISOCHRON_MID_PORT_STATE:
+		return "PORT_STATE";
+	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
+		return "GM_CLOCK_IDENTITY";
+	case ISOCHRON_MID_PACKET_COUNT:
+		return "PACKET_COUNT";
+	case ISOCHRON_MID_DESTINATION_MAC:
+		return "DESTINATION_MAC";
+	case ISOCHRON_MID_SOURCE_MAC:
+		return "SOURCE_MAC";
+	case ISOCHRON_MID_NODE_ROLE:
+		return "NODE_ROLE";
+	case ISOCHRON_MID_PACKET_SIZE:
+		return "PACKET_SIZE";
+	case ISOCHRON_MID_IF_NAME:
+		return "IF_NAME";
+	case ISOCHRON_MID_PRIORITY:
+		return "PRIORITY";
+	case ISOCHRON_MID_STATS_PORT:
+		return "STATS_PORT";
+	case ISOCHRON_MID_BASE_TIME:
+		return "BASE_TIME";
+	case ISOCHRON_MID_ADVANCE_TIME:
+		return "ADVANCE_TIME";
+	case ISOCHRON_MID_SHIFT_TIME:
+		return "SHIFT_TIME";
+	case ISOCHRON_MID_CYCLE_TIME:
+		return "CYCLE_TIME";
+	case ISOCHRON_MID_WINDOW_SIZE:
+		return "WINDOW_SIZE";
+	case ISOCHRON_MID_SYSMON_ENABLED:
+		return "SYSMON_ENABLED";
+	case ISOCHRON_MID_PTPMON_ENABLED:
+		return "PTPMON_ENABLED";
+	case ISOCHRON_MID_UDS:
+		return "UDS";
+	case ISOCHRON_MID_DOMAIN_NUMBER:
+		return "DOMAIN_NUMBER";
+	case ISOCHRON_MID_TRANSPORT_SPECIFIC:
+		return "TRANSPORT_SPECIFIC";
+	case ISOCHRON_MID_NUM_READINGS:
+		return "NUM_READINGS";
+	case ISOCHRON_MID_TS_ENABLED:
+		return "TS_ENABLED";
+	case ISOCHRON_MID_VID:
+		return "VID";
+	case ISOCHRON_MID_ETHERTYPE:
+		return "ETHERTYPE";
+	case ISOCHRON_MID_QUIET_ENABLED:
+		return "QUIET_ENABLED";
+	case ISOCHRON_MID_TAPRIO_ENABLED:
+		return "TAPRIO_ENABLED";
+	case ISOCHRON_MID_TXTIME_ENABLED:
+		return "TXTIME_ENABLED";
+	case ISOCHRON_MID_DEADLINE_ENABLED:
+		return "DEADLINE_ENABLED";
+	case ISOCHRON_MID_IP_DESTINATION:
+		return "IP_DESTINATION";
+	case ISOCHRON_MID_L2_ENABLED:
+		return "L2_ENABLED";
+	case ISOCHRON_MID_L4_ENABLED:
+		return "L4_ENABLED";
+	case ISOCHRON_MID_DATA_PORT:
+		return "DATA_PORT";
+	case ISOCHRON_MID_SCHED_FIFO_ENABLED:
+		return "SCHED_FIFO_ENABLED";
+	case ISOCHRON_MID_SCHED_RR_ENABLED:
+		return "SCHED_RR_ENABLED";
+	case ISOCHRON_MID_SCHED_PRIORITY:
+		return "SCHED_PRIORITY";
+	case ISOCHRON_MID_CPU_MASK:
+		return "CPU_MASK";
+	case ISOCHRON_MID_TEST_STATE:
+		return "TEST_STATE";
+	case ISOCHRON_MID_SYNC_MONITOR_ENABLED:
+		return "SYNC_MONITOR_ENABLED";
+	case ISOCHRON_MID_PORT_LINK_STATE:
+		return "PORT_LINK_STATE";
+	default:
+		return "UNKNOWN";
+	}
+};
+
 int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 		      enum isochron_management_id mid, size_t size)
 {
@@ -104,22 +198,24 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
 		fprintf(stderr,
-			"Unexpected message version %d from isochron receiver\n",
-			msg.version);
+			"Failed to query MID %s: unexpected message version %d in response\n",
+			mid_to_string(mid), msg.version);
 		return -EBADMSG;
 	}
 
 	if (msg.action != ISOCHRON_RESPONSE) {
-		fprintf(stderr, "Unexpected action %d from isochron receiver\n",
-			msg.action);
+		fprintf(stderr,
+			"Failed to query MID %s: unexpected action %d in response\n",
+			mid_to_string(mid), msg.action);
 		return -EBADMSG;
 	}
 
 	payload_length = __be32_to_cpu(msg.payload_length);
 	if (payload_length != data_len + sizeof(tlv)) {
 		fprintf(stderr,
-			"Expected payload length %zu from isochron receiver, got %zu\n",
-			data_len + sizeof(tlv), payload_length);
+			"Failed to query MID %s: expected payload length %zu in response, got %zu\n",
+			mid_to_string(mid), data_len + sizeof(tlv),
+			payload_length);
 		isochron_drain_sk(sock, payload_length);
 		return -EBADMSG;
 	}
@@ -131,22 +227,24 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 	tlv_length = __be32_to_cpu(tlv.length_field);
 	if (tlv_length != data_len) {
 		fprintf(stderr,
-			"Expected TLV length %zu from isochron receiver, got %zu\n",
-			data_len, tlv_length);
+			"Failed to query MID %s: expected TLV length %zu in response, got %zu\n",
+			mid_to_string(mid), data_len, tlv_length);
 		isochron_drain_sk(sock, tlv_length);
 		return -EBADMSG;
 	}
 
 	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
-		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
-			__be16_to_cpu(tlv.tlv_type));
+		fprintf(stderr, "Failed to query MID %s: unexpected TLV type %d in response\n",
+			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
 		isochron_drain_sk(sock, tlv_length);
 		return -EBADMSG;
 	}
 
 	if (__be16_to_cpu(tlv.management_id) != mid) {
-		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
-			__be16_to_cpu(tlv.management_id));
+		fprintf(stderr,
+			"Failed to query MID %s: response for unexpected MID %s\n",
+			mid_to_string(mid),
+			mid_to_string(__be16_to_cpu(tlv.management_id)));
 		isochron_drain_sk(sock, tlv_length);
 		return -EBADMSG;
 	}
@@ -169,8 +267,8 @@ int isochron_mgmt_tlv_set(struct sk *sock, struct isochron_tlv *tlv, void *priv,
 
 	if (tlv_len != struct_size) {
 		fprintf(stderr,
-			"Expected %zu bytes for SET of MID %d, got %zu\n",
-			struct_size, mid, tlv_len);
+			"Expected %zu bytes for SET of MID %s, got %zu\n",
+			struct_size, mid_to_string(mid), tlv_len);
 		isochron_send_empty_tlv(sock, mid);
 		return 0;
 	}
@@ -225,15 +323,16 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
 		fprintf(stderr,
-			"Unexpected message version %d from isochron receiver\n",
-			msg.version);
+			"Failed to update MID %s: unexpected message version %d in response\n",
+			mid_to_string(mid), msg.version);
 		free(tmp_buf);
 		return -EBADMSG;
 	}
 
 	if (msg.action != ISOCHRON_RESPONSE) {
-		fprintf(stderr, "Unexpected action %d from isochron receiver\n",
-			msg.action);
+		fprintf(stderr,
+			"Failed to update MID %s: unexpected action %d in response\n",
+			mid_to_string(mid), msg.action);
 		free(tmp_buf);
 		return -EBADMSG;
 	}
@@ -241,8 +340,9 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 	payload_length = __be32_to_cpu(msg.payload_length);
 	if (payload_length != data_len + sizeof(tlv)) {
 		fprintf(stderr,
-			"Expected payload length %zu from isochron receiver, got %zu\n",
-			data_len + sizeof(tlv), payload_length);
+			"Failed to update MID %s: expected payload length %zu in response, got %zu\n",
+			mid_to_string(mid), data_len + sizeof(tlv),
+			payload_length);
 		isochron_drain_sk(sock, payload_length);
 		free(tmp_buf);
 		return -EBADMSG;
@@ -257,24 +357,27 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 	tlv_length = __be32_to_cpu(tlv.length_field);
 	if (tlv_length != data_len) {
 		fprintf(stderr,
-			"Expected TLV length %zu from isochron receiver, got %zu\n",
-			data_len, tlv_length);
+			"Failed to update MID %s: expected TLV length %zu in response, got %zu\n",
+			mid_to_string(mid), data_len, tlv_length);
 		isochron_drain_sk(sock, tlv_length);
 		free(tmp_buf);
 		return -EBADMSG;
 	}
 
 	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
-		fprintf(stderr, "Unexpected TLV type %d from isochron receiver\n",
-			__be16_to_cpu(tlv.tlv_type));
+		fprintf(stderr,
+			"Failed to update MID %s: unexpected TLV type %d in response\n",
+			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
 		isochron_drain_sk(sock, tlv_length);
 		free(tmp_buf);
 		return -EBADMSG;
 	}
 
 	if (__be16_to_cpu(tlv.management_id) != mid) {
-		fprintf(stderr, "Response for unexpected MID %d from isochron receiver\n",
-			__be16_to_cpu(tlv.management_id));
+		fprintf(stderr,
+			"Failed to update MID %s: response for unexpected MID %s\n",
+			mid_to_string(mid),
+			mid_to_string(__be16_to_cpu(tlv.management_id)));
 		isochron_drain_sk(sock, tlv_length);
 		free(tmp_buf);
 		return -EBADMSG;
@@ -288,7 +391,8 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 	if (memcmp(tmp_buf, data, data_len)) {
 		fprintf(stderr,
-			"Unexpected reply contents from isochron receiver\n");
+			"Failed to update MID %s: unexpected reply contents\n",
+			mid_to_string(mid));
 		free(tmp_buf);
 		return -EBADMSG;
 	}
