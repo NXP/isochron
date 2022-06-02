@@ -1091,7 +1091,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	fd = open(file, O_RDONLY);
 	if (fd < 0) {
-		perror("open");
+		fprintf(stderr, "Failed to open file %s: %m\n", file);
 		rc = fd;
 		goto out;
 	}
