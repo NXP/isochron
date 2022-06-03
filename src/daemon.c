@@ -109,8 +109,6 @@ static void isochron_teardown_sender(struct isochron_daemon *prog)
 
 	if (prog->test_running) {
 		isochron_send_stop_threads(send);
-		isochron_log_teardown(&send->log);
-		isochron_send_teardown_data_sock(send);
 		prog->test_running = false;
 	}
 
@@ -119,6 +117,8 @@ static void isochron_teardown_sender(struct isochron_daemon *prog)
 	if (send->sysmon)
 		isochron_send_teardown_sysmon(send);
 
+	isochron_log_teardown(&send->log);
+	isochron_send_teardown_data_sock(send);
 	free(send);
 	prog->send = NULL;
 }
