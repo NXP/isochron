@@ -1176,6 +1176,35 @@ static void prog_teardown_mgmt_listen_sock(struct isochron_daemon *prog)
 	sk_close(prog->mgmt_listen_sock);
 }
 
+static int prog_rtnl_open(struct isochron_daemon *prog)
+{
+	struct mnl_socket *nl;
+
+	nl = mnl_socket_open(NETLINK_ROUTE);
+	if (!nl) {
+		perror("mnl_socket_open");
+		return -errno;
+	}
+
+	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
+		perror("mnl_socket_bind");
+		mnl_socket_close(nl);
+		return -errno;
+	}
+
+	prog->rtnl = nl;
+
+	return 0;
+}
+
+static void prog_rtnl_close(struct isochron_daemon *prog)
+{
+	struct mnl_socket *nl = prog->rtnl;
+
+	prog->rtnl = NULL;
+	mnl_socket_close(nl);
+}
+
 static int prog_redirect_output(struct isochron_daemon *prog)
 {
 	FILE *log_file;
@@ -1234,8 +1263,13 @@ static int prog_daemonize(struct isochron_daemon *prog)
 			fclose(pid_file);
 		}
 
+		prog_teardown_mgmt_listen_sock(prog);
+		prog_rtnl_close(prog);
 		exit(EXIT_SUCCESS);
 	}
+
+	if (pid_file)
+		fclose(pid_file);
 
 	/* Child */
 	if (setsid() < 0)
@@ -1248,35 +1282,6 @@ err_fork:
 		fclose(pid_file);
 err_pid_file_open:
 	return -errno;
-}
-
-static int prog_rtnl_open(struct isochron_daemon *prog)
-{
-	struct mnl_socket *nl;
-
-	nl = mnl_socket_open(NETLINK_ROUTE);
-	if (!nl) {
-		perror("mnl_socket_open");
-		return -errno;
-	}
-
-	if (mnl_socket_bind(nl, 0, MNL_SOCKET_AUTOPID) < 0) {
-		perror("mnl_socket_bind");
-		mnl_socket_close(nl);
-		return -errno;
-	}
-
-	prog->rtnl = nl;
-
-	return 0;
-}
-
-static void prog_rtnl_close(struct isochron_daemon *prog)
-{
-	struct mnl_socket *nl = prog->rtnl;
-
-	prog->rtnl = NULL;
-	mnl_socket_close(nl);
 }
 
 static int prog_init(struct isochron_daemon *prog)
