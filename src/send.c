@@ -1369,7 +1369,7 @@ static int prog_check_admin_state(struct isochron_send *prog)
 	return 0;
 }
 
-int prog_init(struct isochron_send *prog)
+static int prog_init(struct isochron_send *prog)
 {
 	int rc;
 
