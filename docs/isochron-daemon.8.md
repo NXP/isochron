@@ -43,6 +43,15 @@ OPTIONS
     incoming connections. This socket is used for management and
     statistics. Optional, defaults to port 5000.
 
+`-S`, `--stats-address` <`NUMBER`>
+
+:   specify the IP address on which the daemon program is listening for
+    incoming connections. This socket is used for management and
+    statistics. Supports binding to a given network device using the
+    `address%device` syntax (example: `--stats-address ::%vrf0`).
+    Optional, defaults to ::, with a fallback to 0.0.0.0 if IPv6 is not
+    available.
+
 EXAMPLES
 ========
 

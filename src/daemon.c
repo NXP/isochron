@@ -22,6 +22,7 @@
 #include "sysmon.h"
 
 struct isochron_daemon {
+	struct ip_address stats_addr;
 	long stats_port;
 	char pid_filename[PATH_MAX];
 	char log_filename[PATH_MAX];
@@ -1166,7 +1167,8 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 
 static int prog_init_mgmt_listen_sock(struct isochron_daemon *prog)
 {
-	return sk_listen_tcp_any(prog->stats_port, 1, &prog->mgmt_listen_sock);
+	return sk_listen_tcp(&prog->stats_addr, prog->stats_port, 1,
+			     &prog->mgmt_listen_sock);
 }
 
 static void prog_teardown_mgmt_listen_sock(struct isochron_daemon *prog)
@@ -1355,6 +1357,14 @@ static int prog_parse_args(int argc, char **argv, struct isochron_daemon *prog)
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
 				.ptr = &prog->stats_port,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-S",
+			.long_opt = "--stats-address",
+			.type = PROG_ARG_IP,
+			.ip_ptr = {
+			        .ptr = &prog->stats_addr,
 			},
 			.optional = true,
 		},

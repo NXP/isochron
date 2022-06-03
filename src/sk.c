@@ -39,29 +39,98 @@ struct sk_msg {
 	char msg_control[CMSG_SPACE(sizeof(__s64))];
 };
 
-static int sk_bind_ipv4_any(int fd, int port)
+static int __sk_bind_ipv4(int fd, const struct in_addr *a, int port)
 {
 	struct sockaddr_in s = {
 		.sin_family = AF_INET,
-		.sin_addr.s_addr = htonl(INADDR_ANY),
 		.sin_port = htons(port),
 	};
+
+	memcpy(&s.sin_addr, a, sizeof(*a));
+
+	return bind(fd, (struct sockaddr *)&s, sizeof(s));
+}
+
+static int sk_bind_ipv4_any(int fd, int port)
+{
+	struct in_addr a = {
+		.s_addr = htonl(INADDR_ANY),
+	};
+
+	return __sk_bind_ipv4(fd, &a, port);
+}
+
+static int sk_bind_ipv4(int fd, const struct ip_address *ip, int port)
+{
+	int rc;
+
+	if (ip->family != AF_INET)
+		return sk_bind_ipv4_any(fd, port);
+
+	rc = __sk_bind_ipv4(fd, &ip->addr, port);
+	if (rc)
+		return rc;
+
+	if (strlen(ip->bound_if_name)) {
+		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+				ip->bound_if_name, IFNAMSIZ - 1);
+		if (rc < 0) {
+			fprintf(stderr,
+				"Failed to bind socket to device %s: %m\n",
+				ip->bound_if_name);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
+static int __sk_bind_ipv6(int fd, const struct in6_addr *a, int port)
+{
+	struct sockaddr_in6 s = {
+		.sin6_family = AF_INET6,
+		.sin6_port = htons(port),
+	};
+
+	memcpy(&s.sin6_addr, a, sizeof(*a));
 
 	return bind(fd, (struct sockaddr *)&s, sizeof(s));
 }
 
 static int sk_bind_ipv6_any(int fd, int port)
 {
-	struct sockaddr_in6 s = {
-		.sin6_family = AF_INET6,
-		.sin6_addr = in6addr_any,
-		.sin6_port = htons(port),
-	};
+	struct in6_addr a = in6addr_any;
 
-	return bind(fd, (struct sockaddr *)&s, sizeof(s));
+	return __sk_bind_ipv6(fd, &a, port);
 }
 
-int sk_listen_tcp_any(int port, int backlog, struct sk **listen_sock)
+static int sk_bind_ipv6(int fd, const struct ip_address *ip, int port)
+{
+	int rc;
+
+	if (ip->family != AF_INET6)
+		return sk_bind_ipv6_any(fd, port);
+
+	rc = __sk_bind_ipv6(fd, &ip->addr6, port);
+	if (rc)
+		return rc;
+
+	if (strlen(ip->bound_if_name)) {
+		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+				ip->bound_if_name, IFNAMSIZ - 1);
+		if (rc < 0) {
+			fprintf(stderr,
+				"Failed to bind socket to device %s: %m\n",
+				ip->bound_if_name);
+			return -errno;
+		}
+	}
+
+	return 0;
+}
+
+int sk_listen_tcp(const struct ip_address *ip, int port, int backlog,
+		  struct sk **listen_sock)
 {
 	bool ipv4_fallback = false;
 	int sockopt = 1;
@@ -96,9 +165,9 @@ int sk_listen_tcp_any(int port, int backlog, struct sk **listen_sock)
 	}
 
 	if (ipv4_fallback)
-		rc = sk_bind_ipv4_any(fd, port);
+		rc = sk_bind_ipv4(fd, ip, port);
 	else
-		rc = sk_bind_ipv6_any(fd, port);
+		rc = sk_bind_ipv6(fd, ip, port);
 	if (rc < 0) {
 		fprintf(stderr, "Failed to bind to TCP port %d: %m", port);
 		goto out_close;

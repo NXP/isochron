@@ -20,7 +20,8 @@ struct sk_addr;
 struct sk_msg;
 
 /* Connection-oriented */
-int sk_listen_tcp_any(int port, int backlog, struct sk **listen_sock);
+int sk_listen_tcp(const struct ip_address *ip, int port, int backlog,
+		  struct sk **listen_sock);
 int sk_accept(const struct sk *listen_sock, struct sk **sock);
 int sk_connect_tcp(const struct ip_address *ip, int port, struct sk **sock);
 ssize_t sk_recv(const struct sk *sock, void *buf, size_t len, int flags);

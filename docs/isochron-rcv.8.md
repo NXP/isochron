@@ -52,6 +52,15 @@ OPTIONS
     octet of the destination MAC address until the last octet of data
     before the FCS.
 
+`-S`, `--stats-address` <`NUMBER`>
+
+:   specify the IP address on which the receiver program is listening
+    for incoming connections. This socket is used for management and
+    statistics. Supports binding to a given network device using the
+    `address%device` syntax (example: `--stats-address ::%vrf0`).
+    Optional, defaults to ::, with a fallback to 0.0.0.0 if IPv6 is not
+    available.
+
 `-q`, `--quiet`
 
 :   this option suppresses error messages regarding invalid test

@@ -52,6 +52,7 @@ struct isochron_rcv {
 	bool quiet;
 	long etype;
 	long stats_port;
+	struct ip_address stats_addr;
 	unsigned long iterations;
 	unsigned long received_pkt_count;
 	bool sched_fifo;
@@ -806,7 +807,8 @@ static void prog_teardown_sysmon(struct isochron_rcv *prog)
 
 static int prog_init_mgmt_listen_sock(struct isochron_rcv *prog)
 {
-	return sk_listen_tcp_any(prog->stats_port, 1, &prog->mgmt_listen_sock);
+	return sk_listen_tcp(&prog->stats_addr, prog->stats_port, 1,
+			     &prog->mgmt_listen_sock);
 }
 
 static void prog_teardown_mgmt_listen_sock(struct isochron_rcv *prog)
@@ -993,6 +995,14 @@ static int prog_parse_args(int argc, char **argv, struct isochron_rcv *prog)
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
 			        .ptr = &prog->etype,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-S",
+			.long_opt = "--stats-address",
+			.type = PROG_ARG_IP,
+			.ip_ptr = {
+				.ptr = &prog->stats_addr,
 			},
 			.optional = true,
 		}, {
