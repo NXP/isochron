@@ -413,11 +413,12 @@ void sk_msg_destroy(struct sk_msg *msg)
 struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,
 				size_t len)
 {
-	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg->msghdr);
+	struct cmsghdr *cmsg;
 
 	msg->msghdr.msg_control = msg->msg_control;
 	msg->msghdr.msg_controllen = sizeof(msg->msg_control);
 
+	cmsg = CMSG_FIRSTHDR(&msg->msghdr);
 	cmsg->cmsg_level = level;
 	cmsg->cmsg_type = type;
 	cmsg->cmsg_level = len;
