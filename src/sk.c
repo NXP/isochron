@@ -473,7 +473,9 @@ int sk_udp(const struct ip_address *dest, struct sk **sock)
 		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
 				dest->bound_if_name, IFNAMSIZ - 1);
 		if (rc < 0) {
-			perror("Failed to setsockopt(SO_BINDTODEVICE) on UDP socket");
+			fprintf(stderr,
+				"Failed to bind UDP socket to device %s: %m\n",
+				dest->bound_if_name);
 			goto out_close;
 		}
 	}
