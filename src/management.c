@@ -212,10 +212,16 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 
 	payload_length = __be32_to_cpu(msg.payload_length);
 	if (payload_length != data_len + sizeof(tlv)) {
-		fprintf(stderr,
-			"Failed to query MID %s: expected payload length %zu in response, got %zu\n",
-			mid_to_string(mid), data_len + sizeof(tlv),
-			payload_length);
+		if (data_len == sizeof(tlv)) {
+			fprintf(stderr,
+				"Failed to query MID %s: received empty payload in response\n",
+				mid_to_string(mid));
+		} else {
+			fprintf(stderr,
+				"Failed to query MID %s: expected payload length %zu in response, got %zu\n",
+				mid_to_string(mid), data_len + sizeof(tlv),
+				payload_length);
+		}
 		isochron_drain_sk(sock, payload_length);
 		return -EBADMSG;
 	}
@@ -339,10 +345,16 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 	payload_length = __be32_to_cpu(msg.payload_length);
 	if (payload_length != data_len + sizeof(tlv)) {
-		fprintf(stderr,
-			"Failed to update MID %s: expected payload length %zu in response, got %zu\n",
-			mid_to_string(mid), data_len + sizeof(tlv),
-			payload_length);
+		if (payload_length == sizeof(tlv)) {
+			fprintf(stderr,
+				"Failed to update MID %s: received empty payload in response\n",
+				mid_to_string(mid));
+		} else {
+			fprintf(stderr,
+				"Failed to update MID %s: expected payload length %zu in response, got %zu\n",
+				mid_to_string(mid), data_len + sizeof(tlv),
+				payload_length);
+		}
 		isochron_drain_sk(sock, payload_length);
 		free(tmp_buf);
 		return -EBADMSG;
