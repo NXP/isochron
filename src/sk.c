@@ -237,8 +237,10 @@ int sk_connect_tcp(const struct ip_address *ip, int port, struct sk **sock)
 		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
 				ip->bound_if_name, IFNAMSIZ - 1);
 		if (rc < 0) {
-			perror("Failed to setsockopt(SO_BINDTODEVICE)");
-			goto err_close;
+			fprintf(stderr,
+				"Failed to bind TCP socket to device %s: %m\n",
+				ip->bound_if_name);
+			return -errno;
 		}
 	}
 
