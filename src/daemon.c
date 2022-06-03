@@ -60,6 +60,13 @@ static int prog_prepare_session(struct isochron_send *send)
 {
 	int rc;
 
+	/* Hack to suppress local log output to the filesystem, since
+	 * isochron_send_interpret_args() makes the default output_file
+	 * isochron.dat, and this triggers a validation error when a sender
+	 * session is restarted.
+	 */
+	send->output_file[0] = 0;
+
 	rc = isochron_send_interpret_args(send);
 	if (rc)
 		return rc;
@@ -162,8 +169,6 @@ static int prog_update_role(void *priv, void *ptr)
 	}
 
 	isochron_send_prepare_default_args(send);
-	/* Suppress local log output to the filesystem */
-	send->output_file[0] = 0;
 
 	isochron_teardown_sender(prog);
 
