@@ -281,8 +281,10 @@ static int prog_start_senders(struct isochron_orch *prog)
 
 		rc = isochron_update_test_state(node->mgmt_sock,
 						ISOCHRON_TEST_STATE_RUNNING);
-		if (rc)
+		if (rc) {
+			pr_err(rc, "Failed to start node %s: %m\n", node->name);
 			return rc;
+		}
 
 		node->test_state = ISOCHRON_TEST_STATE_RUNNING;
 	}
@@ -301,8 +303,10 @@ static int prog_stop_senders(struct isochron_orch *prog)
 
 		rc = isochron_update_test_state(node->mgmt_sock,
 						ISOCHRON_TEST_STATE_IDLE);
-		if (rc)
+		if (rc) {
+			pr_err(rc, "Failed to stop node %s: %m\n", node->name);
 			return rc;
+		}
 	}
 
 	return 0;
