@@ -421,7 +421,7 @@ struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,
 	cmsg = CMSG_FIRSTHDR(&msg->msghdr);
 	cmsg->cmsg_level = level;
 	cmsg->cmsg_type = type;
-	cmsg->cmsg_level = len;
+	cmsg->cmsg_len = len;
 
 	return cmsg;
 }
