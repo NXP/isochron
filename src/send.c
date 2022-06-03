@@ -393,8 +393,10 @@ static int do_work(struct isochron_send *prog, int iteration, __s64 scheduled,
 
 	/* Send packet */
 	rc = sk_sendmsg(prog->data_sock, prog->msg, 0);
-	if (rc < 0)
+	if (rc < 0) {
+		perror("Failed to send data packet");
 		return -errno;
+	}
 
 	trace(prog, "send seqid %d end\n", iteration);
 
