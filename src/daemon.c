@@ -116,7 +116,7 @@ static void isochron_teardown_sender(struct isochron_daemon *prog)
 
 	if (send->ptpmon)
 		isochron_send_teardown_ptpmon(send);
-	if (prog->send->sysmon)
+	if (send->sysmon)
 		isochron_send_teardown_sysmon(send);
 
 	free(send);
