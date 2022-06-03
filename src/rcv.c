@@ -229,6 +229,33 @@ static int multicast_listen(int fd, unsigned int if_index,
 	return -1;
 }
 
+static int if_get_ether_addr(const char *if_name, unsigned char *addr)
+{
+	struct ifreq if_mac;
+	int fd, rc;
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		perror("Failed to open socket");
+		return -errno;
+	}
+
+	memset(&if_mac, 0, sizeof(struct ifreq));
+	strcpy(if_mac.ifr_name, if_name);
+
+	rc = ioctl(fd, SIOCGIFHWADDR, &if_mac);
+	close(fd);
+
+	if (rc < 0) {
+		perror("SIOCGIFHWADDR");
+		return -errno;
+	}
+
+	ether_addr_copy(addr, (unsigned char *)if_mac.ifr_hwaddr.sa_data);
+
+	return 0;
+}
+
 static int prog_init_l2_sock(struct isochron_rcv *prog)
 {
 	int fd, rc;
@@ -236,33 +263,18 @@ static int prog_init_l2_sock(struct isochron_rcv *prog)
 	if (!prog->l2)
 		return 0;
 
-	rc = sk_l2(prog->etype, &prog->l2_sock);
+	if (is_zero_ether_addr(prog->dest_mac)) {
+		rc = if_get_ether_addr(prog->if_name, prog->dest_mac);
+		if (rc)
+			return rc;
+	}
+
+	rc = sk_bind_l2(prog->dest_mac, prog->etype, prog->if_name,
+			&prog->l2_sock);
 	if (rc)
 		return rc;
 
 	fd = sk_fd(prog->l2_sock);
-
-	/* Bind to device */
-	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
-			IFNAMSIZ - 1);
-	if (rc < 0) {
-		perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
-		goto out;
-	}
-
-	if (is_zero_ether_addr(prog->dest_mac)) {
-		struct ifreq if_mac;
-
-		memset(&if_mac, 0, sizeof(struct ifreq));
-		strcpy(if_mac.ifr_name, prog->if_name);
-		if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
-			perror("SIOCGIFHWADDR");
-			goto out;
-		}
-
-		ether_addr_copy(prog->dest_mac,
-			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
-	}
 
 	if (is_multicast_ether_addr(prog->dest_mac)) {
 		rc = multicast_listen(fd, prog->if_index, prog->dest_mac, true);
@@ -289,12 +301,13 @@ out:
 
 static int prog_init_l4_sock(struct isochron_rcv *prog)
 {
+	struct ip_address any = {};
 	int fd, rc;
 
 	if (!prog->l4)
 		return 0;
 
-	rc = sk_bind_udp_any(prog->data_port, &prog->l4_sock);
+	rc = sk_bind_udp(&any, prog->data_port, &prog->l4_sock);
 	if (rc)
 		return rc;
 

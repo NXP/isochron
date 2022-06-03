@@ -19,11 +19,6 @@
 #include "common.h"
 #include "sk.h"
 
-struct sk {
-	int family;
-	int fd;
-};
-
 struct sk_addr {
 	union {
 		struct sockaddr_ll l2;
@@ -38,6 +33,12 @@ struct sk_msg {
 	struct msghdr msghdr;
 	struct cmsghdr *last_cmsg;
 	char *msg_control;
+};
+
+struct sk {
+	int family;
+	int fd;
+	struct sk_addr *sa;
 };
 
 static int __sk_bind_ipv4(int fd, const struct in_addr *a, int port)
@@ -63,27 +64,10 @@ static int sk_bind_ipv4_any(int fd, int port)
 
 static int sk_bind_ipv4(int fd, const struct ip_address *ip, int port)
 {
-	int rc;
-
 	if (ip->family != AF_INET)
 		return sk_bind_ipv4_any(fd, port);
 
-	rc = __sk_bind_ipv4(fd, &ip->addr, port);
-	if (rc)
-		return rc;
-
-	if (strlen(ip->bound_if_name)) {
-		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
-				ip->bound_if_name, IFNAMSIZ - 1);
-		if (rc < 0) {
-			fprintf(stderr,
-				"Failed to bind socket to device %s: %m\n",
-				ip->bound_if_name);
-			return rc;
-		}
-	}
-
-	return 0;
+	return __sk_bind_ipv4(fd, &ip->addr, port);
 }
 
 static int __sk_bind_ipv6(int fd, const struct in6_addr *a, int port)
@@ -107,27 +91,10 @@ static int sk_bind_ipv6_any(int fd, int port)
 
 static int sk_bind_ipv6(int fd, const struct ip_address *ip, int port)
 {
-	int rc;
-
 	if (ip->family != AF_INET6)
 		return sk_bind_ipv6_any(fd, port);
 
-	rc = __sk_bind_ipv6(fd, &ip->addr6, port);
-	if (rc)
-		return rc;
-
-	if (strlen(ip->bound_if_name)) {
-		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
-				ip->bound_if_name, IFNAMSIZ - 1);
-		if (rc < 0) {
-			fprintf(stderr,
-				"Failed to bind socket to device %s: %m\n",
-				ip->bound_if_name);
-			return -errno;
-		}
-	}
-
-	return 0;
+	return __sk_bind_ipv6(fd, &ip->addr6, port);
 }
 
 int sk_listen_tcp(const struct ip_address *ip, int port, int backlog,
@@ -165,18 +132,29 @@ int sk_listen_tcp(const struct ip_address *ip, int port, int backlog,
 		goto out_close;
 	}
 
+	if (strlen(ip->bound_if_name)) {
+		rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+				ip->bound_if_name, IFNAMSIZ - 1);
+		if (rc < 0) {
+			fprintf(stderr,
+				"Failed to bind socket to device %s: %m\n",
+				ip->bound_if_name);
+			goto out_close;
+		}
+	}
+
 	if (ipv4_fallback)
 		rc = sk_bind_ipv4(fd, ip, port);
 	else
 		rc = sk_bind_ipv6(fd, ip, port);
 	if (rc < 0) {
-		fprintf(stderr, "Failed to bind to TCP port %d: %m", port);
+		fprintf(stderr, "Failed to bind to TCP port %d: %m\n", port);
 		goto out_close;
 	}
 
 	rc = listen(fd, backlog);
 	if (rc < 0) {
-		fprintf(stderr, "Failed to listen on TCP port %d: %m", port);
+		fprintf(stderr, "Failed to listen on TCP port %d: %m\n", port);
 		goto out_close;
 	}
 
@@ -334,55 +312,15 @@ err:
 	return -errno;
 }
 
-int sk_bind_udp_any(int port, struct sk **sock)
+static void sk_addr_destroy(struct sk_addr *sa)
 {
-	bool ipv4_fallback = false;
-	int sockopt = 1;
-	int fd, rc;
-
-	*sock = calloc(1, sizeof(struct sk));
-	if (!(*sock))
-		return -ENOMEM;
-
-	fd = socket(PF_INET6, SOCK_DGRAM, 0);
-	if (fd < 0) {
-		fd = socket(PF_INET, SOCK_DGRAM, 0);
-		if (fd < 0) {
-			perror("Failed to create IPv6 or IPv4 socket");
-			free(*sock);
-			return fd;
-		}
-		ipv4_fallback = true;
-	}
-
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof(int));
-	if (rc < 0) {
-		perror("Failed to setsockopt(SO_REUSEADDR)");
-		goto out;
-	}
-
-	if (ipv4_fallback)
-		rc = sk_bind_ipv4_any(fd, port);
-	else
-		rc = sk_bind_ipv6_any(fd, port);
-	if (rc < 0) {
-		fprintf(stderr, "Failed to bind to UDP port %d: %m", port);
-		goto out;
-	}
-
-	(*sock)->fd = fd;
-	(*sock)->family = ipv4_fallback ? PF_INET : PF_INET6;
-
-	return 0;
-out:
-	close(fd);
-	free(*sock);
-	*sock = NULL;
-	return -errno;
+	free(sa);
 }
 
 void sk_close(struct sk *sock)
 {
+	if (sock->sa)
+		sk_addr_destroy(sock->sa);
 	close(sock->fd);
 	free(sock);
 }
@@ -412,25 +350,32 @@ int sk_fd(const struct sk *sock)
 	return sock->fd;
 }
 
-struct sk_addr *sk_addr_create_l2(const unsigned char addr[ETH_ALEN],
-				  int ifindex)
+static struct sk_addr *sk_addr_create_l2(const unsigned char addr[ETH_ALEN],
+					 __u16 ethertype, const char *if_name)
 {
+	int ifindex = if_nametoindex(if_name);
 	struct sk_addr *sa;
+
+	if (!ifindex) {
+		fprintf(stderr, "Could not determine ifindex of %s\n", if_name);
+		return NULL;
+	}
 
 	sa = calloc(1, sizeof(struct sk_addr));
 	if (!sa)
 		return NULL;
 
+	sa->u.l2.sll_protocol = __cpu_to_be16(ethertype);
 	sa->u.l2.sll_ifindex = ifindex;
 	sa->u.l2.sll_halen = ETH_ALEN;
+	sa->u.l2.sll_family = AF_PACKET;
 	ether_addr_copy(sa->u.l2.sll_addr, addr);
 	sa->sockaddr_size = sizeof(struct sockaddr_ll);
 
 	return sa;
 }
 
-struct sk_addr *sk_addr_create_udp(const struct ip_address *ip,
-				   int port)
+static struct sk_addr *sk_addr_create_udp(const struct ip_address *ip, int port)
 {
 	struct sk_addr *sa;
 
@@ -453,15 +398,14 @@ struct sk_addr *sk_addr_create_udp(const struct ip_address *ip,
 	return sa;
 }
 
-void sk_addr_destroy(struct sk_addr *sa)
-{
-	free(sa);
-}
-
-struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len,
+struct sk_msg *sk_msg_create(const struct sk *sock, void *buf, size_t len,
 			     size_t cmsg_len)
 {
+	struct sk_addr *sa = sock->sa;
 	struct sk_msg *msg;
+
+	if (!sa)
+		return NULL;
 
 	msg = calloc(1, sizeof(struct sk_msg));
 	if (!msg)
@@ -519,40 +463,86 @@ int sk_sendmsg(struct sk *sock, const struct sk_msg *msg, int flags)
 	return sendmsg(sock->fd, &msg->msghdr, flags);
 }
 
-int sk_l2(__u16 ethertype, struct sk **sock)
+int sk_bind_l2(const unsigned char addr[ETH_ALEN], __u16 ethertype,
+	       const char *if_name, struct sk **sock)
 {
-	int fd;
-
-	*sock = calloc(1, sizeof(struct sk));
-	if (!(*sock))
-		return -ENOMEM;
-
-	fd = socket(PF_PACKET, SOCK_RAW, htons(ethertype));
-	if (fd < 0) {
-		perror("Failed to create PF_PACKET socket");
-		free(*sock);
-		*sock = NULL;
-		return -errno;
-	}
-
-	(*sock)->fd = fd;
-	(*sock)->family = PF_PACKET;
-
-	return 0;
-}
-
-int sk_udp(const struct ip_address *dest, struct sk **sock)
-{
+	struct sk_addr *sa;
 	int fd, rc;
 
 	*sock = calloc(1, sizeof(struct sk));
 	if (!(*sock))
 		return -ENOMEM;
 
-	fd = socket(dest->family, SOCK_DGRAM, IPPROTO_UDP);
+	sa = sk_addr_create_l2(addr, ethertype, if_name);
+	if (!sa)
+		goto out_free_sock;
+
+	fd = socket(PF_PACKET, SOCK_RAW, htons(ethertype));
 	if (fd < 0) {
-		perror("Failed to create UDP socket");
-		goto out;
+		perror("Failed to create PF_PACKET socket");
+		goto out_free_sa;
+	}
+
+	/* Bind to device */
+	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, if_name, IFNAMSIZ - 1);
+	if (rc < 0) {
+		fprintf(stderr, "Failed to bind L2 socket to device %s: %m",
+			if_name);
+		goto out_close;
+	}
+
+	rc = bind(fd, (struct sockaddr *)&sa->u.l2, sa->sockaddr_size);
+	if (rc)
+		goto out_close;
+
+	(*sock)->fd = fd;
+	(*sock)->family = PF_PACKET;
+	(*sock)->sa = sa;
+
+	return 0;
+
+out_close:
+	close(fd);
+out_free_sa:
+	free(sa);
+out_free_sock:
+	free(*sock);
+	*sock = NULL;
+	return -errno;
+}
+
+int sk_udp(const struct ip_address *dest, int port, struct sk **sock)
+{
+	bool ipv4_fallback = false;
+	struct sk_addr *sa;
+	int fd, rc;
+
+	*sock = calloc(1, sizeof(struct sk));
+	if (!(*sock))
+		return -ENOMEM;
+
+	sa = sk_addr_create_udp(dest, port);
+	if (!sa) {
+		errno = -ENOMEM;
+		goto out_free_sock;
+	}
+
+	if (dest->family) {
+		fd = socket(dest->family, SOCK_DGRAM, IPPROTO_UDP);
+		if (fd < 0) {
+			perror("Failed to create UDP socket");
+			goto out_free_sa;
+		}
+	} else {
+		fd = socket(PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+		if (fd < 0) {
+			fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			if (fd < 0) {
+				perror("Failed to create IPv6 or IPv4 UDP socket");
+				goto out_free_sa;
+			}
+			ipv4_fallback = true;
+		}
 	}
 
 	if (strlen(dest->bound_if_name)) {
@@ -560,22 +550,46 @@ int sk_udp(const struct ip_address *dest, struct sk **sock)
 				dest->bound_if_name, IFNAMSIZ - 1);
 		if (rc < 0) {
 			fprintf(stderr,
-				"Failed to bind UDP socket to device %s: %m\n",
+				"Failed to bind socket to device %s: %m\n",
 				dest->bound_if_name);
 			goto out_close;
 		}
 	}
 
 	(*sock)->fd = fd;
-	(*sock)->family = dest->family;
+	(*sock)->family = dest->family ? : ipv4_fallback ? PF_INET : PF_INET6;
+	(*sock)->sa = sa;
 
 	return 0;
 out_close:
 	close(fd);
-out:
+out_free_sa:
+	free(sa);
+out_free_sock:
 	free(*sock);
 	*sock = NULL;
 	return -errno;
+}
+
+int sk_bind_udp(const struct ip_address *dest, int port, struct sk **sock)
+{
+	int rc;
+
+	rc = sk_udp(dest, port, sock);
+	if (rc)
+		return rc;
+
+	if ((*sock)->family == AF_INET)
+		rc = sk_bind_ipv4((*sock)->fd, dest, port);
+	else
+		rc = sk_bind_ipv6((*sock)->fd, dest, port);
+	if (rc) {
+		fprintf(stderr, "Failed to bind to UDP port %d: %m\n", port);
+		sk_close(*sock);
+		*sock = NULL;
+	}
+
+	return rc;
 }
 
 static void init_ifreq(struct ifreq *ifreq, struct hwtstamp_config *cfg,

@@ -16,7 +16,6 @@ struct isochron_timestamp {
 };
 
 struct sk;
-struct sk_addr;
 struct sk_msg;
 
 /* Connection-oriented */
@@ -28,15 +27,11 @@ ssize_t sk_recv(const struct sk *sock, void *buf, size_t len, int flags);
 ssize_t sk_send(const struct sk *sock, const void *buf, size_t count);
 
 /* Connection-less */
-int sk_bind_udp_any(int port, struct sk **sock);
-int sk_l2(__u16 ethertype, struct sk **sock);
-int sk_udp(const struct ip_address *dest, struct sk **sock);
-struct sk_addr *sk_addr_create_l2(const unsigned char addr[ETH_ALEN],
-				  int ifindex);
-struct sk_addr *sk_addr_create_udp(const struct ip_address *ip,
-				   int port);
-void sk_addr_destroy(struct sk_addr *sa);
-struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len,
+int sk_udp(const struct ip_address *dest, int port, struct sk **sock);
+int sk_bind_udp(const struct ip_address *dest, int port, struct sk **sock);
+int sk_bind_l2(const unsigned char addr[ETH_ALEN], __u16 ethertype,
+	       const char *if_name, struct sk **sock);
+struct sk_msg *sk_msg_create(const struct sk *sock, void *buf, size_t len,
 			     size_t cmsg_len);
 void sk_msg_destroy(struct sk_msg *msg);
 struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,

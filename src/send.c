@@ -1154,9 +1154,11 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 
 	/* Open socket to send on */
 	if (prog->l2)
-		rc = sk_l2(prog->etype, &prog->data_sock);
+		rc = sk_bind_l2(prog->dest_mac, prog->etype, prog->if_name,
+				&prog->data_sock);
 	else
-		rc = sk_udp(&prog->ip_destination, &prog->data_sock);
+		rc = sk_udp(&prog->ip_destination, prog->data_port,
+			    &prog->data_sock);
 	if (rc)
 		goto out;
 
@@ -1218,22 +1220,11 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 			goto out_close;
 	}
 
-	if (prog->l2)
-		prog->sa = sk_addr_create_l2(prog->dest_mac,
-					     if_idx.ifr_ifindex);
-	else
-		prog->sa = sk_addr_create_udp(&prog->ip_destination,
-					      prog->data_port);
-	if (!prog->sa) {
-		errno = -ENOMEM;
-		goto out_close;
-	}
-
-	prog->msg = sk_msg_create(prog->sa, prog->sendbuf, prog->tx_len,
+	prog->msg = sk_msg_create(prog->data_sock, prog->sendbuf, prog->tx_len,
 				  CMSG_SPACE(sizeof(__s64)));
 	if (!prog->msg) {
 		errno = -ENOMEM;
-		goto out_free_sa;
+		goto out_close;
 	}
 
 	if (prog->txtime)
@@ -1243,8 +1234,6 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 
 	return 0;
 
-out_free_sa:
-	sk_addr_destroy(prog->sa);
 out_close:
 	sk_close(prog->data_sock);
 out:
@@ -1253,7 +1242,6 @@ out:
 
 void isochron_send_teardown_data_sock(struct isochron_send *prog)
 {
-	sk_addr_destroy(prog->sa);
 	sk_msg_destroy(prog->msg);
 	sk_close(prog->data_sock);
 }
