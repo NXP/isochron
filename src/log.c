@@ -867,6 +867,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 	struct isochron_send_pkt_data *pkt_arr;
 	struct isochron_stats stats = {0};
 	struct isochron_metric_stats ms;
+	__u64 not_tx_timestamped = 0;
 	__u64 not_received = 0;
 	size_t pkt_arr_size;
 	__u32 seqid;
@@ -893,6 +894,13 @@ int isochron_print_stats(struct isochron_log *send_log,
 			/* Incomplete log, send_pkt->seqid is 0, exit */
 			break;
 
+		if (!__be64_to_cpu(send_pkt->swts) ||
+		    !__be64_to_cpu(send_pkt->sched_ts) ||
+		    !__be64_to_cpu(send_pkt->hwts)) {
+			not_tx_timestamped++;
+			missing = true;
+		}
+
 		/* For packets that didn't reach the receiver, at least report
 		 * the TX timestamps and seqid for debugging purposes, and use
 		 * a dummy received packet with all RX timestamps set to zero
@@ -918,6 +926,12 @@ int isochron_print_stats(struct isochron_log *send_log,
 
 	if (!summary)
 		return 0;
+
+	if (not_tx_timestamped) {
+		printf("Packets not completely TX timestamped: %llu (%.3lf%%)\n",
+		       not_tx_timestamped,
+		       100.0f * not_tx_timestamped / pkt_arr_size);
+	}
 
 	if (not_received) {
 		printf("Packets not received: %llu (%.3lf%%)\n", not_received,
