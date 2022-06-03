@@ -16,7 +16,7 @@ struct vlan_info {
 };
 
 struct ifname_info {
-	const char *ifname;
+	char ifname[IFNAMSIZ];
 };
 
 struct ifindex_info {
@@ -92,6 +92,7 @@ static int rtnl_parse_vlan_nlh(const struct nlmsghdr *nlh, void *data)
 static int rtnl_parse_ifname_attr(const struct nlattr *attr, void *data)
 {
 	struct ifname_info *i = data;
+	const char *ifname;
 
 	/* skip unsupported attributes */
 	if (mnl_attr_type_valid(attr, IFLA_MAX) < 0)
@@ -104,7 +105,14 @@ static int rtnl_parse_ifname_attr(const struct nlattr *attr, void *data)
 			return MNL_CB_ERROR;
 		}
 
-		i->ifname = mnl_attr_get_str(attr);
+		ifname = mnl_attr_get_str(attr);
+		if (strlen(ifname) >= IFNAMSIZ) {
+			fprintf(stderr,
+				"rtnetlink returned IFLA_IFNAME %s too long\n",
+				ifname);
+			return MNL_CB_ERROR;
+		}
+		strcpy(i->ifname, ifname);
 		break;
 	}
 
