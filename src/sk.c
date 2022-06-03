@@ -36,7 +36,8 @@ struct sk_addr {
 struct sk_msg {
 	struct iovec iov;
 	struct msghdr msghdr;
-	char msg_control[CMSG_SPACE(sizeof(__s64))];
+	struct cmsghdr *last_cmsg;
+	char *msg_control;
 };
 
 static int __sk_bind_ipv4(int fd, const struct in_addr *a, int port)
@@ -457,13 +458,22 @@ void sk_addr_destroy(struct sk_addr *sa)
 	free(sa);
 }
 
-struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len)
+struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len,
+			     size_t cmsg_len)
 {
 	struct sk_msg *msg;
 
 	msg = calloc(1, sizeof(struct sk_msg));
 	if (!msg)
 		return NULL;
+
+	if (cmsg_len) {
+		msg->msg_control = calloc(1, cmsg_len);
+		if (!msg->msg_control) {
+			free(msg);
+			return NULL;
+		}
+	}
 
 	msg->iov.iov_base = buf;
 	msg->iov.iov_len = len;
@@ -472,12 +482,15 @@ struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len)
 	msg->msghdr.msg_namelen = sa->sockaddr_size;
 	msg->msghdr.msg_iov = &msg->iov;
 	msg->msghdr.msg_iovlen = 1;
+	msg->msghdr.msg_control = msg->msg_control;
 
 	return msg;
 }
 
 void sk_msg_destroy(struct sk_msg *msg)
 {
+	if (msg->msg_control)
+		free(msg->msg_control);
 	free(msg);
 }
 
@@ -486,13 +499,17 @@ struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,
 {
 	struct cmsghdr *cmsg;
 
-	msg->msghdr.msg_control = msg->msg_control;
-	msg->msghdr.msg_controllen = sizeof(msg->msg_control);
+	msg->msghdr.msg_controllen += len;
 
-	cmsg = CMSG_FIRSTHDR(&msg->msghdr);
+	if (msg->last_cmsg)
+		cmsg = CMSG_NXTHDR(&msg->msghdr, msg->last_cmsg);
+	else
+		cmsg = CMSG_FIRSTHDR(&msg->msghdr);
+
 	cmsg->cmsg_level = level;
 	cmsg->cmsg_type = type;
 	cmsg->cmsg_len = len;
+	msg->last_cmsg = cmsg;
 
 	return cmsg;
 }

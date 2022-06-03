@@ -1229,7 +1229,8 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 		goto out_close;
 	}
 
-	prog->msg = sk_msg_create(prog->sa, prog->sendbuf, prog->tx_len);
+	prog->msg = sk_msg_create(prog->sa, prog->sendbuf, prog->tx_len,
+				  CMSG_SPACE(sizeof(__s64)));
 	if (!prog->msg) {
 		errno = -ENOMEM;
 		goto out_free_sa;

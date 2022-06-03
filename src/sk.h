@@ -36,7 +36,8 @@ struct sk_addr *sk_addr_create_l2(const unsigned char addr[ETH_ALEN],
 struct sk_addr *sk_addr_create_udp(const struct ip_address *ip,
 				   int port);
 void sk_addr_destroy(struct sk_addr *sa);
-struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len);
+struct sk_msg *sk_msg_create(const struct sk_addr *sa, void *buf, size_t len,
+			     size_t cmsg_len);
 void sk_msg_destroy(struct sk_msg *msg);
 struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,
 				size_t len);
