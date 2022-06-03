@@ -1067,19 +1067,14 @@ static int prog_forward_gm_clock_identity(struct isochron_daemon *prog)
 
 static int prog_forward_test_state(struct isochron_daemon *prog)
 {
-	enum test_state state;
+	struct isochron_send *send = prog->send;
 
-	if (!prog->send) {
+	if (!send) {
 		fprintf(stderr, "Sender role not instantiated\n");
 		return -EINVAL;
 	}
 
-	if (prog->send->send_tid_stopped)
-		state = ISOCHRON_TEST_STATE_IDLE;
-	else
-		state = ISOCHRON_TEST_STATE_RUNNING;
-
-	return isochron_forward_test_state(prog->mgmt_sock, state);
+	return isochron_forward_test_state(prog->mgmt_sock, send->test_state);
 }
 
 static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
