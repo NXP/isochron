@@ -16,6 +16,7 @@
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
 #define ISOCHRON_MANAGEMENT_VERSION 2
 
+/* Don't forget to update mid_to_string() when adding new members */
 enum isochron_management_id {
 	ISOCHRON_MID_LOG,
 	ISOCHRON_MID_SYSMON_OFFSET,
@@ -60,6 +61,7 @@ enum isochron_management_id {
 	ISOCHRON_MID_TEST_STATE,
 	ISOCHRON_MID_SYNC_MONITOR_ENABLED,
 	ISOCHRON_MID_PORT_LINK_STATE,
+	ISOCHRON_MID_CURRENT_CLOCK_TAI,
 };
 
 enum isochron_management_action {
@@ -172,6 +174,7 @@ struct isochron_port {
 /* ISOCHRON_MID_SHIFT_TIME */
 /* ISOCHRON_MID_CYCLE_TIME */
 /* ISOCHRON_MID_WINDOW_SIZE */
+/* ISOCHRON_MID_CURRENT_CLOCK_TAI */
 struct isochron_time {
 	__be64			time;
 } __attribute((packed));
@@ -325,10 +328,13 @@ int isochron_forward_test_state(struct sk *sock, enum test_state state);
 int isochron_forward_port_link_state(struct sk *sock, const char *if_name,
 				     struct mnl_socket *rtnl);
 int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon);
+int isochron_forward_current_clock_tai(struct sk *sock);
 
 int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 				__s64 *ptpmon_offset, int *utc_offset,
 				enum port_state *port_state,
 				struct clock_identity *gm_clkid);
+
+int isochron_query_current_clock_tai(struct sk *sock, __s64 *clock_tai);
 
 #endif

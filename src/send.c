@@ -75,27 +75,6 @@ static void trace(struct isochron_send *prog, const char *fmt, ...)
 	}
 }
 
-/* Calculate the first base_time in the future that satisfies this
- * relationship:
- *
- * future_base_time = base_time + N x cycle_time >= now, or
- *
- *      now - base_time
- * N >= ---------------
- *         cycle_time
- */
-static __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
-{
-	__s64 n;
-
-	if (base_time >= now)
-		return base_time;
-
-	n = (now - base_time) / cycle_time;
-
-	return base_time + (n + 1) * cycle_time;
-}
-
 static int prog_init_stats_socket(struct isochron_send *prog)
 {
 	if (!prog->stats_srv.family)
@@ -113,7 +92,7 @@ static void prog_teardown_stats_socket(struct isochron_send *prog)
 	sk_close(prog->mgmt_sock);
 }
 
-static __s64 prog_first_base_time(struct isochron_send *prog)
+__s64 isochron_send_first_base_time(struct isochron_send *prog)
 {
 	__s64 base_time = prog->base_time + prog->shift_time;
 
@@ -481,7 +460,7 @@ static int run_nanosleep(struct isochron_send *prog)
 		hdr = (struct isochron_header *)prog->sendbuf;
 	}
 
-	base_time = prog_first_base_time(prog);
+	base_time = isochron_send_first_base_time(prog);
 	wakeup = base_time - prog->advance_time;
 
 	ns_sprintf(now_buf, prog->session_start);
@@ -539,7 +518,7 @@ static void *prog_tx_timestamp_thread(void *arg)
 	struct timespec wakeup_ts;
 	__s64 wakeup;
 
-	wakeup = prog_first_base_time(prog) - prog->advance_time;
+	wakeup = isochron_send_first_base_time(prog) - prog->advance_time;
 	wakeup_ts = ns_to_timespec(wakeup);
 
 	/* Sync with the sender thread before polling for timestamps */

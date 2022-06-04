@@ -243,4 +243,25 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 
 void pr_err(int rc, const char *fmt, ...);
 
+/* Calculate the first base_time in the future that satisfies this
+ * relationship:
+ *
+ * future_base_time = base_time + N x cycle_time >= now, or
+ *
+ *      now - base_time
+ * N >= ---------------
+ *         cycle_time
+ */
+static inline __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 now)
+{
+	__s64 n;
+
+	if (base_time >= now)
+		return base_time;
+
+	n = (now - base_time) / cycle_time;
+
+	return base_time + (n + 1) * cycle_time;
+}
+
 #endif

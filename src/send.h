@@ -97,5 +97,6 @@ int isochron_send_update_session_start_time(struct isochron_send *prog);
 int isochron_send_start_threads(struct isochron_send *prog);
 void isochron_send_stop_threads(struct isochron_send *prog);
 int isochron_prepare_receiver(struct isochron_send *prog, struct sk *mgmt_sock);
+__s64 isochron_send_first_base_time(struct isochron_send *prog);
 
 #endif

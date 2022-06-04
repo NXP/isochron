@@ -482,6 +482,11 @@ static int prog_forward_destination_mac(struct isochron_rcv *prog)
 	return 0;
 }
 
+static int prog_forward_current_clock_tai(struct isochron_rcv *prog)
+{
+	return isochron_forward_current_clock_tai(prog->mgmt_sock);
+}
+
 static int prog_set_packet_count(void *priv, void *ptr)
 {
 	struct isochron_packet_count *packet_count = ptr;
@@ -604,6 +609,8 @@ static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 		return prog_forward_gm_clock_identity(prog);
 	case ISOCHRON_MID_DESTINATION_MAC:
 		return prog_forward_destination_mac(prog);
+	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
+		return prog_forward_current_clock_tai(prog);
 	default:
 		isochron_send_empty_tlv(prog->mgmt_sock, mid);
 		return 0;

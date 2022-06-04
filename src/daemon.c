@@ -1077,6 +1077,11 @@ static int prog_forward_test_state(struct isochron_daemon *prog)
 	return isochron_forward_test_state(prog->mgmt_sock, send->test_state);
 }
 
+static int prog_forward_current_clock_tai(struct isochron_daemon *prog)
+{
+	return isochron_forward_current_clock_tai(prog->mgmt_sock);
+}
+
 static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
@@ -1099,6 +1104,8 @@ static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 		return prog_forward_gm_clock_identity(prog);
 	case ISOCHRON_MID_TEST_STATE:
 		return prog_forward_test_state(prog);
+	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
+		return prog_forward_current_clock_tai(prog);
 	default:
 		fprintf(stderr, "Unhandled GET for MID %d\n", mid);
 		isochron_send_empty_tlv(prog->mgmt_sock, mid);

@@ -99,6 +99,8 @@ static const char *mid_to_string(enum isochron_management_id mid)
 		return "SYNC_MONITOR_ENABLED";
 	case ISOCHRON_MID_PORT_LINK_STATE:
 		return "PORT_LINK_STATE";
+	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
+		return "CURRENT_CLOCK_TAI";
 	default:
 		return "UNKNOWN";
 	}
@@ -1055,6 +1057,28 @@ int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon)
 	return 0;
 }
 
+int isochron_forward_current_clock_tai(struct sk *sock)
+{
+	struct isochron_time t = {};
+	struct timespec now_ts;
+	__s64 now;
+	int rc;
+
+	clock_gettime(CLOCK_TAI, &now_ts);
+	now = timespec_to_ns(&now_ts);
+	t.time = __cpu_to_be64(now);
+
+	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_CURRENT_CLOCK_TAI,
+			       sizeof(t));
+	if (rc)
+		return 0;
+
+	sk_send(sock, &t, sizeof(t));
+
+	return 0;
+}
+
 int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 				__s64 *ptpmon_offset, int *utc_offset,
 				enum port_state *port_state,
@@ -1109,6 +1133,23 @@ int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 	*utc_offset = __be16_to_cpu(utc.offset);
 	*port_state = state.state;
 	memcpy(gm_clkid, &gm.clock_identity, sizeof(*gm_clkid));
+
+	return 0;
+}
+
+int isochron_query_current_clock_tai(struct sk *sock, __s64 *clock_tai)
+{
+	struct isochron_time t = {};
+	int rc;
+
+	rc = isochron_query_mid(sock, ISOCHRON_MID_CURRENT_CLOCK_TAI, &t,
+				sizeof(t));
+	if (rc) {
+		fprintf(stderr, "Current CLOCK_TAI missing from mgmt reply\n");
+		return rc;
+	}
+
+	*clock_tai = __be64_to_cpu(t.time);
 
 	return 0;
 }
