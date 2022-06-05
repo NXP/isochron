@@ -1132,7 +1132,8 @@ static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 	case ISOCHRON_MID_OPER_BASE_TIME:
 		return prog_forward_oper_base_time(prog);
 	default:
-		fprintf(stderr, "Unhandled GET for MID %d\n", mid);
+		fprintf(stderr, "Unhandled GET for MID %s\n",
+			mid_to_string(mid));
 		isochron_send_empty_tlv(prog->mgmt_sock, mid);
 		return 0;
 	}

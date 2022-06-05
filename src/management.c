@@ -10,7 +10,7 @@
 #include "rtnl.h"
 #include "sysmon.h"
 
-static const char *mid_to_string(enum isochron_management_id mid)
+const char *mid_to_string(enum isochron_management_id mid)
 {
 	switch (mid) {
 	case ISOCHRON_MID_LOG:

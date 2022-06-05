@@ -575,6 +575,8 @@ static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 					     sizeof(struct isochron_feature_enabled),
 					     prog_update_l4_enabled);
 	default:
+		fprintf(stderr, "Unhandled SET for MID %s\n",
+			mid_to_string(mid));
 		isochron_send_empty_tlv(sock, mid);
 		return 0;
 	}
@@ -612,6 +614,8 @@ static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
 	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
 		return prog_forward_current_clock_tai(prog);
 	default:
+		fprintf(stderr, "Unhandled SET for MID %s\n",
+			mid_to_string(mid));
 		isochron_send_empty_tlv(prog->mgmt_sock, mid);
 		return 0;
 	}
