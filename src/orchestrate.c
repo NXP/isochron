@@ -334,8 +334,10 @@ static int prog_run_test(struct isochron_orch *prog)
 		if (rc)
 			return rc;
 
-		if (signal_received)
+		if (signal_received) {
+			rc = -EINTR;
 			break;
+		}
 	} while (!sync_ok);
 
 	return 0;
