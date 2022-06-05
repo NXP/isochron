@@ -62,6 +62,7 @@ enum isochron_management_id {
 	ISOCHRON_MID_SYNC_MONITOR_ENABLED,
 	ISOCHRON_MID_PORT_LINK_STATE,
 	ISOCHRON_MID_CURRENT_CLOCK_TAI,
+	ISOCHRON_MID_OPER_BASE_TIME,
 };
 
 enum isochron_management_action {
@@ -175,6 +176,7 @@ struct isochron_port {
 /* ISOCHRON_MID_CYCLE_TIME */
 /* ISOCHRON_MID_WINDOW_SIZE */
 /* ISOCHRON_MID_CURRENT_CLOCK_TAI */
+/* ISOCHRON_MID_OPER_BASE_TIME */
 struct isochron_time {
 	__be64			time;
 } __attribute((packed));
@@ -336,5 +338,6 @@ int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 				struct clock_identity *gm_clkid);
 
 int isochron_query_current_clock_tai(struct sk *sock, __s64 *clock_tai);
+int isochron_query_oper_base_time(struct sk *sock, __s64 *base_time);
 
 #endif

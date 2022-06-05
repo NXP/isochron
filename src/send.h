@@ -41,6 +41,7 @@ struct isochron_send {
 	__s64 shift_time;
 	__s64 cycle_time;
 	__s64 base_time;
+	__s64 oper_base_time;
 	__s64 window_size;
 	long priority;
 	long tx_len;

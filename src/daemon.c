@@ -1082,6 +1082,29 @@ static int prog_forward_current_clock_tai(struct isochron_daemon *prog)
 	return isochron_forward_current_clock_tai(prog->mgmt_sock);
 }
 
+static int prog_forward_oper_base_time(struct isochron_daemon *prog)
+{
+	struct isochron_send *send = prog->send;
+	struct isochron_time t = {};
+	int rc;
+
+	if (!send) {
+		fprintf(stderr, "Sender role not instantiated\n");
+		return -EINVAL;
+	}
+
+	t.time = __cpu_to_be64(send->oper_base_time);
+
+	rc = isochron_send_tlv(prog->mgmt_sock, ISOCHRON_RESPONSE,
+			       ISOCHRON_MID_OPER_BASE_TIME, sizeof(t));
+	if (rc)
+		return 0;
+
+	sk_send(prog->mgmt_sock, &t, sizeof(t));
+
+	return 0;
+}
+
 static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 {
 	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
@@ -1106,6 +1129,8 @@ static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
 		return prog_forward_test_state(prog);
 	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
 		return prog_forward_current_clock_tai(prog);
+	case ISOCHRON_MID_OPER_BASE_TIME:
+		return prog_forward_oper_base_time(prog);
 	default:
 		fprintf(stderr, "Unhandled GET for MID %d\n", mid);
 		isochron_send_empty_tlv(prog->mgmt_sock, mid);

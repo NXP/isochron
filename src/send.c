@@ -446,10 +446,10 @@ static int run_nanosleep(struct isochron_send *prog)
 {
 	char cycle_time_buf[TIMESPEC_BUFSIZ];
 	char base_time_buf[TIMESPEC_BUFSIZ];
-	__s64 wakeup, scheduled, base_time;
 	char wakeup_buf[TIMESPEC_BUFSIZ];
 	char now_buf[TIMESPEC_BUFSIZ];
 	struct isochron_header *hdr;
+	__s64 wakeup, scheduled;
 	unsigned long i;
 	int rc;
 
@@ -460,11 +460,10 @@ static int run_nanosleep(struct isochron_send *prog)
 		hdr = (struct isochron_header *)prog->sendbuf;
 	}
 
-	base_time = isochron_send_first_base_time(prog);
-	wakeup = base_time - prog->advance_time;
+	wakeup = prog->oper_base_time - prog->advance_time;
 
 	ns_sprintf(now_buf, prog->session_start);
-	ns_sprintf(base_time_buf, base_time);
+	ns_sprintf(base_time_buf, prog->oper_base_time);
 	ns_sprintf(cycle_time_buf, prog->cycle_time);
 	ns_sprintf(wakeup_buf, wakeup);
 	fprintf(stderr, "%12s: %*s\n", "Now", TIMESPEC_BUFSIZ, now_buf);
@@ -518,7 +517,7 @@ static void *prog_tx_timestamp_thread(void *arg)
 	struct timespec wakeup_ts;
 	__s64 wakeup;
 
-	wakeup = isochron_send_first_base_time(prog) - prog->advance_time;
+	wakeup = prog->oper_base_time - prog->advance_time;
 	wakeup_ts = ns_to_timespec(wakeup);
 
 	/* Sync with the sender thread before polling for timestamps */
@@ -790,6 +789,7 @@ int isochron_send_update_session_start_time(struct isochron_send *prog)
 	}
 
 	prog->session_start = timespec_to_ns(&now_ts);
+	prog->oper_base_time = isochron_send_first_base_time(prog);
 
 	return 0;
 }

@@ -499,6 +499,52 @@ static void prog_print_sender_base_times(struct isochron_orch *prog)
 	}
 }
 
+static bool prog_validate_oper_base_time(struct isochron_orch_node *node)
+{
+	char their_oper_base_time_buf[TIMESPEC_BUFSIZ];
+	char our_oper_base_time_buf[TIMESPEC_BUFSIZ];
+	__s64 oper_base_time;
+	int rc;
+
+	if (node->oper_base_time == node->send->base_time)
+		return true;
+
+	/* Node had its base time auto-advanced by us, check if it
+	 * actually used that for the test or if the margin was too low
+	 */
+	rc = isochron_query_oper_base_time(node->mgmt_sock, &oper_base_time);
+	if (rc) {
+		pr_err(rc, "Failed to read back node %s operational base time: %m\n",
+		       node->name);
+		return false;
+	}
+
+	if (oper_base_time == node->oper_base_time)
+		return true;
+
+	ns_sprintf(our_oper_base_time_buf, node->oper_base_time);
+	ns_sprintf(their_oper_base_time_buf, oper_base_time);
+	printf("Node %s had to advance our operational base time %s to %s, repeating test\n",
+	       node->name, our_oper_base_time_buf, their_oper_base_time_buf);
+
+	return false;
+}
+
+static bool prog_validate_test(struct isochron_orch *prog)
+{
+	struct isochron_orch_node *node;
+
+	LIST_FOREACH(node, &prog->nodes, list) {
+		if (node->role != ISOCHRON_ROLE_SEND)
+			continue;
+
+		if (!prog_validate_oper_base_time(node))
+			return false;
+	}
+
+	return true;
+}
+
 static int prog_start_senders(struct isochron_orch *prog)
 {
 	struct isochron_orch_node *node;
@@ -549,7 +595,7 @@ static int prog_stop_senders(struct isochron_orch *prog)
 
 static int prog_run_test(struct isochron_orch *prog)
 {
-	bool sync_ok;
+	bool sync_ok, test_valid;
 	int rc;
 
 	rc = prog_wait_until_sync_ok(prog);
@@ -573,7 +619,9 @@ static int prog_run_test(struct isochron_orch *prog)
 			rc = -EINTR;
 			break;
 		}
-	} while (!sync_ok);
+
+		test_valid = prog_validate_test(prog);
+	} while (!sync_ok || !test_valid);
 
 	return 0;
 }

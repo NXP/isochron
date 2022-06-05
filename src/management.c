@@ -101,6 +101,8 @@ static const char *mid_to_string(enum isochron_management_id mid)
 		return "PORT_LINK_STATE";
 	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
 		return "CURRENT_CLOCK_TAI";
+	case ISOCHRON_MID_OPER_BASE_TIME:
+		return "OPER_BASE_TIME";
 	default:
 		return "UNKNOWN";
 	}
@@ -1150,6 +1152,23 @@ int isochron_query_current_clock_tai(struct sk *sock, __s64 *clock_tai)
 	}
 
 	*clock_tai = __be64_to_cpu(t.time);
+
+	return 0;
+}
+
+int isochron_query_oper_base_time(struct sk *sock, __s64 *base_time)
+{
+	struct isochron_time t = {};
+	int rc;
+
+	rc = isochron_query_mid(sock, ISOCHRON_MID_OPER_BASE_TIME, &t,
+				sizeof(t));
+	if (rc) {
+		fprintf(stderr, "OPER_BASE_TIME missing from mgmt reply\n");
+		return rc;
+	}
+
+	*base_time = __be64_to_cpu(t.time);
 
 	return 0;
 }
