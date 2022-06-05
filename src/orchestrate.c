@@ -411,7 +411,7 @@ static int prog_calculate_oper_base_times(struct isochron_orch *prog)
 			now += 2 * ref->send->sync_threshold;
 	}
 
-	now += NSEC_PER_SEC;
+	now += TIME_MARGIN;
 
 	/* Finally advance each sender's base time into the operational value
 	 * in the common future, according to its own cycle time.
@@ -422,10 +422,10 @@ static int prog_calculate_oper_base_times(struct isochron_orch *prog)
 
 		send = node->send;
 		/* Each sender takes its sweet time to ensure the first wakeup
-		 * time is at least one second into the future. We need to
+		 * time is at least TIME_MARGIN into the future. We need to
 		 * overcome that extra time and make sure the time we're
-		 * passing it is even more than one second into the future,
-		 * to prevent the sender from auto-advancing it and make it use
+		 * passing it into the future by even more than that, to
+		 * prevent the sender from auto-advancing it and make it use
 		 * what we provided as-is.
 		 */
 		send->session_start = now;

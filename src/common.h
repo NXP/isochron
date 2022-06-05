@@ -96,6 +96,9 @@ struct isochron_header {
 #define MSEC_PER_SEC	1000L
 #define ETH_P_ISOCHRON	0xdead
 
+/* Error margin for all that is unknown or uncalculable */
+#define TIME_MARGIN	(NSEC_PER_SEC / 2)
+
 #define TIMESPEC_BUFSIZ	22
 #define MACADDR_BUFSIZ	18
 

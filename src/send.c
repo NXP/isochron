@@ -98,7 +98,7 @@ __s64 isochron_send_first_base_time(struct isochron_send *prog)
 
 	/* Make sure we get enough sleep at the beginning */
 	return future_base_time(base_time, prog->cycle_time,
-				prog->session_start + NSEC_PER_SEC);
+				prog->session_start + TIME_MARGIN);
 }
 
 static int isochron_txtime_pkt_dump(void *priv, void *pkt)
