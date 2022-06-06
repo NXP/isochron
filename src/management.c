@@ -10,6 +10,10 @@
 #include "rtnl.h"
 #include "sysmon.h"
 
+struct isochron_mgmt_handler {
+	const struct isochron_mgmt_ops *ops;
+};
+
 const char *mid_to_string(enum isochron_management_id mid)
 {
 	switch (mid) {
@@ -268,35 +272,59 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 	return 0;
 }
 
-int isochron_mgmt_tlv_set(struct sk *sock, struct isochron_tlv *tlv, void *priv,
-			  enum isochron_management_id mid,
-			  size_t struct_size, isochron_mgmt_tlv_set_cb_t cb)
+static void isochron_mgmt_tlv_get(struct sk *sock, void *priv,
+				  enum isochron_management_id mid,
+				  const struct isochron_mgmt_ops *ops)
+{
+	if (!ops->get) {
+		fprintf(stderr, "Unhandled GET for MID %s\n",
+			mid_to_string(mid));
+		goto error;
+	}
+
+	if (ops->get(priv))
+		goto error;
+
+	return;
+error:
+	isochron_send_empty_tlv(sock, mid);
+}
+
+static void isochron_mgmt_tlv_set(struct sk *sock, struct isochron_tlv *tlv,
+				  void *priv, enum isochron_management_id mid,
+				  const struct isochron_mgmt_ops *ops)
 {
 	size_t tlv_len = __be32_to_cpu(tlv->length_field);
 	int rc;
 
-	if (tlv_len != struct_size) {
+	if (!ops->set) {
+		fprintf(stderr, "Unhandled SET for MID %s\n",
+			mid_to_string(mid));
+		goto error;
+	}
+
+	if (tlv_len != ops->struct_size) {
 		fprintf(stderr,
 			"Expected %zu bytes for SET of MID %s, got %zu\n",
-			struct_size, mid_to_string(mid), tlv_len);
-		isochron_send_empty_tlv(sock, mid);
-		return 0;
+			ops->struct_size, mid_to_string(mid), tlv_len);
+		goto error;
 	}
 
-	rc = cb(priv, isochron_tlv_data(tlv));
-	if (rc) {
-		isochron_send_empty_tlv(sock, mid);
-		return 0;
-	}
+	rc = ops->set(priv, isochron_tlv_data(tlv));
+	if (rc)
+		goto error;
 
 	/* Echo back the TLV data as ack */
-	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE, mid, struct_size);
+	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE, mid, ops->struct_size);
 	if (rc)
-		return rc;
+		goto error;
 
-	sk_send(sock, isochron_tlv_data(tlv), struct_size);
+	sk_send(sock, isochron_tlv_data(tlv), ops->struct_size);
 
-	return 0;
+	return;
+
+error:
+	isochron_send_empty_tlv(sock, mid);
 }
 
 static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
@@ -787,15 +815,16 @@ static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 	*tlv = (struct isochron_tlv *)((unsigned char *)tlv + tlv_size_bytes);
 }
 
-int isochron_mgmt_event(struct sk *sock, void *priv, isochron_tlv_cb_t get_cb,
-			isochron_tlv_cb_t set_cb, bool *socket_closed)
+int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
+			void *priv, bool *socket_closed)
 {
 	struct isochron_management_message msg;
+	const struct isochron_mgmt_ops *ops;
+	enum isochron_management_id mid;
 	unsigned char buf[BUFSIZ];
 	struct isochron_tlv *tlv;
 	size_t parsed_len = 0;
 	ssize_t len;
-	int rc;
 
 	*socket_closed = false;
 
@@ -832,23 +861,35 @@ int isochron_mgmt_event(struct sk *sock, void *priv, isochron_tlv_cb_t get_cb,
 
 	while (parsed_len < (size_t)len) {
 		if (__be16_to_cpu(tlv->tlv_type) != ISOCHRON_TLV_MANAGEMENT)
-			continue;
+			goto next;
+
+		mid = __be16_to_cpu(tlv->management_id);
+		if (mid < 0 || mid >= __ISOCHRON_MID_MAX) {
+			fprintf(stderr, "Unrecognized MID %d\n", mid);
+			isochron_send_empty_tlv(sock, mid);
+			goto next;
+		}
+
+		ops = &handler->ops[mid];
+		if (!ops) {
+			fprintf(stderr, "Unhandled MID %s\n",
+				mid_to_string(mid));
+			isochron_send_empty_tlv(sock, mid);
+			goto next;
+		}
 
 		switch (msg.action) {
 		case ISOCHRON_GET:
-			rc = get_cb(priv, tlv);
-			if (rc)
-				return rc;
+			isochron_mgmt_tlv_get(sock, priv, mid, ops);
 			break;
 		case ISOCHRON_SET:
-			rc = set_cb(priv, tlv);
-			if (rc)
-				return rc;
+			isochron_mgmt_tlv_set(sock, tlv, priv, mid, ops);
 			break;
 		default:
 			break;
 		}
 
+next:
 		isochron_tlv_next(&tlv, &parsed_len);
 	}
 
@@ -1171,4 +1212,23 @@ int isochron_query_oper_base_time(struct sk *sock, __s64 *base_time)
 	*base_time = __be64_to_cpu(t.time);
 
 	return 0;
+}
+
+struct isochron_mgmt_handler *
+isochron_mgmt_handler_create(const struct isochron_mgmt_ops *ops)
+{
+	struct isochron_mgmt_handler *handler;
+
+	handler = calloc(1, sizeof(*handler));
+	if (!handler)
+		return NULL;
+
+	handler->ops = ops;
+
+	return handler;
+}
+
+void isochron_mgmt_handler_destroy(struct isochron_mgmt_handler *handler)
+{
+	free(handler);
 }

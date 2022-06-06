@@ -39,6 +39,7 @@ struct isochron_rcv {
 	struct ptpmon *ptpmon;
 	struct sysmon *sysmon;
 	struct mnl_socket *rtnl;
+	struct isochron_mgmt_handler *mgmt_handler;
 	struct sk *mgmt_listen_sock;
 	struct sk *mgmt_sock;
 	struct sk *l4_sock;
@@ -420,18 +421,37 @@ static int prog_client_connect_event(struct isochron_rcv *prog)
 	return 0;
 }
 
-static int prog_forward_sysmon_offset(struct isochron_rcv *prog)
+static int prog_get_packet_log(void *priv)
 {
+	struct isochron_rcv *prog = priv;
+
+	/* Keep the client on hold */
+	if (!prog_received_all_packets(prog) &&
+	    !prog->data_fd_timed_out) {
+		prog->client_waiting_for_log = true;
+		return 0;
+	}
+
+	return prog_forward_isochron_log(prog);
+}
+
+static int prog_forward_sysmon_offset(void *priv)
+{
+	struct isochron_rcv *prog = priv;
+
 	return isochron_forward_sysmon_offset(prog->mgmt_sock, prog->sysmon);
 }
 
-static int prog_forward_ptpmon_offset(struct isochron_rcv *prog)
+static int prog_forward_ptpmon_offset(void *priv)
 {
+	struct isochron_rcv *prog = priv;
+
 	return isochron_forward_ptpmon_offset(prog->mgmt_sock, prog->ptpmon);
 }
 
-static int prog_forward_utc_offset(struct isochron_rcv *prog)
+static int prog_forward_utc_offset(void *priv)
 {
+	struct isochron_rcv *prog = priv;
 	int rc, utc_offset;
 
 	rc = isochron_forward_utc_offset(prog->mgmt_sock, prog->ptpmon,
@@ -445,26 +465,33 @@ static int prog_forward_utc_offset(struct isochron_rcv *prog)
 	return 0;
 }
 
-static int prog_forward_port_state(struct isochron_rcv *prog)
+static int prog_forward_port_state(void *priv)
 {
+	struct isochron_rcv *prog = priv;
+
 	return isochron_forward_port_state(prog->mgmt_sock, prog->ptpmon,
 					   prog->if_name, prog->rtnl);
 }
 
-static int prog_forward_port_link_state(struct isochron_rcv *prog)
+static int prog_forward_port_link_state(void *priv)
 {
+	struct isochron_rcv *prog = priv;
+
 	return isochron_forward_port_link_state(prog->mgmt_sock,
 						prog->if_name, prog->rtnl);
 }
 
-static int prog_forward_gm_clock_identity(struct isochron_rcv *prog)
+static int prog_forward_gm_clock_identity(void *priv)
 {
+	struct isochron_rcv *prog = priv;
+
 	return isochron_forward_gm_clock_identity(prog->mgmt_sock,
 						  prog->ptpmon);
 }
 
-static int prog_forward_destination_mac(struct isochron_rcv *prog)
+static int prog_forward_destination_mac(void *priv)
 {
+	struct isochron_rcv *prog = priv;
 	struct isochron_mac_addr mac;
 	int rc;
 
@@ -482,8 +509,10 @@ static int prog_forward_destination_mac(struct isochron_rcv *prog)
 	return 0;
 }
 
-static int prog_forward_current_clock_tai(struct isochron_rcv *prog)
+static int prog_forward_current_clock_tai(void *priv)
 {
+	struct isochron_rcv *prog = priv;
+
 	return isochron_forward_current_clock_tai(prog->mgmt_sock);
 }
 
@@ -555,71 +584,47 @@ static int prog_update_l4_enabled(void *priv, void *ptr)
 	return rc;
 }
 
-static int isochron_set_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
-{
-	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
-	struct isochron_rcv *prog = priv;
-	struct sk *sock = prog->mgmt_sock;
-
-	switch (mid) {
-	case ISOCHRON_MID_PACKET_COUNT:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_packet_count),
-					     prog_set_packet_count);
-	case ISOCHRON_MID_L2_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_l2_enabled);
-	case ISOCHRON_MID_L4_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_l4_enabled);
-	default:
-		fprintf(stderr, "Unhandled SET for MID %s\n",
-			mid_to_string(mid));
-		isochron_send_empty_tlv(sock, mid);
-		return 0;
-	}
-}
-
-static int isochron_get_parse_one_tlv(void *priv, struct isochron_tlv *tlv)
-{
-	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
-	struct isochron_rcv *prog = priv;
-
-	switch (mid) {
-	case ISOCHRON_MID_LOG:
-		/* Keep the client on hold */
-		if (!prog_received_all_packets(prog) &&
-		    !prog->data_fd_timed_out) {
-			prog->client_waiting_for_log = true;
-			return 0;
-		}
-
-		return prog_forward_isochron_log(prog);
-	case ISOCHRON_MID_SYSMON_OFFSET:
-		return prog_forward_sysmon_offset(prog);
-	case ISOCHRON_MID_PTPMON_OFFSET:
-		return prog_forward_ptpmon_offset(prog);
-	case ISOCHRON_MID_UTC_OFFSET:
-		return prog_forward_utc_offset(prog);
-	case ISOCHRON_MID_PORT_STATE:
-		return prog_forward_port_state(prog);
-	case ISOCHRON_MID_PORT_LINK_STATE:
-		return prog_forward_port_link_state(prog);
-	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
-		return prog_forward_gm_clock_identity(prog);
-	case ISOCHRON_MID_DESTINATION_MAC:
-		return prog_forward_destination_mac(prog);
-	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
-		return prog_forward_current_clock_tai(prog);
-	default:
-		fprintf(stderr, "Unhandled SET for MID %s\n",
-			mid_to_string(mid));
-		isochron_send_empty_tlv(prog->mgmt_sock, mid);
-		return 0;
-	}
-}
+static const struct isochron_mgmt_ops rcv_mgmt_ops[__ISOCHRON_MID_MAX] = {
+	[ISOCHRON_MID_PACKET_COUNT] = {
+		.set = prog_set_packet_count,
+		.struct_size = sizeof(struct isochron_packet_count),
+	},
+	[ISOCHRON_MID_L2_ENABLED] = {
+		.set = prog_update_l2_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_L4_ENABLED] = {
+		.set = prog_update_l4_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_LOG] = {
+		.get = prog_get_packet_log,
+	},
+	[ISOCHRON_MID_SYSMON_OFFSET] = {
+		.get = prog_forward_sysmon_offset,
+	},
+	[ISOCHRON_MID_PTPMON_OFFSET] = {
+		.get = prog_forward_ptpmon_offset,
+	},
+	[ISOCHRON_MID_UTC_OFFSET] = {
+		.get = prog_forward_utc_offset,
+	},
+	[ISOCHRON_MID_PORT_STATE] = {
+		.get = prog_forward_port_state,
+	},
+	[ISOCHRON_MID_PORT_LINK_STATE] = {
+		.get = prog_forward_port_link_state,
+	},
+	[ISOCHRON_MID_GM_CLOCK_IDENTITY] = {
+		.get = prog_forward_gm_clock_identity,
+	},
+	[ISOCHRON_MID_DESTINATION_MAC] = {
+		.get = prog_forward_destination_mac,
+	},
+	[ISOCHRON_MID_CURRENT_CLOCK_TAI] = {
+		.get = prog_forward_current_clock_tai,
+	},
+};
 
 enum pollfd_type {
 	PFD_MGMT,
@@ -728,10 +733,9 @@ static int server_loop(struct isochron_rcv *prog)
 
 		if (pfd[PFD_MGMT].revents & (POLLIN | POLLERR | POLLPRI)) {
 			if (prog->have_client) {
-				rc = isochron_mgmt_event(prog->mgmt_sock, prog,
-							 isochron_get_parse_one_tlv,
-							 isochron_set_parse_one_tlv,
-							 &socket_closed);
+				rc = isochron_mgmt_event(prog->mgmt_sock,
+							 prog->mgmt_handler,
+							 prog, &socket_closed);
 				if (socket_closed)
 					prog_close_client_stats_session(prog);
 				if (rc)
@@ -831,13 +835,24 @@ static void prog_teardown_sysmon(struct isochron_rcv *prog)
 
 static int prog_init_mgmt_listen_sock(struct isochron_rcv *prog)
 {
-	return sk_listen_tcp(&prog->stats_addr, prog->stats_port, 1,
-			     &prog->mgmt_listen_sock);
+	int rc;
+
+	prog->mgmt_handler = isochron_mgmt_handler_create(rcv_mgmt_ops);
+	if (!prog->mgmt_handler)
+		return -ENOMEM;
+
+	rc = sk_listen_tcp(&prog->stats_addr, prog->stats_port, 1,
+			   &prog->mgmt_listen_sock);
+	if (rc)
+		isochron_mgmt_handler_destroy(prog->mgmt_handler);
+
+	return rc;
 }
 
 static void prog_teardown_mgmt_listen_sock(struct isochron_rcv *prog)
 {
 	sk_close(prog->mgmt_listen_sock);
+	isochron_mgmt_handler_destroy(prog->mgmt_handler);
 }
 
 static int prog_init_data_timeout_fd(struct isochron_rcv *prog)

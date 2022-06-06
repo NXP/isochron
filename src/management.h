@@ -63,6 +63,7 @@ enum isochron_management_id {
 	ISOCHRON_MID_PORT_LINK_STATE,
 	ISOCHRON_MID_CURRENT_CLOCK_TAI,
 	ISOCHRON_MID_OPER_BASE_TIME,
+	__ISOCHRON_MID_MAX,
 };
 
 enum isochron_management_action {
@@ -315,12 +316,6 @@ static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 typedef int isochron_tlv_cb_t(void *priv, struct isochron_tlv *tlv);
 typedef int isochron_mgmt_tlv_set_cb_t(void *priv, void *ptr);
 
-int isochron_mgmt_event(struct sk *sock, void *priv, isochron_tlv_cb_t get_cb,
-			isochron_tlv_cb_t set_cb, bool *socket_closed);
-int isochron_mgmt_tlv_set(struct sk *sock, struct isochron_tlv *tlv, void *priv,
-			  enum isochron_management_id mid,
-			  size_t struct_size, isochron_mgmt_tlv_set_cb_t cb);
-
 int isochron_forward_log(struct sk *sock, struct isochron_log *log, size_t size);
 int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon);
 int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon);
@@ -341,5 +336,20 @@ int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 
 int isochron_query_current_clock_tai(struct sk *sock, __s64 *clock_tai);
 int isochron_query_oper_base_time(struct sk *sock, __s64 *base_time);
+
+struct isochron_mgmt_ops {
+	int (*get)(void *priv);
+	int (*set)(void *priv, void *ptr);
+	size_t struct_size;
+};
+
+struct isochron_mgmt_handler;
+
+struct isochron_mgmt_handler *
+isochron_mgmt_handler_create(const struct isochron_mgmt_ops *ops);
+void isochron_mgmt_handler_destroy(struct isochron_mgmt_handler *handler);
+
+int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
+			void *priv, bool *socket_closed);
 
 #endif

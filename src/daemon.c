@@ -26,6 +26,7 @@ struct isochron_daemon {
 	long stats_port;
 	char pid_filename[PATH_MAX];
 	char log_filename[PATH_MAX];
+	struct isochron_mgmt_handler *mgmt_handler;
 	struct sk *mgmt_listen_sock;
 	struct sk *mgmt_sock;
 	bool have_client;
@@ -774,170 +775,9 @@ static int prog_update_sync_monitor_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_mgmt_tlv_set(void *priv, struct isochron_tlv *tlv)
+static int prog_forward_isochron_log(void *priv)
 {
-	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
 	struct isochron_daemon *prog = priv;
-	struct sk *sock = prog->mgmt_sock;
-
-	switch (mid) {
-	case ISOCHRON_MID_NODE_ROLE:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_node_role),
-					     prog_update_role);
-	case ISOCHRON_MID_UTC_OFFSET:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_utc_offset),
-					     prog_update_utc_offset);
-	case ISOCHRON_MID_PACKET_COUNT:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_packet_count),
-					     prog_update_packet_count);
-	case ISOCHRON_MID_PACKET_SIZE:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_packet_size),
-					     prog_update_packet_size);
-	case ISOCHRON_MID_DESTINATION_MAC:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_mac_addr),
-					     prog_update_destination_mac);
-	case ISOCHRON_MID_SOURCE_MAC:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_mac_addr),
-					     prog_update_source_mac);
-	case ISOCHRON_MID_IF_NAME:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_if_name),
-					     prog_update_if_name);
-	case ISOCHRON_MID_PRIORITY:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_priority),
-					     prog_update_priority);
-	case ISOCHRON_MID_STATS_PORT:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_port),
-					     prog_update_stats_port);
-	case ISOCHRON_MID_BASE_TIME:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_time),
-					     prog_update_base_time);
-	case ISOCHRON_MID_ADVANCE_TIME:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_time),
-					     prog_update_advance_time);
-	case ISOCHRON_MID_SHIFT_TIME:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_time),
-					     prog_update_shift_time);
-	case ISOCHRON_MID_CYCLE_TIME:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_time),
-					     prog_update_cycle_time);
-	case ISOCHRON_MID_WINDOW_SIZE:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_time),
-					     prog_update_window_size);
-	case ISOCHRON_MID_SYSMON_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_sysmon_enabled);
-	case ISOCHRON_MID_PTPMON_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_ptpmon_enabled);
-	case ISOCHRON_MID_UDS:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_uds),
-					     prog_update_uds);
-	case ISOCHRON_MID_DOMAIN_NUMBER:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_domain_number),
-					     prog_update_domain_number);
-	case ISOCHRON_MID_TRANSPORT_SPECIFIC:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_transport_specific),
-					     prog_update_transport_specific);
-	case ISOCHRON_MID_NUM_READINGS:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_num_readings),
-					     prog_update_num_readings);
-	case ISOCHRON_MID_TS_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_ts_enabled);
-	case ISOCHRON_MID_VID:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_vid),
-					     prog_update_vid);
-	case ISOCHRON_MID_ETHERTYPE:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_ethertype),
-					     prog_update_ethertype);
-	case ISOCHRON_MID_QUIET_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_quiet_enabled);
-	case ISOCHRON_MID_TAPRIO_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_taprio_enabled);
-	case ISOCHRON_MID_TXTIME_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_txtime_enabled);
-	case ISOCHRON_MID_DEADLINE_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_deadline_enabled);
-	case ISOCHRON_MID_IP_DESTINATION:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_ip_address),
-					     prog_update_ip_destination);
-	case ISOCHRON_MID_L2_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_l2_enabled);
-	case ISOCHRON_MID_L4_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_l4_enabled);
-	case ISOCHRON_MID_DATA_PORT:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_port),
-					     prog_update_data_port);
-	case ISOCHRON_MID_SCHED_FIFO_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_sched_fifo);
-	case ISOCHRON_MID_SCHED_RR_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_sched_rr);
-	case ISOCHRON_MID_SCHED_PRIORITY:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_sched_priority),
-					     prog_update_sched_priority);
-	case ISOCHRON_MID_CPU_MASK:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_cpu_mask),
-					     prog_update_cpu_mask);
-	case ISOCHRON_MID_TEST_STATE:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_test_state),
-					     prog_update_test_state);
-	case ISOCHRON_MID_SYNC_MONITOR_ENABLED:
-		return isochron_mgmt_tlv_set(sock, tlv, prog, mid,
-					     sizeof(struct isochron_feature_enabled),
-					     prog_update_sync_monitor_enabled);
-	default:
-		fprintf(stderr, "Unhandled SET for MID %d\n", mid);
-		isochron_send_empty_tlv(sock, mid);
-		return 0;
-	}
-}
-
-static int prog_forward_isochron_log(struct isochron_daemon *prog)
-{
 	struct isochron_send *send = prog->send;
 	int rc;
 
@@ -958,8 +798,10 @@ static int prog_forward_isochron_log(struct isochron_daemon *prog)
 				 sizeof(struct isochron_send_pkt_data));
 }
 
-static int prog_forward_sysmon_offset(struct isochron_daemon *prog)
+static int prog_forward_sysmon_offset(void *priv)
 {
+	struct isochron_daemon *prog = priv;
+
 	if (!prog->send) {
 		fprintf(stderr, "Sender role not instantiated\n");
 		return -EINVAL;
@@ -974,8 +816,10 @@ static int prog_forward_sysmon_offset(struct isochron_daemon *prog)
 					      prog->send->sysmon);
 }
 
-static int prog_forward_ptpmon_offset(struct isochron_daemon *prog)
+static int prog_forward_ptpmon_offset(void *priv)
 {
+	struct isochron_daemon *prog = priv;
+
 	if (!prog->send) {
 		fprintf(stderr, "Sender role not instantiated\n");
 		return -EINVAL;
@@ -990,8 +834,9 @@ static int prog_forward_ptpmon_offset(struct isochron_daemon *prog)
 					      prog->send->ptpmon);
 }
 
-static int prog_forward_utc_offset(struct isochron_daemon *prog)
+static int prog_forward_utc_offset(void *priv)
 {
+	struct isochron_daemon *prog = priv;
 	int rc, utc_offset;
 
 	if (!prog->send) {
@@ -1015,8 +860,10 @@ static int prog_forward_utc_offset(struct isochron_daemon *prog)
 	return 0;
 }
 
-static int prog_forward_port_state(struct isochron_daemon *prog)
+static int prog_forward_port_state(void *priv)
 {
+	struct isochron_daemon *prog = priv;
+
 	if (!prog->send) {
 		fprintf(stderr, "Sender role not instantiated\n");
 		return -EINVAL;
@@ -1036,8 +883,9 @@ static int prog_forward_port_state(struct isochron_daemon *prog)
 					   prog->send->if_name, prog->rtnl);
 }
 
-static int prog_forward_port_link_state(struct isochron_daemon *prog)
+static int prog_forward_port_link_state(void *priv)
 {
+	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
 
 	if (!send) {
@@ -1049,8 +897,10 @@ static int prog_forward_port_link_state(struct isochron_daemon *prog)
 						prog->rtnl);
 }
 
-static int prog_forward_gm_clock_identity(struct isochron_daemon *prog)
+static int prog_forward_gm_clock_identity(void *priv)
 {
+	struct isochron_daemon *prog = priv;
+
 	if (!prog->send) {
 		fprintf(stderr, "Sender role not instantiated\n");
 		return -EINVAL;
@@ -1065,8 +915,9 @@ static int prog_forward_gm_clock_identity(struct isochron_daemon *prog)
 						  prog->send->ptpmon);
 }
 
-static int prog_forward_test_state(struct isochron_daemon *prog)
+static int prog_forward_test_state(void *priv)
 {
+	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
 
 	if (!send) {
@@ -1077,13 +928,16 @@ static int prog_forward_test_state(struct isochron_daemon *prog)
 	return isochron_forward_test_state(prog->mgmt_sock, send->test_state);
 }
 
-static int prog_forward_current_clock_tai(struct isochron_daemon *prog)
+static int prog_forward_current_clock_tai(void *priv)
 {
+	struct isochron_daemon *prog = priv;
+
 	return isochron_forward_current_clock_tai(prog->mgmt_sock);
 }
 
-static int prog_forward_oper_base_time(struct isochron_daemon *prog)
+static int prog_forward_oper_base_time(void *priv)
 {
+	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
 	struct isochron_time t = {};
 	int rc;
@@ -1105,41 +959,184 @@ static int prog_forward_oper_base_time(struct isochron_daemon *prog)
 	return 0;
 }
 
-static int prog_mgmt_tlv_get(void *priv, struct isochron_tlv *tlv)
-{
-	enum isochron_management_id mid = __be16_to_cpu(tlv->management_id);
-	struct isochron_daemon *prog = priv;
+static const struct isochron_mgmt_ops daemon_mgmt_ops[__ISOCHRON_MID_MAX] = {
+	[ISOCHRON_MID_LOG] = {
+		.get = prog_forward_isochron_log,
+	},
+	[ISOCHRON_MID_SYSMON_OFFSET] = {
+		.get = prog_forward_sysmon_offset,
+	},
+	[ISOCHRON_MID_PTPMON_OFFSET] = {
+		.get = prog_forward_ptpmon_offset,
+	},
+	[ISOCHRON_MID_UTC_OFFSET] = {
+		.get = prog_forward_utc_offset,
+		.set = prog_update_utc_offset,
+		.struct_size = sizeof(struct isochron_utc_offset),
+	},
+	[ISOCHRON_MID_PORT_STATE] = {
+		.get = prog_forward_port_state,
+	},
+	[ISOCHRON_MID_PORT_LINK_STATE] = {
+		.get = prog_forward_port_link_state,
+	},
+	[ISOCHRON_MID_GM_CLOCK_IDENTITY] = {
+		.get = prog_forward_gm_clock_identity,
+	},
+	[ISOCHRON_MID_TEST_STATE] = {
+		.get = prog_forward_test_state,
+		.set = prog_update_test_state,
+		.struct_size = sizeof(struct isochron_test_state),
+	},
+	[ISOCHRON_MID_CURRENT_CLOCK_TAI] = {
+		.get = prog_forward_current_clock_tai,
+	},
+	[ISOCHRON_MID_OPER_BASE_TIME] = {
+		.get = prog_forward_oper_base_time,
+	},
+	[ISOCHRON_MID_NODE_ROLE] = {
+		.set = prog_update_role,
+		.struct_size = sizeof(struct isochron_node_role),
+	},
+	[ISOCHRON_MID_PACKET_COUNT] = {
+		.struct_size = sizeof(struct isochron_packet_count),
+		.set = prog_update_packet_count,
+	},
+	[ISOCHRON_MID_PACKET_SIZE] = {
+		.set = prog_update_packet_size,
+		.struct_size = sizeof(struct isochron_packet_size),
+	},
+	[ISOCHRON_MID_DESTINATION_MAC] = {
+		.set = prog_update_destination_mac,
+		.struct_size = sizeof(struct isochron_mac_addr),
+	},
+	[ISOCHRON_MID_SOURCE_MAC] = {
+		.set = prog_update_source_mac,
+		.struct_size = sizeof(struct isochron_mac_addr),
+	},
+	[ISOCHRON_MID_IF_NAME] = {
+		.set = prog_update_if_name,
+		.struct_size = sizeof(struct isochron_if_name),
+	},
+	[ISOCHRON_MID_PRIORITY] = {
+		.set = prog_update_priority,
+		.struct_size = sizeof(struct isochron_priority),
+	},
+	[ISOCHRON_MID_STATS_PORT] = {
+		.set = prog_update_stats_port,
+		.struct_size = sizeof(struct isochron_port),
+	},
+	[ISOCHRON_MID_BASE_TIME] = {
+		.set = prog_update_base_time,
+		.struct_size = sizeof(struct isochron_time),
+	},
+	[ISOCHRON_MID_ADVANCE_TIME] = {
+		.set = prog_update_advance_time,
+		.struct_size = sizeof(struct isochron_time),
+	},
+	[ISOCHRON_MID_SHIFT_TIME] = {
+		.set = prog_update_shift_time,
+		.struct_size = sizeof(struct isochron_time),
+	},
+	[ISOCHRON_MID_CYCLE_TIME] = {
+		.set = prog_update_cycle_time,
+		.struct_size = sizeof(struct isochron_time),
+	},
+	[ISOCHRON_MID_WINDOW_SIZE] = {
+		.set = prog_update_window_size,
+		.struct_size = sizeof(struct isochron_time),
+	},
+	[ISOCHRON_MID_SYSMON_ENABLED] = {
+		.set = prog_update_sysmon_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_PTPMON_ENABLED] = {
+		.set = prog_update_ptpmon_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_UDS] = {
+		.set = prog_update_uds,
+		.struct_size = sizeof(struct isochron_uds),
+	},
+	[ISOCHRON_MID_DOMAIN_NUMBER] = {
+		.set = prog_update_domain_number,
+		.struct_size = sizeof(struct isochron_domain_number),
+	},
+	[ISOCHRON_MID_TRANSPORT_SPECIFIC] = {
+		.set = prog_update_transport_specific,
+		.struct_size = sizeof(struct isochron_transport_specific),
+	},
+	[ISOCHRON_MID_NUM_READINGS] = {
+		.set = prog_update_num_readings,
+		.struct_size = sizeof(struct isochron_num_readings),
+	},
+	[ISOCHRON_MID_TS_ENABLED] = {
+		.set = prog_update_ts_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_VID] = {
+		.set = prog_update_vid,
+		.struct_size = sizeof(struct isochron_vid),
+	},
+	[ISOCHRON_MID_ETHERTYPE] = {
+		.set = prog_update_ethertype,
+		.struct_size = sizeof(struct isochron_ethertype),
+	},
+	[ISOCHRON_MID_QUIET_ENABLED] = {
+		.set = prog_update_quiet_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_TAPRIO_ENABLED] = {
+		.set = prog_update_taprio_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_TXTIME_ENABLED] = {
+		.set = prog_update_txtime_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_DEADLINE_ENABLED] = {
+		.set = prog_update_deadline_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_IP_DESTINATION] = {
+		.set = prog_update_ip_destination,
+		.struct_size = sizeof(struct isochron_ip_address),
+	},
+	[ISOCHRON_MID_L2_ENABLED] = {
+		.set = prog_update_l2_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_L4_ENABLED] = {
+		.set = prog_update_l4_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_DATA_PORT] = {
+		.set = prog_update_data_port,
+		.struct_size = sizeof(struct isochron_port),
+	},
+	[ISOCHRON_MID_SCHED_FIFO_ENABLED] = {
+		.set = prog_update_sched_fifo,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_SCHED_RR_ENABLED] = {
+		.set = prog_update_sched_rr,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+	[ISOCHRON_MID_SCHED_PRIORITY] = {
+		.set = prog_update_sched_priority,
+		.struct_size = sizeof(struct isochron_sched_priority),
+	},
+	[ISOCHRON_MID_CPU_MASK] = {
+		.set = prog_update_cpu_mask,
+		.struct_size = sizeof(struct isochron_cpu_mask),
+	},
+	[ISOCHRON_MID_SYNC_MONITOR_ENABLED] = {
+		.set = prog_update_sync_monitor_enabled,
+		.struct_size = sizeof(struct isochron_feature_enabled),
+	},
+};
 
-	switch (mid) {
-	case ISOCHRON_MID_LOG:
-		return prog_forward_isochron_log(prog);
-	case ISOCHRON_MID_SYSMON_OFFSET:
-		return prog_forward_sysmon_offset(prog);
-	case ISOCHRON_MID_PTPMON_OFFSET:
-		return prog_forward_ptpmon_offset(prog);
-	case ISOCHRON_MID_UTC_OFFSET:
-		return prog_forward_utc_offset(prog);
-	case ISOCHRON_MID_PORT_STATE:
-		return prog_forward_port_state(prog);
-	case ISOCHRON_MID_PORT_LINK_STATE:
-		return prog_forward_port_link_state(prog);
-	case ISOCHRON_MID_GM_CLOCK_IDENTITY:
-		return prog_forward_gm_clock_identity(prog);
-	case ISOCHRON_MID_TEST_STATE:
-		return prog_forward_test_state(prog);
-	case ISOCHRON_MID_CURRENT_CLOCK_TAI:
-		return prog_forward_current_clock_tai(prog);
-	case ISOCHRON_MID_OPER_BASE_TIME:
-		return prog_forward_oper_base_time(prog);
-	default:
-		fprintf(stderr, "Unhandled GET for MID %s\n",
-			mid_to_string(mid));
-		isochron_send_empty_tlv(prog->mgmt_sock, mid);
-		return 0;
-	}
-}
-
-static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
+static int prog_mgmt_loop(struct isochron_daemon *prog)
 {
 	struct pollfd pfd[1] = {
 		[0] = {
@@ -1173,10 +1170,9 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 
 		if (pfd[0].revents & (POLLIN | POLLERR | POLLPRI)) {
 			if (prog->have_client) {
-				rc = isochron_mgmt_event(prog->mgmt_sock, prog,
-							 prog_mgmt_tlv_get,
-							 prog_mgmt_tlv_set,
-							 &socket_closed);
+				rc = isochron_mgmt_event(prog->mgmt_sock,
+							 prog->mgmt_handler,
+							 prog, &socket_closed);
 				if (socket_closed)
 					prog_close_client_stats_session(prog);
 				if (rc)
@@ -1200,13 +1196,24 @@ static int prog_mgmt_loop(struct isochron_daemon __attribute__((unused)) *prog)
 
 static int prog_init_mgmt_listen_sock(struct isochron_daemon *prog)
 {
-	return sk_listen_tcp(&prog->stats_addr, prog->stats_port, 1,
-			     &prog->mgmt_listen_sock);
+	int rc;
+
+	prog->mgmt_handler = isochron_mgmt_handler_create(daemon_mgmt_ops);
+	if (!prog->mgmt_handler)
+		return -ENOMEM;
+
+	rc = sk_listen_tcp(&prog->stats_addr, prog->stats_port, 1,
+			   &prog->mgmt_listen_sock);
+	if (rc)
+		isochron_mgmt_handler_destroy(prog->mgmt_handler);
+
+	return rc;
 }
 
 static void prog_teardown_mgmt_listen_sock(struct isochron_daemon *prog)
 {
 	sk_close(prog->mgmt_listen_sock);
+	isochron_mgmt_handler_destroy(prog->mgmt_handler);
 }
 
 static int prog_rtnl_open(struct isochron_daemon *prog)
