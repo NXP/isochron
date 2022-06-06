@@ -17,8 +17,7 @@
 #include "management.h"
 #include "send.h"
 #include "sk.h"
-
-#define SYNC_CHECKS_TO_GO 3
+#include "syncmon.h"
 
 struct isochron_orch_node;
 
@@ -30,12 +29,7 @@ struct isochron_orch_node {
 	unsigned long port;
 	struct sk *mgmt_sock;
 	long sync_threshold;
-	struct clock_identity gm_clkid;
-	enum port_link_state link_state;
-	enum port_state port_state;
 	bool collect_sync_stats;
-	__s64 ptpmon_offset;
-	__s64 sysmon_offset;
 	union {
 		/* ISOCHRON_ROLE_SEND */
 		struct {
@@ -57,6 +51,7 @@ struct isochron_orch_node {
 struct isochron_orch {
 	LIST_HEAD(nodes_head, isochron_orch_node) nodes;
 	char input_filename[PATH_MAX];
+	struct syncmon *syncmon;
 };
 
 static void isochron_node_rtt_init(struct isochron_orch_node *node)
@@ -91,156 +86,6 @@ static void isochron_node_rtt_finalize(struct isochron_orch_node *node)
 	       node->name, node->num_rtt_measurements, node->max_rtt);
 }
 
-static int prog_query_link_state(struct isochron_orch_node *node)
-{
-	struct isochron_port_link_state s;
-	enum port_link_state link_state;
-	int rc;
-
-	rc = isochron_query_mid(node->mgmt_sock, ISOCHRON_MID_PORT_LINK_STATE,
-				&s, sizeof(s));
-	if (rc) {
-		fprintf(stderr,
-			"Port link state missing from node %s reply\n",
-			node->name);
-		return rc;
-	}
-
-	link_state = s.link_state;
-
-	if (node->link_state == link_state)
-		return 0;
-
-	node->link_state = link_state;
-	if (node->link_state == PORT_LINK_STATE_RUNNING)
-		printf("Link state of node %s is running\n", node->name);
-	if (node->link_state == PORT_LINK_STATE_DOWN)
-		printf("Link state of node %s is down\n", node->name);
-
-	return 0;
-}
-
-static bool prog_sync_ok(struct isochron_orch *prog)
-{
-	bool port_transient_state, any_port_transient_state = false;
-	bool ptpmon_sync_done, all_ptpmon_sync_done = true;
-	bool sysmon_sync_done, all_sysmon_sync_done = true;
-	struct isochron_orch_node *first_node = NULL;
-	struct isochron_orch_node *node, *sender;
-	char now_buf[TIMESPEC_BUFSIZ];
-	enum port_state port_state;
-	bool any_link_down = false;
-	struct timespec now_ts;
-	bool same_gm = true;
-	int utc_offset;
-	__s64 now;
-	int rc;
-
-	clock_gettime(CLOCK_TAI, &now_ts);
-	now = timespec_to_ns(&now_ts);
-	ns_sprintf(now_buf, now);
-
-	LIST_FOREACH(node, &prog->nodes, list) {
-		rc = prog_query_link_state(node);
-		if (rc)
-			return false;
-
-		if (node->link_state != PORT_LINK_STATE_RUNNING)
-			any_link_down = true;
-
-		if (!node->collect_sync_stats)
-			continue;
-
-		rc = isochron_collect_sync_stats(node->mgmt_sock,
-						 &node->sysmon_offset,
-						 &node->ptpmon_offset,
-						 &utc_offset,
-						 &port_state,
-						 &node->gm_clkid);
-		if (rc)
-			return false;
-
-		if (port_state != node->port_state) {
-			printf("Node %s port changed state to %s\n",
-			       node->name, port_state_to_string(port_state));
-			node->port_state = port_state;
-		}
-
-		if (!first_node) {
-			first_node = node;
-		} else if (!clockid_eq(&node->gm_clkid, &first_node->gm_clkid)) {
-			char node1_gm[CLOCKID_BUFSIZE];
-			char node2_gm[CLOCKID_BUFSIZE];
-
-			clockid_to_string(&node->gm_clkid, node1_gm);
-			clockid_to_string(&first_node->gm_clkid, node2_gm);
-
-			printf("Nodes not synchronized to the same grandmaster, %s has %s, %s has %s\n",
-			       node->name, node1_gm, first_node->name, node2_gm);
-			same_gm = false;
-		}
-
-		node->sysmon_offset += NSEC_PER_SEC * utc_offset;
-
-		port_transient_state = port_state != PS_MASTER &&
-				       port_state != PS_SLAVE;
-
-		ptpmon_sync_done = !!(llabs(node->ptpmon_offset) <= node->sync_threshold);
-		sysmon_sync_done = !!(llabs(node->sysmon_offset) <= node->sync_threshold);
-
-		if (port_transient_state)
-			any_port_transient_state = true;
-		if (!ptpmon_sync_done)
-			all_ptpmon_sync_done = false;
-		if (!sysmon_sync_done)
-			all_sysmon_sync_done = false;
-	}
-
-	LIST_FOREACH(node, &prog->nodes, list) {
-		/* Iterate through receivers so we can use the node->sender
-		 * backpointer to catch both the sender and receiver in the
-		 * same print line.
-		 */
-		if (node->role != ISOCHRON_ROLE_RCV)
-			continue;
-
-		sender = node->sender;
-
-		if (node->collect_sync_stats && sender->collect_sync_stats) {
-			printf("isochron[%s]: %s ptpmon %10lld sysmon %10lld receiver ptpmon %10lld sysmon %10lld\n",
-			       now_buf, sender->name, sender->ptpmon_offset, sender->sysmon_offset,
-			       node->ptpmon_offset, node->sysmon_offset);
-		} else if (sender->collect_sync_stats) {
-			/* In case --omit-remote-sync is used */
-			printf("isochron[%s]: %s ptpmon %10lld sysmon %10lld\n",
-			       now_buf, sender->name, sender->ptpmon_offset, sender->sysmon_offset);
-		}
-	}
-
-	return !any_link_down && !any_port_transient_state && same_gm &&
-	       all_ptpmon_sync_done && all_sysmon_sync_done;
-}
-
-static int prog_wait_until_sync_ok(struct isochron_orch *prog)
-{
-	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
-
-	while (1) {
-		if (signal_received)
-			return -EINTR;
-
-		if (prog_sync_ok(prog))
-			sync_checks_to_go--;
-
-		if (!sync_checks_to_go)
-			break;
-
-		sleep(1);
-	}
-
-	return 0;
-}
-
 static int prog_query_test_state(struct isochron_orch_node *node,
 				 enum test_state *state)
 {
@@ -260,8 +105,9 @@ static int prog_query_test_state(struct isochron_orch_node *node,
 	return 0;
 }
 
-static bool prog_all_senders_stopped(struct isochron_orch *prog)
+static bool prog_all_senders_stopped(void *priv)
 {
+	struct isochron_orch *prog = priv;
 	struct isochron_orch_node *node;
 	int rc;
 
@@ -278,29 +124,6 @@ static bool prog_all_senders_stopped(struct isochron_orch *prog)
 
 		if (node->test_state == ISOCHRON_TEST_STATE_RUNNING)
 			return false;
-	}
-
-	return true;
-}
-
-static bool prog_monitor_sync(struct isochron_orch *prog)
-{
-	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
-
-	while (!prog_all_senders_stopped(prog)) {
-		if (signal_received)
-			return false;
-
-		if (!prog_sync_ok(prog))
-			sync_checks_to_go--;
-
-		if (!sync_checks_to_go) {
-			fprintf(stderr,
-				"Sync lost during the test, repeating\n");
-			return false;
-		}
-
-		sleep(1);
 	}
 
 	return true;
@@ -593,37 +416,113 @@ static int prog_stop_senders(struct isochron_orch *prog)
 	return 0;
 }
 
+static struct syncmon_node *
+prog_add_syncmon_sender(struct syncmon *syncmon,
+			struct isochron_orch_node *node)
+{
+	struct isochron_send *send = node->send;
+
+	if (node->collect_sync_stats)
+		return syncmon_add_remote_sender(syncmon, node->name,
+						 node->mgmt_sock,
+						 send->iterations,
+						 send->cycle_time,
+						 send->sync_threshold);
+	else
+		return syncmon_add_remote_sender_no_sync(syncmon, node->name,
+							 node->mgmt_sock,
+							 send->iterations,
+							 send->cycle_time);
+}
+
+static struct syncmon_node *
+prog_add_syncmon_receiver(struct syncmon *syncmon,
+			  struct isochron_orch_node *node,
+			  struct syncmon_node *pair)
+{
+	if (node->collect_sync_stats)
+		return syncmon_add_remote_receiver(syncmon, node->name,
+						   node->mgmt_sock, pair,
+						   node->sync_threshold);
+	else
+		return syncmon_add_remote_receiver_no_sync(syncmon, node->name,
+							   node->mgmt_sock,
+							   pair);
+}
+
+static int prog_init_syncmon(struct isochron_orch *prog)
+{
+	struct isochron_orch_node *node;
+	struct syncmon *syncmon;
+	struct syncmon_node *sn;
+
+	syncmon = syncmon_create();
+	if (!syncmon)
+		return -ENOMEM;
+
+	LIST_FOREACH(node, &prog->nodes, list) {
+		if (node->role != ISOCHRON_ROLE_RCV)
+			continue;
+
+		sn = prog_add_syncmon_sender(syncmon, node->sender);
+		if (!sn) {
+			syncmon_destroy(syncmon);
+			return -ENOMEM;
+		}
+
+		sn = prog_add_syncmon_receiver(syncmon, node, sn);
+		if (!sn) {
+			syncmon_destroy(syncmon);
+			return -ENOMEM;
+		}
+	}
+
+	syncmon_init(syncmon);
+	prog->syncmon = syncmon;
+
+	return 0;
+}
+
 static int prog_run_test(struct isochron_orch *prog)
 {
 	bool sync_ok, test_valid;
 	int rc;
 
-	rc = prog_wait_until_sync_ok(prog);
+	rc = prog_init_syncmon(prog);
+	if (rc)
+		return rc;
+
+	rc = syncmon_wait_until_ok(prog->syncmon);
 	if (rc) {
 		pr_err(rc, "Failed to check sync status: %m\n");
-		return rc;
+		goto out;
 	}
 
 	do {
 		rc = prog_start_senders(prog);
 		if (rc)
-			return rc;
+			goto out;
 
-		sync_ok = prog_monitor_sync(prog);
+		sync_ok = syncmon_monitor(prog->syncmon,
+					  prog_all_senders_stopped,
+					  prog);
 
 		rc = prog_stop_senders(prog);
 		if (rc)
-			return rc;
+			goto out;
 
 		if (signal_received) {
 			rc = -EINTR;
-			break;
+			goto out;
 		}
 
 		test_valid = prog_validate_test(prog);
 	} while (!sync_ok || !test_valid);
 
-	return 0;
+out:
+	syncmon_destroy(prog->syncmon);
+
+	return rc;
 }
 
 static int prog_collect_logs(struct isochron_orch *prog)

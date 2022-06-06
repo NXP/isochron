@@ -10,6 +10,7 @@
 
 #include "log.h"
 #include "ptpmon.h"
+#include "syncmon.h"
 #include "sysmon.h"
 
 #define BUF_SIZ		10000
@@ -82,6 +83,7 @@ struct isochron_send {
 	int tx_timestamp_tid_rc;
 	unsigned long cpumask;
 	enum test_state test_state;
+	struct syncmon *syncmon;
 };
 
 int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog);

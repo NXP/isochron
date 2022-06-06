@@ -37,7 +37,6 @@
 #include <linux/net_tstamp.h>
 
 #define TIME_FMT_LEN	27 /* "[%s] " */
-#define SYNC_CHECKS_TO_GO 3
 
 struct isochron_txtime_postmortem_priv {
 	struct isochron_send *prog;
@@ -529,175 +528,60 @@ static void *prog_tx_timestamp_thread(void *arg)
 	return &prog->tx_timestamp_tid_rc;
 }
 
-static bool prog_monitor_link_state(struct isochron_send *prog)
+static int prog_init_syncmon(struct isochron_send *prog)
 {
-	bool running;
-	int rc;
+	struct syncmon_node *sn, *remote_sn;
+	struct syncmon *syncmon;
 
-	rc = rtnl_query_link_state(prog->rtnl, prog->if_name, &running);
-	if (rc) {
-		pr_err(rc, "Failed to query port %s link state: %m\n",
-		       prog->if_name);
-		return false;
+	syncmon = syncmon_create();
+	if (!syncmon) {
+		fprintf(stderr, "Failed to create syncmon\n");
+		return -ENOMEM;
 	}
 
-	if (running && prog->link_state != PORT_LINK_STATE_RUNNING) {
-		printf("Port %s is running\n", prog->if_name);
-		prog->link_state = PORT_LINK_STATE_RUNNING;
-	}
-
-	if (!running && prog->link_state != PORT_LINK_STATE_DOWN) {
-		printf("Port %s is down\n", prog->if_name);
-		prog->link_state = PORT_LINK_STATE_DOWN;
-	}
-
-	return running;
-}
-
-static bool prog_sync_ok(struct isochron_send *prog)
-{
-	bool local_port_transient_state, remote_port_transient_state;
-	bool remote_ptpmon_sync_done, remote_sysmon_sync_done;
-	bool local_ptpmon_sync_done, local_sysmon_sync_done;
-	enum port_state local_port_state, remote_port_state;
-	__s64 rcv_sysmon_offset, rcv_ptpmon_offset;
-	struct clock_identity rcv_gm_clkid;
-	__s64 sysmon_offset, sysmon_delay;
-	struct parent_data_set parent_ds;
-	char now_buf[TIMESPEC_BUFSIZ];
-	bool have_remote_stats = true;
-	struct current_ds current_ds;
-	__s64 ptpmon_offset;
-	int rcv_utc_offset;
-	__u64 sysmon_ts;
-	int rc;
-
-	if (!prog->ptpmon)
-		return prog_monitor_link_state(prog);
-
-	if (prog->omit_remote_sync || !prog->stats_srv.family) {
-		have_remote_stats = false;
+	if (prog->omit_sync) {
+		sn = syncmon_add_local_sender_no_sync(syncmon, "local",
+						      prog->rtnl,
+						      prog->if_name,
+						      prog->iterations,
+						      prog->cycle_time);
 	} else {
-		rc = isochron_collect_sync_stats(prog->mgmt_sock,
-						 &rcv_sysmon_offset,
-						 &rcv_ptpmon_offset,
-						 &rcv_utc_offset,
-						 &remote_port_state,
-						 &rcv_gm_clkid);
-		if (rc)
-			return false;
+		sn = syncmon_add_local_sender(syncmon, "local", prog->rtnl,
+					      prog->if_name, prog->iterations,
+					      prog->cycle_time, prog->ptpmon,
+					      prog->sysmon,
+					      prog->sync_threshold);
+	}
+	if (!sn) {
+		syncmon_destroy(syncmon);
+		return -ENOMEM;
 	}
 
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_PARENT_DATA_SET,
-				    &parent_ds, sizeof(parent_ds));
-	if (rc) {
-		pr_err(rc, "ptpmon failed to query grandmaster clock id: %m\n");
-		return false;
-	}
-
-	rc = ptpmon_query_port_state_by_name(prog->ptpmon, prog->if_name,
-					     prog->rtnl, &local_port_state);
-	if (rc) {
-		pr_err(rc, "ptpmon failed to query port state: %m\n");
-		return false;
-	}
-
-	if (local_port_state != prog->last_local_port_state) {
-		printf("Local port changed state to %s\n",
-		       port_state_to_string(local_port_state));
-		prog->last_local_port_state = local_port_state;
-	}
-
-	local_port_transient_state = local_port_state != PS_MASTER &&
-				     local_port_state != PS_SLAVE;
-
-	rc = ptpmon_query_clock_mid(prog->ptpmon, MID_CURRENT_DATA_SET,
-				    &current_ds, sizeof(current_ds));
-	if (rc) {
-		pr_err(rc, "ptpmon failed to query CURRENT_DATA_SET: %m\n");
-		return false;
-	}
-
-	ptpmon_offset = master_offset_from_current_ds(&current_ds);
-
-	rc = sysmon_get_offset(prog->sysmon, &sysmon_offset, &sysmon_ts,
-			       &sysmon_delay);
-	if (rc)
-		return false;
-
-	sysmon_offset += NSEC_PER_SEC * prog->utc_tai_offset;
-	sysmon_ts += NSEC_PER_SEC * prog->utc_tai_offset;
-
-	local_ptpmon_sync_done = !!(llabs(ptpmon_offset) <= prog->sync_threshold);
-	local_sysmon_sync_done = !!(llabs(sysmon_offset) <= prog->sync_threshold);
-
-	ns_sprintf(now_buf, sysmon_ts);
-
-	if (have_remote_stats) {
-		rcv_sysmon_offset += NSEC_PER_SEC * rcv_utc_offset;
-
-		if (remote_port_state != prog->last_remote_port_state) {
-			printf("Remote port changed state to %s\n",
-			       port_state_to_string(remote_port_state));
-			prog->last_remote_port_state = remote_port_state;
-		}
-
-		if (!clockid_eq(&parent_ds.grandmaster_identity,
-				&rcv_gm_clkid)) {
-			char remote_gm[CLOCKID_BUFSIZE];
-			char local_gm[CLOCKID_BUFSIZE];
-
-			clockid_to_string(&parent_ds.grandmaster_identity,
-					  local_gm);
-			clockid_to_string(&rcv_gm_clkid, remote_gm);
-
-			printf("Sender and receiver not synchronized to the same grandmaster, sender has %s, receiver has %s\n",
-			       local_gm, remote_gm);
-
-			return false;
-		}
-
-		remote_port_transient_state = remote_port_state != PS_MASTER &&
-					      remote_port_state != PS_SLAVE;
-
-		remote_ptpmon_sync_done = !!(llabs(rcv_ptpmon_offset) <= prog->sync_threshold);
-		remote_sysmon_sync_done = !!(llabs(rcv_sysmon_offset) <= prog->sync_threshold);
-
-		printf("isochron[%s]: local ptpmon %10lld sysmon %10lld remote ptpmon %10lld sysmon %lld\n",
-		       now_buf, ptpmon_offset, sysmon_offset, rcv_ptpmon_offset,
-		       rcv_sysmon_offset);
+	if (prog->omit_sync || prog->omit_remote_sync) {
+		remote_sn = syncmon_add_remote_receiver_no_sync(syncmon,
+								"remote",
+								prog->mgmt_sock,
+								sn);
 	} else {
-		remote_port_transient_state = false;
-		remote_ptpmon_sync_done = true;
-		remote_sysmon_sync_done = true;
-
-		printf("isochron[%s]: ptpmon %10lld sysmon %10lld\n",
-		       now_buf, ptpmon_offset, sysmon_offset);
+		remote_sn = syncmon_add_remote_receiver(syncmon, "remote",
+							prog->mgmt_sock,
+							sn,
+							prog->sync_threshold);
+	}
+	if (!remote_sn) {
+		syncmon_destroy(syncmon);
+		return -ENOMEM;
 	}
 
-	return !local_port_transient_state && !remote_port_transient_state &&
-	       local_ptpmon_sync_done && local_sysmon_sync_done &&
-	       remote_ptpmon_sync_done && remote_sysmon_sync_done;
-}
-
-static int prog_wait_until_sync_ok(struct isochron_send *prog)
-{
-	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
-
-	while (1) {
-		if (signal_received)
-			return -EINTR;
-
-		if (prog_sync_ok(prog))
-			sync_checks_to_go--;
-
-		if (!sync_checks_to_go)
-			break;
-
-		sleep(1);
-	}
+	syncmon_init(syncmon);
+	prog->syncmon = syncmon;
 
 	return 0;
+}
+
+static void prog_teardown_syncmon(struct isochron_send *prog)
+{
+	syncmon_destroy(prog->syncmon);
 }
 
 static int prog_query_utc_offset(struct isochron_send *prog)
@@ -964,7 +848,7 @@ static int prog_prepare_session(struct isochron_send *prog)
 	if (rc)
 		return rc;
 
-	rc = prog_wait_until_sync_ok(prog);
+	rc = syncmon_wait_until_ok(prog->syncmon);
 	if (rc) {
 		pr_err(rc, "Failed to check sync status: %m\n");
 		goto out_teardown_log;
@@ -991,29 +875,6 @@ static int prog_prepare_session(struct isochron_send *prog)
 out_teardown_log:
 	isochron_log_teardown(&prog->log);
 	return rc;
-}
-
-static bool prog_monitor_sync(struct isochron_send *prog)
-{
-	int sync_checks_to_go = SYNC_CHECKS_TO_GO;
-
-	while (!prog->send_tid_stopped) {
-		if (signal_received)
-			return false;
-
-		if (!prog_sync_ok(prog))
-			sync_checks_to_go--;
-
-		if (!sync_checks_to_go) {
-			fprintf(stderr,
-				"Sync lost during the test, repeating\n");
-			return false;
-		}
-
-		sleep(1);
-	}
-
-	return true;
 }
 
 static int prog_end_session(struct isochron_send *prog, bool save_log)
@@ -1404,19 +1265,25 @@ static int prog_init(struct isochron_send *prog)
 	if (rc)
 		goto out_teardown_ptpmon;
 
+	rc = prog_init_syncmon(prog);
+	if (rc)
+		goto out_teardown_sysmon;
+
 	/* Drain potentially old packets from the isochron receiver */
 	if (prog->stats_srv.family) {
 		struct isochron_log rcv_log;
 
 		rc = isochron_collect_rcv_log(prog->mgmt_sock, &rcv_log);
 		if (rc)
-			goto out_teardown_sysmon;
+			goto out_teardown_syncmon;
 
 		isochron_log_teardown(&rcv_log);
 	}
 
 	return rc;
 
+out_teardown_syncmon:
+	prog_teardown_syncmon(prog);
 out_teardown_sysmon:
 	isochron_send_teardown_sysmon(prog);
 out_teardown_ptpmon:
@@ -1437,6 +1304,7 @@ out:
 
 static void prog_teardown(struct isochron_send *prog)
 {
+	prog_teardown_syncmon(prog);
 	isochron_send_teardown_sysmon(prog);
 	isochron_send_teardown_ptpmon(prog);
 
@@ -1965,6 +1833,13 @@ int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog)
 	return isochron_send_interpret_args(prog);
 }
 
+static bool prog_stop_syncmon(void *priv)
+{
+	struct isochron_send *prog = priv;
+
+	return prog->send_tid_stopped;
+}
+
 int isochron_send_main(int argc, char *argv[])
 {
 	struct isochron_send prog = {0};
@@ -1984,7 +1859,8 @@ int isochron_send_main(int argc, char *argv[])
 		if (rc)
 			break;
 
-		sync_ok = prog_monitor_sync(&prog);
+		sync_ok = syncmon_monitor(prog.syncmon, prog_stop_syncmon,
+					  &prog);
 
 		rc = prog_end_session(&prog, sync_ok);
 		if (rc)

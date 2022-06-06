@@ -34,6 +34,7 @@ src := \
 	rtnl.o \
 	send.o \
 	sk.o \
+	syncmon.o \
 	sysmon.o
 
 objs := $(addprefix src/, $(src))
