@@ -151,21 +151,22 @@ static int prog_client_connect_event(struct isochron_daemon *prog)
 	return 0;
 }
 
-static int prog_update_role(void *priv, void *ptr)
+static int prog_update_role(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_node_role *r = ptr;
 	struct isochron_send *send;
 
 	if (__be32_to_cpu(r->role) != ISOCHRON_ROLE_SEND) {
-		fprintf(stderr,
-			"Unexpected node role %d\n", __be32_to_cpu(r->role));
+		mgmt_extack(extack, "Unexpected node role %d",
+			    __be32_to_cpu(r->role));
 		return -EINVAL;
 	}
 
 	send = calloc(1, sizeof(*send));
 	if (!send) {
-		fprintf(stderr, "failed to allocate memory for new sender\n");
+		mgmt_extack(extack,
+			    "failed to allocate memory for new sender");
 		return -ENOMEM;
 	}
 
@@ -178,14 +179,14 @@ static int prog_update_role(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_utc_offset(void *priv, void *ptr)
+static int prog_update_utc_offset(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_utc_offset *u = ptr;
 	int offset;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -196,13 +197,13 @@ static int prog_update_utc_offset(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_packet_count(void *priv, void *ptr)
+static int prog_update_packet_count(void *priv, void *ptr, char *extack)
 {
 	struct isochron_packet_count *p = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -211,13 +212,13 @@ static int prog_update_packet_count(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_packet_size(void *priv, void *ptr)
+static int prog_update_packet_size(void *priv, void *ptr, char *extack)
 {
 	struct isochron_packet_size *p = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -226,13 +227,13 @@ static int prog_update_packet_size(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_destination_mac(void *priv, void *ptr)
+static int prog_update_destination_mac(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_mac_addr *m = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -241,13 +242,13 @@ static int prog_update_destination_mac(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_source_mac(void *priv, void *ptr)
+static int prog_update_source_mac(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_mac_addr *m = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -256,13 +257,13 @@ static int prog_update_source_mac(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_if_name(void *priv, void *ptr)
+static int prog_update_if_name(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_if_name *n = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -271,13 +272,13 @@ static int prog_update_if_name(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_priority(void *priv, void *ptr)
+static int prog_update_priority(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_priority *p = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -286,13 +287,13 @@ static int prog_update_priority(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_stats_port(void *priv, void *ptr)
+static int prog_update_stats_port(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_port *p = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -301,13 +302,13 @@ static int prog_update_stats_port(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_base_time(void *priv, void *ptr)
+static int prog_update_base_time(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_time *t = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -316,13 +317,13 @@ static int prog_update_base_time(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_advance_time(void *priv, void *ptr)
+static int prog_update_advance_time(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_time *t = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -331,13 +332,13 @@ static int prog_update_advance_time(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_shift_time(void *priv, void *ptr)
+static int prog_update_shift_time(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_time *t = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -346,13 +347,13 @@ static int prog_update_shift_time(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_cycle_time(void *priv, void *ptr)
+static int prog_update_cycle_time(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_time *t = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -361,13 +362,13 @@ static int prog_update_cycle_time(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_window_size(void *priv, void *ptr)
+static int prog_update_window_size(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_time *t = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -376,13 +377,13 @@ static int prog_update_window_size(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_sysmon_enabled(void *priv, void *ptr)
+static int prog_update_sysmon_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -405,26 +406,26 @@ static int prog_update_sysmon_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_ptpmon_enabled(void *priv, void *ptr)
+static int prog_update_ptpmon_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
 	if (f->enabled) {
 		if (prog->send->ptpmon) {
-			fprintf(stderr, "ptpmon already enabled\n");
+			mgmt_extack(extack, "ptpmon already enabled");
 			return -EINVAL;
 		}
 
 		return isochron_send_init_ptpmon(prog->send);
 	} else {
 		if (!prog->send->ptpmon) {
-			fprintf(stderr, "ptpmon not enabled\n");
+			mgmt_extack(extack, "ptpmon not enabled");
 			return -EINVAL;
 		}
 
@@ -434,13 +435,13 @@ static int prog_update_ptpmon_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_uds(void *priv, void *ptr)
+static int prog_update_uds(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_uds *u = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -449,13 +450,13 @@ static int prog_update_uds(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_domain_number(void *priv, void *ptr)
+static int prog_update_domain_number(void *priv, void *ptr, char *extack)
 {
 	struct isochron_domain_number *d = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -464,13 +465,13 @@ static int prog_update_domain_number(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_transport_specific(void *priv, void *ptr)
+static int prog_update_transport_specific(void *priv, void *ptr, char *extack)
 {
 	struct isochron_transport_specific *t = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -479,13 +480,13 @@ static int prog_update_transport_specific(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_num_readings(void *priv, void *ptr)
+static int prog_update_num_readings(void *priv, void *ptr, char *extack)
 {
 	struct isochron_num_readings *n = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -494,13 +495,13 @@ static int prog_update_num_readings(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_ts_enabled(void *priv, void *ptr)
+static int prog_update_ts_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -509,13 +510,13 @@ static int prog_update_ts_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_vid(void *priv, void *ptr)
+static int prog_update_vid(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_vid *v = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -524,13 +525,13 @@ static int prog_update_vid(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_ethertype(void *priv, void *ptr)
+static int prog_update_ethertype(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_ethertype *e = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -539,13 +540,13 @@ static int prog_update_ethertype(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_quiet_enabled(void *priv, void *ptr)
+static int prog_update_quiet_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -554,13 +555,13 @@ static int prog_update_quiet_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_taprio_enabled(void *priv, void *ptr)
+static int prog_update_taprio_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -569,13 +570,13 @@ static int prog_update_taprio_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_txtime_enabled(void *priv, void *ptr)
+static int prog_update_txtime_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -584,13 +585,13 @@ static int prog_update_txtime_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_deadline_enabled(void *priv, void *ptr)
+static int prog_update_deadline_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -599,13 +600,13 @@ static int prog_update_deadline_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_ip_destination(void *priv, void *ptr)
+static int prog_update_ip_destination(void *priv, void *ptr, char *extack)
 {
 	struct isochron_ip_address *i = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -616,13 +617,13 @@ static int prog_update_ip_destination(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_l2_enabled(void *priv, void *ptr)
+static int prog_update_l2_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -631,13 +632,13 @@ static int prog_update_l2_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_l4_enabled(void *priv, void *ptr)
+static int prog_update_l4_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -646,13 +647,13 @@ static int prog_update_l4_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_data_port(void *priv, void *ptr)
+static int prog_update_data_port(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_port *p = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -661,13 +662,13 @@ static int prog_update_data_port(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_sched_fifo(void *priv, void *ptr)
+static int prog_update_sched_fifo(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -676,13 +677,13 @@ static int prog_update_sched_fifo(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_sched_rr(void *priv, void *ptr)
+static int prog_update_sched_rr(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -691,13 +692,13 @@ static int prog_update_sched_rr(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_sched_priority(void *priv, void *ptr)
+static int prog_update_sched_priority(void *priv, void *ptr, char *extack)
 {
 	struct isochron_sched_priority *s = ptr;
 	struct isochron_daemon *prog = priv;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -706,13 +707,13 @@ static int prog_update_sched_priority(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_cpu_mask(void *priv, void *ptr)
+static int prog_update_cpu_mask(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_cpu_mask *c = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -721,20 +722,20 @@ static int prog_update_cpu_mask(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_test_state(void *priv, void *ptr)
+static int prog_update_test_state(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_test_state *s = ptr;
 	int rc;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
 	if (s->test_state == ISOCHRON_TEST_STATE_IDLE) {
 		if (!prog->test_running) {
-			fprintf(stderr, "Sender already idle\n");
+			mgmt_extack(extack, "Sender already idle");
 			return -EINVAL;
 		}
 
@@ -742,7 +743,7 @@ static int prog_update_test_state(void *priv, void *ptr)
 		prog->test_running = false;
 	} else if (s->test_state == ISOCHRON_TEST_STATE_RUNNING) {
 		if (prog->test_running) {
-			fprintf(stderr, "Sender already running a test\n");
+			mgmt_extack(extack, "Sender already running a test");
 			return -EINVAL;
 		}
 
@@ -760,13 +761,14 @@ static int prog_update_test_state(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_update_sync_monitor_enabled(void *priv, void *ptr)
+static int prog_update_sync_monitor_enabled(void *priv, void *ptr,
+					    char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_feature_enabled *f = ptr;
 
 	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -775,14 +777,14 @@ static int prog_update_sync_monitor_enabled(void *priv, void *ptr)
 	return 0;
 }
 
-static int prog_forward_isochron_log(void *priv)
+static int prog_forward_isochron_log(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
 	int rc;
 
 	if (!send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -790,7 +792,7 @@ static int prog_forward_isochron_log(void *priv)
 			       ISOCHRON_MID_LOG,
 			       isochron_log_buf_tlv_size(&send->log));
 	if (rc)
-		return 0;
+		return rc;
 
 	isochron_log_xmit(&send->log, prog->mgmt_sock);
 	isochron_log_teardown(&send->log);
@@ -798,59 +800,62 @@ static int prog_forward_isochron_log(void *priv)
 				 sizeof(struct isochron_send_pkt_data));
 }
 
-static int prog_forward_sysmon_offset(void *priv)
+static int prog_forward_sysmon_offset(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
 
-	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+	if (!send) {
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	if (!prog->send->sysmon) {
-		fprintf(stderr, "Sender sysmon not instantiated\n");
+	if (!send->sysmon) {
+		mgmt_extack(extack, "Sender sysmon not instantiated");
 		return -EINVAL;
 	}
 
 	return isochron_forward_sysmon_offset(prog->mgmt_sock,
-					      prog->send->sysmon);
+					      send->sysmon, extack);
 }
 
-static int prog_forward_ptpmon_offset(void *priv)
+static int prog_forward_ptpmon_offset(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
 
-	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+	if (!send) {
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	if (!prog->send->ptpmon) {
-		fprintf(stderr, "Sender ptpmon not instantiated\n");
+	if (!send->ptpmon) {
+		mgmt_extack(extack, "Sender ptpmon not instantiated");
 		return -EINVAL;
 	}
 
 	return isochron_forward_ptpmon_offset(prog->mgmt_sock,
-					      prog->send->ptpmon);
+					      send->ptpmon, extack);
 }
 
-static int prog_forward_utc_offset(void *priv)
+static int prog_forward_utc_offset(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
 	int rc, utc_offset;
 
-	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+	if (!send) {
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	if (!prog->send->ptpmon) {
-		fprintf(stderr, "Sender ptpmon not instantiated\n");
+	if (!send->ptpmon) {
+		mgmt_extack(extack, "Sender ptpmon not instantiated");
 		return -EINVAL;
 	}
 
-	rc = isochron_forward_utc_offset(prog->mgmt_sock, prog->send->ptpmon,
-					 &utc_offset);
+	rc = isochron_forward_utc_offset(prog->mgmt_sock, send->ptpmon,
+					 &utc_offset, extack);
 	if (rc)
 		return rc;
 
@@ -860,82 +865,85 @@ static int prog_forward_utc_offset(void *priv)
 	return 0;
 }
 
-static int prog_forward_port_state(void *priv)
-{
-	struct isochron_daemon *prog = priv;
-
-	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
-		return -EINVAL;
-	}
-
-	if (!prog->send->ptpmon) {
-		fprintf(stderr, "Sender ptpmon not instantiated\n");
-		return -EINVAL;
-	}
-
-	if (!strlen(prog->send->if_name)) {
-		fprintf(stderr, "Sender interface not specified\n");
-		return -EINVAL;
-	}
-
-	return isochron_forward_port_state(prog->mgmt_sock, prog->send->ptpmon,
-					   prog->send->if_name, prog->rtnl);
-}
-
-static int prog_forward_port_link_state(void *priv)
+static int prog_forward_port_state(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
 
 	if (!send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
+		return -EINVAL;
+	}
+
+	if (!send->ptpmon) {
+		mgmt_extack(extack, "Sender ptpmon not instantiated");
+		return -EINVAL;
+	}
+
+	if (!strlen(send->if_name)) {
+		mgmt_extack(extack, "Sender interface not specified");
+		return -EINVAL;
+	}
+
+	return isochron_forward_port_state(prog->mgmt_sock, send->ptpmon,
+					   send->if_name, prog->rtnl, extack);
+}
+
+static int prog_forward_port_link_state(void *priv, char *extack)
+{
+	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
+
+	if (!send) {
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
 	return isochron_forward_port_link_state(prog->mgmt_sock, send->if_name,
-						prog->rtnl);
+						prog->rtnl, extack);
 }
 
-static int prog_forward_gm_clock_identity(void *priv)
-{
-	struct isochron_daemon *prog = priv;
-
-	if (!prog->send) {
-		fprintf(stderr, "Sender role not instantiated\n");
-		return -EINVAL;
-	}
-
-	if (!prog->send->ptpmon) {
-		fprintf(stderr, "Sender ptpmon not instantiated\n");
-		return -EINVAL;
-	}
-
-	return isochron_forward_gm_clock_identity(prog->mgmt_sock,
-						  prog->send->ptpmon);
-}
-
-static int prog_forward_test_state(void *priv)
+static int prog_forward_gm_clock_identity(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
 
 	if (!send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	return isochron_forward_test_state(prog->mgmt_sock, send->test_state);
+	if (!send->ptpmon) {
+		mgmt_extack(extack, "Sender ptpmon not instantiated");
+		return -EINVAL;
+	}
+
+	return isochron_forward_gm_clock_identity(prog->mgmt_sock,
+						  send->ptpmon, extack);
 }
 
-static int prog_forward_current_clock_tai(void *priv)
+static int prog_forward_test_state(void *priv, char *extack)
+{
+	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
+
+	if (!send) {
+		mgmt_extack(extack, "Sender role not instantiated");
+		return -EINVAL;
+	}
+
+	return isochron_forward_test_state(prog->mgmt_sock, send->test_state,
+					   extack);
+}
+
+static int prog_forward_current_clock_tai(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 
-	return isochron_forward_current_clock_tai(prog->mgmt_sock);
+	return isochron_forward_current_clock_tai(prog->mgmt_sock, extack);
 }
 
-static int prog_forward_oper_base_time(void *priv)
+static int prog_forward_oper_base_time(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
@@ -943,7 +951,7 @@ static int prog_forward_oper_base_time(void *priv)
 	int rc;
 
 	if (!send) {
-		fprintf(stderr, "Sender role not instantiated\n");
+		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
@@ -952,7 +960,7 @@ static int prog_forward_oper_base_time(void *priv)
 	rc = isochron_send_tlv(prog->mgmt_sock, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_OPER_BASE_TIME, sizeof(t));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(prog->mgmt_sock, &t, sizeof(t));
 

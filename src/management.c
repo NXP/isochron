@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /* Copyright 2021 NXP */
 #include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "argparser.h"
@@ -12,6 +13,7 @@
 
 struct isochron_mgmt_handler {
 	const struct isochron_mgmt_ops *ops;
+	struct isochron_error *error_table;
 };
 
 const char *mid_to_string(enum isochron_management_id mid)
@@ -187,6 +189,115 @@ static void isochron_drain_sk(struct sk *sock, size_t len)
 	};
 }
 
+int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
+			     struct isochron_error *err)
+{
+	struct isochron_management_message msg;
+	size_t payload_length, tlv_length;
+	struct isochron_tlv tlv;
+	__be32 rc_be;
+	ssize_t len;
+	int rc;
+
+	rc = isochron_send_tlv(sock, ISOCHRON_GET_ERROR, mid, 0);
+	if (rc)
+		return rc;
+
+	len = sk_recv(sock, &msg, sizeof(msg), 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
+		fprintf(stderr,
+			"Failed to get error for MID %s: unexpected message version %d in response\n",
+			mid_to_string(mid), msg.version);
+		return -EBADMSG;
+	}
+
+	if (msg.action != ISOCHRON_RESPONSE) {
+		fprintf(stderr,
+			"Failed to get error for MID %s: unexpected action %d in response\n",
+			mid_to_string(mid), msg.action);
+		return -EBADMSG;
+	}
+
+	payload_length = __be32_to_cpu(msg.payload_length);
+	if (payload_length < sizeof(tlv)) {
+		fprintf(stderr,
+			"Failed to get error for MID %s: TLV header length %zu shorter than expected\n",
+			mid_to_string(mid), payload_length);
+		isochron_drain_sk(sock, payload_length);
+		return -EBADMSG;
+	}
+
+	len = sk_recv(sock, &tlv, sizeof(tlv), 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	payload_length -= sizeof(tlv);
+
+	tlv_length = __be32_to_cpu(tlv.length_field);
+	if (tlv_length < sizeof(rc_be)) {
+		fprintf(stderr,
+			"Failed to get error for MID %s: expected TLV length at least %zu in response, got %zu\n",
+			mid_to_string(mid), sizeof(rc_be), tlv_length);
+		isochron_drain_sk(sock, tlv_length);
+		return -EBADMSG;
+	}
+
+	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
+		fprintf(stderr,
+			"Failed to get error for MID %s: unexpected TLV type %d in response\n",
+			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
+		isochron_drain_sk(sock, tlv_length);
+		return -EBADMSG;
+	}
+
+	if (__be16_to_cpu(tlv.management_id) != mid) {
+		fprintf(stderr,
+			"Failed to get error for MID %s: response for unexpected MID %s\n",
+			mid_to_string(mid),
+			mid_to_string(__be16_to_cpu(tlv.management_id)));
+		isochron_drain_sk(sock, tlv_length);
+		return -EBADMSG;
+	}
+
+	len = sk_recv(sock, &rc_be, sizeof(rc_be), 0);
+	if (len <= 0)
+		return len ? len : -ECONNRESET;
+
+	err->rc = (int)__be32_to_cpu(rc_be);
+	memset(err->extack, 0, ISOCHRON_EXTACK_SIZE);
+
+	payload_length -= sizeof(rc_be);
+	if (payload_length >= ISOCHRON_EXTACK_SIZE) {
+		fprintf(stderr, "extack message too long, discarding\n");
+		isochron_drain_sk(sock, tlv_length);
+	}
+
+	if (payload_length) {
+		len = sk_recv(sock, err->extack, payload_length, 0);
+		if (len <= 0)
+			return len ? len : -ECONNRESET;
+	}
+
+	return 0;
+}
+
+static void isochron_print_mid_error(struct sk *sock,
+				     enum isochron_management_id mid)
+{
+	struct isochron_error err;
+
+	if (isochron_query_mid_error(sock, mid, &err))
+		return;
+
+	if (strlen(err.extack))
+		fprintf(stderr, "Remote error %d: %s\n", err.rc, err.extack);
+	else
+		pr_err(err.rc, "Remote error %d: %m\n");
+}
+
 int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		       void *data, size_t data_len)
 {
@@ -208,6 +319,7 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to query MID %s: unexpected message version %d in response\n",
 			mid_to_string(mid), msg.version);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -215,6 +327,7 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to query MID %s: unexpected action %d in response\n",
 			mid_to_string(mid), msg.action);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -231,6 +344,7 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 				payload_length);
 		}
 		isochron_drain_sk(sock, payload_length);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -244,6 +358,7 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 			"Failed to query MID %s: expected TLV length %zu in response, got %zu\n",
 			mid_to_string(mid), data_len, tlv_length);
 		isochron_drain_sk(sock, tlv_length);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -251,6 +366,7 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr, "Failed to query MID %s: unexpected TLV type %d in response\n",
 			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
 		isochron_drain_sk(sock, tlv_length);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -260,6 +376,7 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 			mid_to_string(mid),
 			mid_to_string(__be16_to_cpu(tlv.management_id)));
 		isochron_drain_sk(sock, tlv_length);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -272,17 +389,37 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 	return 0;
 }
 
+void mgmt_extack(char *extack, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(extack, ISOCHRON_EXTACK_SIZE - 1, fmt, ap);
+	va_end(ap);
+
+	/* Print to the local error output as well, for posterity */
+	fprintf(stderr, "%s\n", extack);
+}
+
 static void isochron_mgmt_tlv_get(struct sk *sock, void *priv,
 				  enum isochron_management_id mid,
-				  const struct isochron_mgmt_ops *ops)
+				  const struct isochron_mgmt_ops *ops,
+				  struct isochron_error *err)
 {
+	int rc;
+
 	if (!ops->get) {
-		fprintf(stderr, "Unhandled GET for MID %s\n",
-			mid_to_string(mid));
+		mgmt_extack(err->extack, "Unhandled GET for MID %s",
+			    mid_to_string(mid));
+		err->rc = -EOPNOTSUPP;
 		goto error;
 	}
 
-	if (ops->get(priv))
+	*err->extack = 0;
+
+	rc = ops->get(priv, err->extack);
+	err->rc = rc;
+	if (rc)
 		goto error;
 
 	return;
@@ -292,34 +429,67 @@ error:
 
 static void isochron_mgmt_tlv_set(struct sk *sock, struct isochron_tlv *tlv,
 				  void *priv, enum isochron_management_id mid,
-				  const struct isochron_mgmt_ops *ops)
+				  const struct isochron_mgmt_ops *ops,
+				  struct isochron_error *err)
 {
 	size_t tlv_len = __be32_to_cpu(tlv->length_field);
 	int rc;
 
 	if (!ops->set) {
-		fprintf(stderr, "Unhandled SET for MID %s\n",
-			mid_to_string(mid));
+		mgmt_extack(err->extack, "Unhandled SET for MID %s",
+			    mid_to_string(mid));
+		err->rc = -EOPNOTSUPP;
 		goto error;
 	}
 
 	if (tlv_len != ops->struct_size) {
-		fprintf(stderr,
-			"Expected %zu bytes for SET of MID %s, got %zu\n",
-			ops->struct_size, mid_to_string(mid), tlv_len);
+		mgmt_extack(err->extack,
+			    "Expected %zu bytes for SET of MID %s, got %zu",
+			    ops->struct_size, mid_to_string(mid), tlv_len);
+		err->rc = -EINVAL;
 		goto error;
 	}
 
-	rc = ops->set(priv, isochron_tlv_data(tlv));
+	*err->extack = 0;
+
+	rc = ops->set(priv, isochron_tlv_data(tlv), err->extack);
+	err->rc = rc;
 	if (rc)
 		goto error;
 
 	/* Echo back the TLV data as ack */
 	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE, mid, ops->struct_size);
+	if (rc) {
+		mgmt_extack(err->extack, "Failed to send TLV response");
+		err->rc = rc;
+		goto error;
+	}
+
+	sk_send(sock, isochron_tlv_data(tlv), ops->struct_size);
+
+	return;
+
+error:
+	isochron_send_empty_tlv(sock, mid);
+}
+
+static void isochron_forward_mgmt_err(struct sk *sock,
+				      enum isochron_management_id mid,
+				      const struct isochron_error *err)
+{
+	size_t len = strlen(err->extack);
+	__be32 err_be;
+	int rc;
+
+	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE, mid,
+			       sizeof(__be32) + len);
 	if (rc)
 		goto error;
 
-	sk_send(sock, isochron_tlv_data(tlv), ops->struct_size);
+	err_be = __cpu_to_be32(err->rc);
+	sk_send(sock, &err_be, sizeof(err_be));
+	if (len)
+		sk_send(sock, err->extack, len);
 
 	return;
 
@@ -364,6 +534,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			"Failed to update MID %s: unexpected message version %d in response\n",
 			mid_to_string(mid), msg.version);
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -372,6 +543,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			"Failed to update MID %s: unexpected action %d in response\n",
 			mid_to_string(mid), msg.action);
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -389,6 +561,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 		}
 		isochron_drain_sk(sock, payload_length);
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -405,6 +578,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			mid_to_string(mid), data_len, tlv_length);
 		isochron_drain_sk(sock, tlv_length);
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -414,6 +588,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
 		isochron_drain_sk(sock, tlv_length);
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -424,6 +599,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			mid_to_string(__be16_to_cpu(tlv.management_id)));
 		isochron_drain_sk(sock, tlv_length);
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -438,6 +614,7 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			"Failed to update MID %s: unexpected reply contents\n",
 			mid_to_string(mid));
 		free(tmp_buf);
+		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
 
@@ -821,6 +998,7 @@ int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 	struct isochron_management_message msg;
 	const struct isochron_mgmt_ops *ops;
 	enum isochron_management_id mid;
+	struct isochron_error *err;
 	unsigned char buf[BUFSIZ];
 	struct isochron_tlv *tlv;
 	size_t parsed_len = 0;
@@ -840,7 +1018,12 @@ int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 		return 0;
 	}
 
-	if (msg.action != ISOCHRON_GET && msg.action != ISOCHRON_SET) {
+	switch (msg.action) {
+	case ISOCHRON_GET:
+	case ISOCHRON_SET:
+	case ISOCHRON_GET_ERROR:
+		break;
+	default:
 		fprintf(stderr, "Unexpected action %d\n", msg.action);
 		return 0;
 	}
@@ -878,13 +1061,17 @@ int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 			goto next;
 		}
 
+		err = &handler->error_table[mid];
+
 		switch (msg.action) {
 		case ISOCHRON_GET:
-			isochron_mgmt_tlv_get(sock, priv, mid, ops);
+			isochron_mgmt_tlv_get(sock, priv, mid, ops, err);
 			break;
 		case ISOCHRON_SET:
-			isochron_mgmt_tlv_set(sock, tlv, priv, mid, ops);
+			isochron_mgmt_tlv_set(sock, tlv, priv, mid, ops, err);
 			break;
+		case ISOCHRON_GET_ERROR:
+			isochron_forward_mgmt_err(sock, mid, err);
 		default:
 			break;
 		}
@@ -896,7 +1083,8 @@ next:
 	return 0;
 }
 
-int isochron_forward_log(struct sk *sock, struct isochron_log *log, size_t size)
+int isochron_forward_log(struct sk *sock, struct isochron_log *log,
+			 size_t size, char *extack)
 {
 	int rc;
 
@@ -904,14 +1092,15 @@ int isochron_forward_log(struct sk *sock, struct isochron_log *log, size_t size)
 			       ISOCHRON_MID_LOG,
 			       isochron_log_buf_tlv_size(log));
 	if (rc)
-		return 0;
+		return rc;
 
 	isochron_log_xmit(log, sock);
 	isochron_log_teardown(log);
 	return isochron_log_init(log, size);
 }
 
-int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon)
+int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon,
+				   char *extack)
 {
 	__s64 sysmon_offset, sysmon_delay;
 	struct isochron_sysmon_offset so;
@@ -921,9 +1110,8 @@ int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon)
 	rc = sysmon_get_offset(sysmon, &sysmon_offset, &sysmon_ts,
 			       &sysmon_delay);
 	if (rc) {
-		pr_err(rc, "Failed to read sysmon offset: %m\n");
-		isochron_send_empty_tlv(sock, ISOCHRON_MID_SYSMON_OFFSET);
-		return 0;
+		mgmt_extack(extack, "Failed to read sysmon offset: %m");
+		return rc;
 	}
 
 	so.offset = __cpu_to_be64(sysmon_offset);
@@ -934,14 +1122,15 @@ int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon)
 			       ISOCHRON_MID_SYSMON_OFFSET,
 			       sizeof(so));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(sock, &so, sizeof(so));
 
 	return 0;
 }
 
-int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon)
+int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon,
+				   char *extack)
 {
 	struct isochron_ptpmon_offset po;
 	struct current_ds current_ds;
@@ -951,9 +1140,8 @@ int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon)
 	rc = ptpmon_query_clock_mid(ptpmon, MID_CURRENT_DATA_SET,
 				    &current_ds, sizeof(current_ds));
 	if (rc) {
-		pr_err(rc, "Failed to read ptpmon offset: %m\n");
-		isochron_send_empty_tlv(sock, ISOCHRON_MID_PTPMON_OFFSET);
-		return 0;
+		mgmt_extack(extack, "Failed to read ptpmon offset: %m");
+		return rc;
 	}
 
 	ptpmon_offset = master_offset_from_current_ds(&current_ds);
@@ -963,7 +1151,7 @@ int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon)
 			       ISOCHRON_MID_PTPMON_OFFSET,
 			       sizeof(po));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(sock, &po, sizeof(po));
 
@@ -971,7 +1159,7 @@ int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon)
 }
 
 int isochron_forward_utc_offset(struct sk *sock, struct ptpmon *ptpmon,
-				int *utc_offset)
+				int *utc_offset, char *extack)
 {
 	struct time_properties_ds time_properties_ds;
 	struct isochron_utc_offset utc;
@@ -980,9 +1168,8 @@ int isochron_forward_utc_offset(struct sk *sock, struct ptpmon *ptpmon,
 	rc = ptpmon_query_clock_mid(ptpmon, MID_TIME_PROPERTIES_DATA_SET,
 				    &time_properties_ds, sizeof(time_properties_ds));
 	if (rc) {
-		pr_err(rc, "Failed to read ptpmon UTC offset: %m\n");
-		isochron_send_empty_tlv(sock, ISOCHRON_MID_UTC_OFFSET);
-		return 0;
+		mgmt_extack(extack, "Failed to read ptpmon UTC offset: %m");
+		return rc;
 	}
 
 	utc.offset = time_properties_ds.current_utc_offset;
@@ -1000,7 +1187,8 @@ int isochron_forward_utc_offset(struct sk *sock, struct ptpmon *ptpmon,
 }
 
 int isochron_forward_port_state(struct sk *sock, struct ptpmon *ptpmon,
-				const char *if_name, struct mnl_socket *rtnl)
+				const char *if_name, struct mnl_socket *rtnl,
+				char *extack)
 {
 	struct isochron_port_state state;
 	enum port_state port_state;
@@ -1009,9 +1197,8 @@ int isochron_forward_port_state(struct sk *sock, struct ptpmon *ptpmon,
 	rc = ptpmon_query_port_state_by_name(ptpmon, if_name, rtnl,
 					     &port_state);
 	if (rc) {
-		pr_err(rc, "Failed to read ptpmon port state: %m\n");
-		isochron_send_empty_tlv(sock, ISOCHRON_MID_PORT_STATE);
-		return 0;
+		mgmt_extack(extack, "Failed to read ptpmon port state: %m");
+		return rc;
 	}
 
 	state.state = port_state;
@@ -1019,14 +1206,15 @@ int isochron_forward_port_state(struct sk *sock, struct ptpmon *ptpmon,
 	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_PORT_STATE, sizeof(state));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(sock, &state, sizeof(state));
 
 	return 0;
 }
 
-int isochron_forward_test_state(struct sk *sock, enum test_state state)
+int isochron_forward_test_state(struct sk *sock, enum test_state state,
+				char *extack)
 {
 	struct isochron_test_state test_state = {
 		.test_state = state,
@@ -1037,7 +1225,7 @@ int isochron_forward_test_state(struct sk *sock, enum test_state state)
 			       ISOCHRON_MID_TEST_STATE,
 			       sizeof(test_state));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(sock, &test_state, sizeof(test_state));
 
@@ -1045,7 +1233,7 @@ int isochron_forward_test_state(struct sk *sock, enum test_state state)
 }
 
 int isochron_forward_port_link_state(struct sk *sock, const char *if_name,
-				     struct mnl_socket *rtnl)
+				     struct mnl_socket *rtnl, char *extack)
 {
 	struct isochron_port_link_state s = {
 		.link_state = PORT_LINK_STATE_UNKNOWN,
@@ -1055,8 +1243,8 @@ int isochron_forward_port_link_state(struct sk *sock, const char *if_name,
 
 	rc = rtnl_query_link_state(rtnl, if_name, &running);
 	if (rc) {
-		pr_err(rc, "Failed to query port %s link state: %m\n",
-		       if_name);
+		mgmt_extack(extack, "Failed to query port %s link state",
+			    if_name);
 	} else {
 		s.link_state = running ? PORT_LINK_STATE_RUNNING :
 					 PORT_LINK_STATE_DOWN;
@@ -1065,14 +1253,15 @@ int isochron_forward_port_link_state(struct sk *sock, const char *if_name,
 	rc = isochron_send_tlv(sock, ISOCHRON_RESPONSE,
 			       ISOCHRON_MID_PORT_LINK_STATE, sizeof(s));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(sock, &s, sizeof(s));
 
 	return 0;
 }
 
-int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon)
+int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon,
+				       char *extack)
 {
 	struct isochron_gm_clock_identity gm;
 	struct parent_data_set parent_ds;
@@ -1081,9 +1270,8 @@ int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon)
 	rc = ptpmon_query_clock_mid(ptpmon, MID_PARENT_DATA_SET,
 				    &parent_ds, sizeof(parent_ds));
 	if (rc) {
-		pr_err(rc, "Failed to read ptpmon GM clockID: %m\n");
-		isochron_send_empty_tlv(sock, ISOCHRON_MID_GM_CLOCK_IDENTITY);
-		return 0;
+		mgmt_extack(extack, "Failed to read ptpmon GM clockID: %m");
+		return rc;
 	}
 
 	memcpy(&gm.clock_identity, &parent_ds.grandmaster_identity,
@@ -1100,7 +1288,7 @@ int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon)
 	return 0;
 }
 
-int isochron_forward_current_clock_tai(struct sk *sock)
+int isochron_forward_current_clock_tai(struct sk *sock, char *extack)
 {
 	struct isochron_time t = {};
 	struct timespec now_ts;
@@ -1115,7 +1303,7 @@ int isochron_forward_current_clock_tai(struct sk *sock)
 			       ISOCHRON_MID_CURRENT_CLOCK_TAI,
 			       sizeof(t));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(sock, &t, sizeof(t));
 
@@ -1218,17 +1406,26 @@ struct isochron_mgmt_handler *
 isochron_mgmt_handler_create(const struct isochron_mgmt_ops *ops)
 {
 	struct isochron_mgmt_handler *handler;
+	struct isochron_error *error_table;
 
 	handler = calloc(1, sizeof(*handler));
 	if (!handler)
 		return NULL;
 
+	error_table = calloc(__ISOCHRON_MID_MAX, sizeof(*error_table));
+	if (!error_table) {
+		free(handler);
+		return NULL;
+	}
+
 	handler->ops = ops;
+	handler->error_table = error_table;
 
 	return handler;
 }
 
 void isochron_mgmt_handler_destroy(struct isochron_mgmt_handler *handler)
 {
+	free(handler->error_table);
 	free(handler);
 }

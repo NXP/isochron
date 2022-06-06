@@ -421,7 +421,7 @@ static int prog_client_connect_event(struct isochron_rcv *prog)
 	return 0;
 }
 
-static int prog_get_packet_log(void *priv)
+static int prog_get_packet_log(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
@@ -435,27 +435,29 @@ static int prog_get_packet_log(void *priv)
 	return prog_forward_isochron_log(prog);
 }
 
-static int prog_forward_sysmon_offset(void *priv)
+static int prog_forward_sysmon_offset(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
-	return isochron_forward_sysmon_offset(prog->mgmt_sock, prog->sysmon);
+	return isochron_forward_sysmon_offset(prog->mgmt_sock, prog->sysmon,
+					      extack);
 }
 
-static int prog_forward_ptpmon_offset(void *priv)
+static int prog_forward_ptpmon_offset(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
-	return isochron_forward_ptpmon_offset(prog->mgmt_sock, prog->ptpmon);
+	return isochron_forward_ptpmon_offset(prog->mgmt_sock, prog->ptpmon,
+					      extack);
 }
 
-static int prog_forward_utc_offset(void *priv)
+static int prog_forward_utc_offset(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 	int rc, utc_offset;
 
 	rc = isochron_forward_utc_offset(prog->mgmt_sock, prog->ptpmon,
-					 &utc_offset);
+					 &utc_offset, extack);
 	if (rc)
 		return rc;
 
@@ -465,31 +467,32 @@ static int prog_forward_utc_offset(void *priv)
 	return 0;
 }
 
-static int prog_forward_port_state(void *priv)
+static int prog_forward_port_state(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
 	return isochron_forward_port_state(prog->mgmt_sock, prog->ptpmon,
-					   prog->if_name, prog->rtnl);
+					   prog->if_name, prog->rtnl, extack);
 }
 
-static int prog_forward_port_link_state(void *priv)
+static int prog_forward_port_link_state(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
 	return isochron_forward_port_link_state(prog->mgmt_sock,
-						prog->if_name, prog->rtnl);
+						prog->if_name, prog->rtnl,
+						extack);
 }
 
-static int prog_forward_gm_clock_identity(void *priv)
+static int prog_forward_gm_clock_identity(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
 	return isochron_forward_gm_clock_identity(prog->mgmt_sock,
-						  prog->ptpmon);
+						  prog->ptpmon, extack);
 }
 
-static int prog_forward_destination_mac(void *priv)
+static int prog_forward_destination_mac(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 	struct isochron_mac_addr mac;
@@ -502,21 +505,21 @@ static int prog_forward_destination_mac(void *priv)
 			       ISOCHRON_MID_DESTINATION_MAC,
 			       sizeof(mac));
 	if (rc)
-		return 0;
+		return rc;
 
 	sk_send(prog->mgmt_sock, &mac, sizeof(mac));
 
 	return 0;
 }
 
-static int prog_forward_current_clock_tai(void *priv)
+static int prog_forward_current_clock_tai(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
-	return isochron_forward_current_clock_tai(prog->mgmt_sock);
+	return isochron_forward_current_clock_tai(prog->mgmt_sock, extack);
 }
 
-static int prog_set_packet_count(void *priv, void *ptr)
+static int prog_set_packet_count(void *priv, void *ptr, char *extack)
 {
 	struct isochron_packet_count *packet_count = ptr;
 	struct isochron_rcv *prog = priv;
@@ -529,9 +532,10 @@ static int prog_set_packet_count(void *priv, void *ptr)
 	rc = isochron_log_init(&prog->log, iterations *
 			       sizeof(struct isochron_rcv_pkt_data));
 	if (rc) {
-		pr_err(rc, "Could not allocate memory for %zu iterations: %m\n",
-		       iterations);
-		return -ENOMEM;
+		mgmt_extack(extack,
+			    "Could not allocate log for %zu iterations",
+			    iterations);
+		return rc;
 	}
 
 	prog->iterations = iterations;
@@ -539,14 +543,14 @@ static int prog_set_packet_count(void *priv, void *ptr)
 	/* Clock is ticking! */
 	rc = prog_rearm_data_timeout_fd(prog);
 	if (rc) {
-		pr_err(rc, "Could not arm timeout timer: %m\n");
+		mgmt_extack(extack, "Could not arm timeout timer");
 		return rc;
 	}
 
 	return 0;
 }
 
-static int prog_update_l2_enabled(void *priv, void *ptr)
+static int prog_update_l2_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_rcv *prog = priv;
@@ -565,7 +569,7 @@ static int prog_update_l2_enabled(void *priv, void *ptr)
 	return rc;
 }
 
-static int prog_update_l4_enabled(void *priv, void *ptr)
+static int prog_update_l4_enabled(void *priv, void *ptr, char *extack)
 {
 	struct isochron_feature_enabled *f = ptr;
 	struct isochron_rcv *prog = priv;

@@ -15,6 +15,7 @@
 #define ISOCHRON_STATS_PORT	5000 /* TCP */
 #define ISOCHRON_DATA_PORT	6000 /* UDP */
 #define ISOCHRON_MANAGEMENT_VERSION 2
+#define ISOCHRON_EXTACK_SIZE	1020
 
 /* Don't forget to update mid_to_string() when adding new members */
 enum isochron_management_id {
@@ -70,6 +71,7 @@ enum isochron_management_action {
 	ISOCHRON_GET = 0,
 	ISOCHRON_SET,
 	ISOCHRON_RESPONSE,
+	ISOCHRON_GET_ERROR,
 };
 
 enum isochron_role {
@@ -316,18 +318,24 @@ static inline void *isochron_tlv_data(struct isochron_tlv *tlv)
 typedef int isochron_tlv_cb_t(void *priv, struct isochron_tlv *tlv);
 typedef int isochron_mgmt_tlv_set_cb_t(void *priv, void *ptr);
 
-int isochron_forward_log(struct sk *sock, struct isochron_log *log, size_t size);
-int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon);
-int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon);
+int isochron_forward_log(struct sk *sock, struct isochron_log *log,
+			 size_t size, char *extack);
+int isochron_forward_sysmon_offset(struct sk *sock, struct sysmon *sysmon,
+				   char *extack);
+int isochron_forward_ptpmon_offset(struct sk *sock, struct ptpmon *ptpmon,
+				   char *extack);
 int isochron_forward_utc_offset(struct sk *sock, struct ptpmon *ptpmon,
-				int *utc_offset);
+				int *utc_offset, char *extack);
 int isochron_forward_port_state(struct sk *sock, struct ptpmon *ptpmon,
-				const char *if_name, struct mnl_socket *rtnl);
-int isochron_forward_test_state(struct sk *sock, enum test_state state);
+				const char *if_name, struct mnl_socket *rtnl,
+				char *extack);
+int isochron_forward_test_state(struct sk *sock, enum test_state state,
+				char *extack);
 int isochron_forward_port_link_state(struct sk *sock, const char *if_name,
-				     struct mnl_socket *rtnl);
-int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon);
-int isochron_forward_current_clock_tai(struct sk *sock);
+				     struct mnl_socket *rtnl, char *extack);
+int isochron_forward_gm_clock_identity(struct sk *sock, struct ptpmon *ptpmon,
+				       char *extack);
+int isochron_forward_current_clock_tai(struct sk *sock, char *extack);
 
 int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 				__s64 *ptpmon_offset, int *utc_offset,
@@ -337,9 +345,16 @@ int isochron_collect_sync_stats(struct sk *sock, __s64 *sysmon_offset,
 int isochron_query_current_clock_tai(struct sk *sock, __s64 *clock_tai);
 int isochron_query_oper_base_time(struct sk *sock, __s64 *base_time);
 
+struct isochron_error {
+	int rc;
+	char extack[ISOCHRON_EXTACK_SIZE];
+};
+
+void mgmt_extack(char *extack, const char *fmt, ...);
+
 struct isochron_mgmt_ops {
-	int (*get)(void *priv);
-	int (*set)(void *priv, void *ptr);
+	int (*get)(void *priv, char *extack);
+	int (*set)(void *priv, void *ptr, char *extack);
 	size_t struct_size;
 };
 
@@ -351,5 +366,8 @@ void isochron_mgmt_handler_destroy(struct isochron_mgmt_handler *handler);
 
 int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 			void *priv, bool *socket_closed);
+
+int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
+			     struct isochron_error *err);
 
 #endif
