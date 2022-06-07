@@ -483,48 +483,6 @@ static int prog_init_syncmon(struct isochron_orch *prog)
 	return 0;
 }
 
-static int prog_run_test(struct isochron_orch *prog)
-{
-	bool sync_ok, test_valid;
-	int rc;
-
-	rc = prog_init_syncmon(prog);
-	if (rc)
-		return rc;
-
-	rc = syncmon_wait_until_ok(prog->syncmon);
-	if (rc) {
-		pr_err(rc, "Failed to check sync status: %m\n");
-		goto out;
-	}
-
-	do {
-		rc = prog_start_senders(prog);
-		if (rc)
-			goto out;
-
-		sync_ok = syncmon_monitor(prog->syncmon,
-					  prog_all_senders_stopped,
-					  prog);
-
-		rc = prog_stop_senders(prog);
-		if (rc)
-			goto out;
-
-		if (signal_received) {
-			rc = -EINTR;
-			goto out;
-		}
-
-		test_valid = prog_validate_test(prog);
-	} while (!sync_ok || !test_valid);
-
-out:
-	syncmon_destroy(prog->syncmon);
-
-	return rc;
-}
-
 static int prog_collect_logs(struct isochron_orch *prog)
 {
 	struct isochron_orch_node *node, *sender;
@@ -572,6 +530,52 @@ static int prog_collect_logs(struct isochron_orch *prog)
 	}
 
 	return 0;
+}
+
+static int prog_run_test(struct isochron_orch *prog)
+{
+	bool sync_ok, test_valid;
+	int rc;
+
+	rc = prog_init_syncmon(prog);
+	if (rc)
+		return rc;
+
+	rc = syncmon_wait_until_ok(prog->syncmon);
+	if (rc) {
+		pr_err(rc, "Failed to check sync status: %m\n");
+		goto out;
+	}
+
+	do {
+		rc = prog_start_senders(prog);
+		if (rc)
+			goto out;
+
+		sync_ok = syncmon_monitor(prog->syncmon,
+					  prog_all_senders_stopped,
+					  prog);
+
+		rc = prog_collect_logs(prog);
+		if (rc)
+			goto out;
+
+		rc = prog_stop_senders(prog);
+		if (rc)
+			goto out;
+
+		if (signal_received) {
+			rc = -EINTR;
+			goto out;
+		}
+
+		test_valid = prog_validate_test(prog);
+	} while (!sync_ok || !test_valid);
+
+out:
+	syncmon_destroy(prog->syncmon);
+
+	return rc;
 }
 
 static int prog_marshall_data_to_receiver(struct isochron_orch_node *node)
@@ -1471,10 +1475,6 @@ int isochron_orchestrate_main(int argc, char *argv[])
 		goto out;
 
 	rc = prog_run_test(&prog);
-	if (rc)
-		goto out;
-
-	rc = prog_collect_logs(&prog);
 
 out:
 	prog_teardown(&prog);

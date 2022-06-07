@@ -32,7 +32,7 @@ struct isochron_daemon {
 	bool have_client;
 	struct isochron_send *send;
 	struct mnl_socket *rtnl;
-	bool test_running;
+	bool session_active;
 };
 
 static int prog_check_admin_state(struct isochron_daemon *prog)
@@ -57,8 +57,9 @@ static int prog_check_admin_state(struct isochron_daemon *prog)
 	return 0;
 }
 
-static int prog_prepare_session(struct isochron_send *send)
+static int prog_prepare_send_session(struct isochron_daemon *prog)
 {
+	struct isochron_send *send = prog->send;
 	int rc;
 
 	/* Hack to suppress local log output to the filesystem, since
@@ -97,6 +98,8 @@ static int prog_prepare_session(struct isochron_send *send)
 	if (rc)
 		goto err_start_threads;
 
+	prog->session_active = true;
+
 	return 0;
 
 err_start_threads:
@@ -108,6 +111,16 @@ err_init_data_sock:
 	return rc;
 }
 
+static void prog_teardown_send_session(struct isochron_daemon *prog)
+{
+	struct isochron_send *send = prog->send;
+
+	prog->session_active = false;
+	isochron_send_stop_threads(send);
+	isochron_log_teardown(&send->log);
+	isochron_send_teardown_data_sock(send);
+}
+
 static void isochron_teardown_sender(struct isochron_daemon *prog)
 {
 	struct isochron_send *send = prog->send;
@@ -115,18 +128,14 @@ static void isochron_teardown_sender(struct isochron_daemon *prog)
 	if (!send)
 		return;
 
-	if (prog->test_running) {
-		isochron_send_stop_threads(send);
-		prog->test_running = false;
-	}
+	if (prog->session_active)
+		prog_teardown_send_session(prog);
 
 	if (send->ptpmon)
 		isochron_send_teardown_ptpmon(send);
 	if (send->sysmon)
 		isochron_send_teardown_sysmon(send);
 
-	isochron_log_teardown(&send->log);
-	isochron_send_teardown_data_sock(send);
 	free(send);
 	prog->send = NULL;
 }
@@ -734,15 +743,14 @@ static int prog_update_test_state(void *priv, void *ptr, char *extack)
 	}
 
 	if (s->test_state == ISOCHRON_TEST_STATE_IDLE) {
-		if (!prog->test_running) {
+		if (!prog->session_active) {
 			mgmt_extack(extack, "Sender already idle");
 			return -EINVAL;
 		}
 
-		isochron_send_stop_threads(prog->send);
-		prog->test_running = false;
+		prog_teardown_send_session(prog);
 	} else if (s->test_state == ISOCHRON_TEST_STATE_RUNNING) {
-		if (prog->test_running) {
+		if (prog->session_active) {
 			mgmt_extack(extack, "Sender already running a test");
 			return -EINVAL;
 		}
@@ -751,11 +759,9 @@ static int prog_update_test_state(void *priv, void *ptr, char *extack)
 		if (rc)
 			return rc;
 
-		rc = prog_prepare_session(prog->send);
+		rc = prog_prepare_send_session(prog);
 		if (rc)
 			return rc;
-
-		prog->test_running = true;
 	}
 
 	return 0;
@@ -785,6 +791,11 @@ static int prog_forward_isochron_log(void *priv, char *extack)
 
 	if (!send) {
 		mgmt_extack(extack, "Sender role not instantiated");
+		return -EINVAL;
+	}
+
+	if (!prog->session_active) {
+		mgmt_extack(extack, "Log exists only while session is active");
 		return -EINVAL;
 	}
 
