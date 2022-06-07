@@ -70,7 +70,7 @@ static void trace(struct isochron_send *prog, const char *fmt, ...)
 
 	if (write(prog->trace_mark_fd, prog->tracebuf, len) < 0) {
 		perror("trace");
-		exit(0);
+		exit(EXIT_FAILURE);
 	}
 }
 
