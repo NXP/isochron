@@ -381,8 +381,7 @@ static int do_work(struct isochron_send *prog, int iteration, __s64 scheduled,
 	return 0;
 }
 
-static int isochron_missing_txts_dump(void __attribute__((unused)) *priv,
-				      void *pkt)
+static int isochron_missing_txts_dump(void *priv, void *pkt)
 {
 	struct isochron_send_pkt_data *send_pkt = pkt;
 	__u32 seqid = __be32_to_cpu(send_pkt->seqid);
