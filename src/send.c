@@ -523,6 +523,7 @@ static void *prog_tx_timestamp_thread(void *arg)
 	clock_nanosleep(prog->clkid, TIMER_ABSTIME, &wakeup_ts, NULL);
 
 	prog->tx_timestamp_tid_rc = wait_for_txtimestamps(prog);
+	prog->tx_tstamp_tid_stopped = true;
 
 	return &prog->tx_timestamp_tid_rc;
 }
@@ -828,13 +829,19 @@ void isochron_send_stop_threads(struct isochron_send *prog)
 	prog_tx_timestamp_thread_destroy(prog);
 }
 
+void isochron_send_init_thread_state(struct isochron_send *prog)
+{
+	prog->timestamped = 0;
+	prog->send_tid_should_stop = false;
+	prog->send_tid_stopped = false;
+	prog->tx_tstamp_tid_stopped = false;
+}
+
 static int prog_prepare_session(struct isochron_send *prog)
 {
 	int rc;
 
-	prog->timestamped = 0;
-	prog->send_tid_should_stop = false;
-	prog->send_tid_stopped = false;
+	isochron_send_init_thread_state(prog);
 
 	rc = isochron_log_init(&prog->log, prog->iterations *
 			       sizeof(struct isochron_send_pkt_data));

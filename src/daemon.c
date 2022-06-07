@@ -78,10 +78,7 @@ static int prog_prepare_send_session(struct isochron_daemon *prog)
 		goto err_init_data_sock;
 
 	isochron_send_init_data_packet(send);
-
-	send->timestamped = 0;
-	send->send_tid_should_stop = false;
-	send->send_tid_stopped = false;
+	isochron_send_init_thread_state(send);
 
 	rc = isochron_log_init(&send->log, send->iterations *
 			       sizeof(struct isochron_send_pkt_data));
@@ -946,7 +943,7 @@ static int prog_forward_test_state(void *priv, char *extack)
 
 	if (!prog->session_active) {
 		test_state = ISOCHRON_TEST_STATE_IDLE;
-	} else if (send->send_tid_stopped) {
+	} else if (send->tx_tstamp_tid_stopped) {
 		test_state = ISOCHRON_TEST_STATE_IDLE;
 
 		if (send->tx_timestamp_tid_rc) {

@@ -18,6 +18,7 @@
 struct isochron_send {
 	volatile bool send_tid_should_stop;
 	volatile bool send_tid_stopped;
+	volatile bool tx_tstamp_tid_stopped;
 	unsigned char dest_mac[ETH_ALEN];
 	unsigned char src_mac[ETH_ALEN];
 	char if_name[IFNAMSIZ];
@@ -88,6 +89,7 @@ struct isochron_send {
 int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog);
 void isochron_send_prepare_default_args(struct isochron_send *prog);
 int isochron_send_interpret_args(struct isochron_send *prog);
+void isochron_send_init_thread_state(struct isochron_send *prog);
 void isochron_send_init_data_packet(struct isochron_send *prog);
 int isochron_send_init_data_sock(struct isochron_send *prog);
 void isochron_send_teardown_data_sock(struct isochron_send *prog);
