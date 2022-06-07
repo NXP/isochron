@@ -82,6 +82,7 @@ enum isochron_role {
 enum test_state {
 	ISOCHRON_TEST_STATE_IDLE,
 	ISOCHRON_TEST_STATE_RUNNING,
+	ISOCHRON_TEST_STATE_FAILED,
 };
 
 enum port_link_state {

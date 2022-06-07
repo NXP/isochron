@@ -82,7 +82,6 @@ struct isochron_send {
 	int send_tid_rc;
 	int tx_timestamp_tid_rc;
 	unsigned long cpumask;
-	enum test_state test_state;
 	struct syncmon *syncmon;
 };
 

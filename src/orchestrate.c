@@ -353,6 +353,29 @@ static bool prog_validate_oper_base_time(struct isochron_orch_node *node)
 	return false;
 }
 
+static bool prog_validate_test_exit_code(struct isochron_orch_node *node)
+{
+	struct isochron_error err;
+	int rc;
+
+	if (node->test_state != ISOCHRON_TEST_STATE_FAILED)
+		return true;
+
+	rc = isochron_query_mid_error(node->mgmt_sock, ISOCHRON_MID_TEST_STATE,
+				      &err);
+	if (rc) {
+		pr_err(rc,
+		       "Failed to retrieve test exit code for node %s: %m\n",
+		       node->name);
+		return false;
+	}
+
+	fprintf(stderr, "Node %s failed, repeating test: %s\n",
+		node->name, err.extack);
+
+	return false;
+}
+
 static bool prog_validate_test(struct isochron_orch *prog)
 {
 	struct isochron_orch_node *node;
@@ -362,6 +385,9 @@ static bool prog_validate_test(struct isochron_orch *prog)
 			continue;
 
 		if (!prog_validate_oper_base_time(node))
+			return false;
+
+		if (!prog_validate_test_exit_code(node))
 			return false;
 	}
 
@@ -556,9 +582,13 @@ static int prog_run_test(struct isochron_orch *prog)
 					  prog_all_senders_stopped,
 					  prog);
 
-		rc = prog_collect_logs(prog);
-		if (rc)
-			goto out;
+		test_valid = prog_validate_test(prog);
+
+		if (sync_ok && test_valid) {
+			rc = prog_collect_logs(prog);
+			if (rc)
+				goto out;
+		}
 
 		rc = prog_stop_senders(prog);
 		if (rc)
@@ -568,8 +598,6 @@ static int prog_run_test(struct isochron_orch *prog)
 			rc = -EINTR;
 			goto out;
 		}
-
-		test_valid = prog_validate_test(prog);
 	} while (!sync_ok || !test_valid);
 
 out:

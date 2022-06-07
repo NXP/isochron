@@ -937,14 +937,32 @@ static int prog_forward_test_state(void *priv, char *extack)
 {
 	struct isochron_daemon *prog = priv;
 	struct isochron_send *send = prog->send;
+	enum test_state test_state;
 
 	if (!send) {
 		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	return isochron_forward_test_state(prog->mgmt_sock, send->test_state,
-					   extack);
+	if (!prog->session_active) {
+		test_state = ISOCHRON_TEST_STATE_IDLE;
+	} else if (send->send_tid_stopped) {
+		test_state = ISOCHRON_TEST_STATE_IDLE;
+
+		if (send->tx_timestamp_tid_rc) {
+			mgmt_extack(extack, "TX timestamping thread failed");
+			test_state = ISOCHRON_TEST_STATE_FAILED;
+		}
+
+		if (send->send_tid_rc) {
+			mgmt_extack(extack, "Sender thread failed");
+			test_state = ISOCHRON_TEST_STATE_FAILED;
+		}
+	} else {
+		test_state = ISOCHRON_TEST_STATE_RUNNING;
+	}
+
+	return isochron_forward_test_state(prog->mgmt_sock, test_state, extack);
 }
 
 static int prog_forward_current_clock_tai(void *priv, char *extack)
