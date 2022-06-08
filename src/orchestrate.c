@@ -503,7 +503,6 @@ static int prog_init_syncmon(struct isochron_orch *prog)
 		}
 	}
 
-	syncmon_init(syncmon);
 	prog->syncmon = syncmon;
 
 	return 0;
@@ -567,13 +566,16 @@ static int prog_run_test(struct isochron_orch *prog)
 	if (rc)
 		return rc;
 
-	rc = syncmon_wait_until_ok(prog->syncmon);
-	if (rc) {
-		pr_err(rc, "Failed to check sync status: %m\n");
-		goto out;
-	}
-
 	do {
+		/* Adapt sync check intervals to new realities */
+		syncmon_init(prog->syncmon);
+
+		rc = syncmon_wait_until_ok(prog->syncmon);
+		if (rc) {
+			pr_err(rc, "Failed to check sync status: %m\n");
+			goto out;
+		}
+
 		rc = prog_start_senders(prog);
 		if (rc)
 			goto out;
