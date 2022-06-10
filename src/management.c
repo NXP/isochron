@@ -177,16 +177,21 @@ int isochron_collect_rcv_log(struct sk *sock, struct isochron_log *rcv_log)
 	return isochron_log_recv(rcv_log, sock);
 }
 
-static void isochron_drain_sk(struct sk *sock, size_t len)
+static int isochron_drain_sk(struct sk *sock, size_t len)
 {
 	unsigned char junk[BUFSIZ];
+	ssize_t ret;
 
 	while (len) {
 		size_t count = min(len, (size_t)BUFSIZ);
 
-		sk_recv(sock, junk, count, 0);
+		ret = sk_recv(sock, junk, count, 0);
+		if (ret <= 0)
+			return ret ? ret : -ECONNRESET;
 		len -= count;
 	};
+
+	return 0;
 }
 
 int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
@@ -226,7 +231,11 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to get error for MID %s: TLV header length %zu shorter than expected\n",
 			mid_to_string(mid), payload_length);
-		isochron_drain_sk(sock, payload_length);
+
+		rc = isochron_drain_sk(sock, payload_length);
+		if (rc)
+			return rc;
+
 		return -EBADMSG;
 	}
 
@@ -241,7 +250,11 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to get error for MID %s: expected TLV length at least %zu in response, got %zu\n",
 			mid_to_string(mid), sizeof(rc_be), tlv_length);
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		return -EBADMSG;
 	}
 
@@ -249,7 +262,11 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to get error for MID %s: unexpected TLV type %d in response\n",
 			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		return -EBADMSG;
 	}
 
@@ -258,7 +275,11 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 			"Failed to get error for MID %s: response for unexpected MID %s\n",
 			mid_to_string(mid),
 			mid_to_string(__be16_to_cpu(tlv.management_id)));
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		return -EBADMSG;
 	}
 
@@ -272,7 +293,10 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 	payload_length -= sizeof(rc_be);
 	if (payload_length >= ISOCHRON_EXTACK_SIZE) {
 		fprintf(stderr, "extack message too long, discarding\n");
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
 	}
 
 	if (payload_length) {
@@ -343,7 +367,11 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 				mid_to_string(mid), data_len + sizeof(tlv),
 				payload_length);
 		}
-		isochron_drain_sk(sock, payload_length);
+
+		rc = isochron_drain_sk(sock, payload_length);
+		if (rc)
+			return rc;
+
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
@@ -357,7 +385,11 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to query MID %s: expected TLV length %zu in response, got %zu\n",
 			mid_to_string(mid), data_len, tlv_length);
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
@@ -365,7 +397,11 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
 		fprintf(stderr, "Failed to query MID %s: unexpected TLV type %d in response\n",
 			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
@@ -375,7 +411,11 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 			"Failed to query MID %s: response for unexpected MID %s\n",
 			mid_to_string(mid),
 			mid_to_string(__be16_to_cpu(tlv.management_id)));
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
 	}
@@ -559,7 +599,11 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 				mid_to_string(mid), data_len + sizeof(tlv),
 				payload_length);
 		}
-		isochron_drain_sk(sock, payload_length);
+
+		rc = isochron_drain_sk(sock, payload_length);
+		if (rc)
+			return rc;
+
 		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
@@ -576,7 +620,11 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to update MID %s: expected TLV length %zu in response, got %zu\n",
 			mid_to_string(mid), data_len, tlv_length);
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
@@ -586,7 +634,11 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 		fprintf(stderr,
 			"Failed to update MID %s: unexpected TLV type %d in response\n",
 			mid_to_string(mid), __be16_to_cpu(tlv.tlv_type));
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
@@ -597,7 +649,11 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 			"Failed to update MID %s: response for unexpected MID %s\n",
 			mid_to_string(mid),
 			mid_to_string(__be16_to_cpu(tlv.management_id)));
-		isochron_drain_sk(sock, tlv_length);
+
+		rc = isochron_drain_sk(sock, tlv_length);
+		if (rc)
+			return rc;
+
 		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
 		return -EBADMSG;
