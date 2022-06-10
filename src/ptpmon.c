@@ -137,23 +137,32 @@ static const struct port_identity target_all_ports = {
 	.port_number = (__force __be16 )0xffff,
 };
 
-static const char *ps_str[] = {
-	"NONE",
-	"INITIALIZING",
-	"FAULTY",
-	"DISABLED",
-	"LISTENING",
-	"PRE_MASTER",
-	"MASTER",
-	"PASSIVE",
-	"UNCALIBRATED",
-	"SLAVE",
-	"GRAND_MASTER",
-};
-
 const char *port_state_to_string(enum port_state state)
 {
-	return ps_str[state];
+	switch (state) {
+	case PS_INITIALIZING:
+		return "INITIALIZING";
+	case PS_FAULTY:
+		return "FAULTY";
+	case PS_DISABLED:
+		return "DISABLED";
+	case PS_LISTENING:
+		return "LISTENING";
+	case PS_PRE_MASTER:
+		return "PRE_MASTER";
+	case PS_MASTER:
+		return "MASTER";
+	case PS_PASSIVE:
+		return "PASSIVE";
+	case PS_UNCALIBRATED:
+		return "UNCALIBRATED";
+	case PS_SLAVE:
+		return "SLAVE";
+	case PS_GRAND_MASTER:
+		return "GRAND_MASTER";
+	default:
+		return "NONE";
+	}
 }
 
 static void ptp_message_clear(struct ptp_message *msg)
