@@ -319,7 +319,7 @@ static void isochron_print_mid_error(struct sk *sock,
 	if (strlen(err.extack))
 		fprintf(stderr, "Remote error %d: %s\n", err.rc, err.extack);
 	else
-		pr_err(err.rc, "Remote error %d: %m\n");
+		pr_err(err.rc, "Remote error %d: %m\n", err.rc);
 }
 
 int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
