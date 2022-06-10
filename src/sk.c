@@ -289,7 +289,7 @@ int sk_connect_tcp(const struct ip_address *ip, int port, struct sk **sock)
 			fprintf(stderr,
 				"Failed to bind TCP socket to device %s: %m\n",
 				ip->bound_if_name);
-			return -errno;
+			goto err_close;
 		}
 	}
 
