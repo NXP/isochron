@@ -1110,13 +1110,6 @@ int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 		}
 
 		ops = &handler->ops[mid];
-		if (!ops) {
-			fprintf(stderr, "Unhandled MID %s\n",
-				mid_to_string(mid));
-			isochron_send_empty_tlv(sock, mid);
-			goto next;
-		}
-
 		err = &handler->error_table[mid];
 
 		switch (msg.action) {
