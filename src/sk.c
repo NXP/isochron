@@ -186,6 +186,7 @@ static int sk_accept_ipv6(const struct sk *listen_sock, struct sk *sock,
 	if (!inet_ntop(AF_INET6, &sa.sin6_addr, client_addr,
 	    INET6_ADDRSTRLEN)) {
 		perror("Failed to convert IPv6 address to text");
+		close(fd);
 		return -errno;
 	}
 
@@ -212,6 +213,7 @@ static int sk_accept_ipv4(const struct sk *listen_sock, struct sk *sock,
 	if (!inet_ntop(AF_INET, &sa.sin_addr.s_addr, client_addr,
 	    INET_ADDRSTRLEN)) {
 		perror("Failed to convert IPv4 address to text");
+		close(fd);
 		return -errno;
 	}
 
