@@ -117,7 +117,6 @@ int sk_listen_tcp(const struct ip_address *ip, int port, int backlog,
 		fd = socket(PF_INET, SOCK_STREAM, 0);
 		if (fd < 0) {
 			perror("Failed to create IPv6 or IPv4 socket");
-			free(*listen_sock);
 			goto out;
 		}
 		ipv4_fallback = true;
