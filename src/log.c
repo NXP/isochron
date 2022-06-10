@@ -1238,18 +1238,21 @@ int isochron_log_save(const char *file, const struct isochron_log *send_log,
 	len = write_exact(fd, &header, sizeof(header));
 	if (len <= 0) {
 		perror("Failed to write log header to file");
+		close(fd);
 		return len;
 	}
 
 	len = write_exact(fd, send_log->buf, send_log->size);
 	if (len <= 0) {
 		perror("Failed to write send log to file");
+		close(fd);
 		return len;
 	}
 
 	len = write_exact(fd, rcv_log->buf, rcv_log->size);
 	if (len <= 0) {
 		perror("Failed to write receive log to file");
+		close(fd);
 		return len;
 	}
 
