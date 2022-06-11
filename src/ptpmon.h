@@ -9,6 +9,7 @@
 
 #include <arpa/inet.h>
 #include <linux/types.h>
+#include <linux/un.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -221,7 +222,8 @@ const char *port_state_to_string(enum port_state state);
 struct ptpmon;
 
 struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
-			     const char *uds_local, const char *uds_remote);
+			     const char uds_local[UNIX_PATH_MAX],
+			     const char uds_remote[UNIX_PATH_MAX]);
 void ptpmon_destroy(struct ptpmon *ptpmon);
 int ptpmon_open(struct ptpmon *ptpmon);
 void ptpmon_close(struct ptpmon *ptpmon);

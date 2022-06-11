@@ -12,7 +12,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <linux/un.h>
 #include <unistd.h>
 #include "endian.h"
 #include "ptpmon.h"
@@ -259,7 +258,8 @@ static void *ptp_message_add_management_tlv(struct ptp_message *msg,
 	return ptp_management_tlv_data(tlv);
 }
 
-static int uds_send(int fd, const char *uds_remote, void *buf, int buflen)
+static int uds_send(int fd, const char uds_remote[UNIX_PATH_MAX], void *buf,
+		    int buflen)
 {
 	struct sockaddr_un sun;
 	int cnt;
@@ -275,7 +275,8 @@ static int uds_send(int fd, const char *uds_remote, void *buf, int buflen)
 	return cnt;
 }
 
-static int uds_recv(int fd, const char *uds_remote, void *buf, int buflen)
+static int uds_recv(int fd, const char uds_remote[UNIX_PATH_MAX], void *buf,
+		    int buflen)
 {
 	struct sockaddr_un sun;
 	socklen_t len = sizeof(sun);
@@ -287,7 +288,7 @@ static int uds_recv(int fd, const char *uds_remote, void *buf, int buflen)
 	return recvfrom(fd, buf, buflen, 0, (struct sockaddr *)&sun, &len);
 }
 
-static int uds_bind(const char *uds_local)
+static int uds_bind(const char uds_local[UNIX_PATH_MAX])
 {
 	struct sockaddr_un sun;
 	int fd, err;
@@ -614,7 +615,8 @@ void ptpmon_close(struct ptpmon *ptpmon)
 }
 
 struct ptpmon *ptpmon_create(int domain_number, int transport_specific,
-			     const char *uds_local, const char *uds_remote)
+			     const char uds_local[UNIX_PATH_MAX],
+			     const char uds_remote[UNIX_PATH_MAX])
 {
 	struct ptpmon *ptpmon;
 
