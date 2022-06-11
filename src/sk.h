@@ -15,6 +15,22 @@ struct isochron_timestamp {
 	__u32 tstype;
 };
 
+/**
+ * Contains timestamping information returned by the GET_TS_INFO ioctl.
+ * @valid:            set to non-zero when the info struct contains valid data.
+ * @phc_index:        index of the PHC device.
+ * @so_timestamping:  supported time stamping modes.
+ * @tx_types:         driver level transmit options for the HWTSTAMP ioctl.
+ * @rx_filters:       driver level receive options for the HWTSTAMP ioctl.
+ */
+struct sk_ts_info {
+	int valid;
+	int phc_index;
+	unsigned int so_timestamping;
+	unsigned int tx_types;
+	unsigned int rx_filters;
+};
+
 struct sk;
 struct sk_msg;
 
@@ -48,6 +64,7 @@ void sk_close(struct sk *sock);
 int sk_fd(const struct sk *sock);
 
 /* Others */
+int sk_get_ts_info(const char *name, struct sk_ts_info *sk_info);
 int sk_validate_ts_info(const char *if_name);
 
 #endif
