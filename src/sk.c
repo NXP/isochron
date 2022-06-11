@@ -820,13 +820,11 @@ int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info)
 	}
 
 	err = ioctl(fd, SIOCETHTOOL, &ifr);
+	close(fd);
 	if (err < 0) {
 		fprintf(stderr, "ioctl SIOCETHTOOL failed: %m\n");
-		close(fd);
 		return -errno;
 	}
-
-	close(fd);
 
 	/* copy the necessary data to sk_info */
 	sk_info->valid = true;
