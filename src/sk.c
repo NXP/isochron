@@ -343,7 +343,17 @@ ssize_t sk_recv(const struct sk *sock, void *buf, size_t len, int flags)
 
 ssize_t sk_send(const struct sk *sock, const void *buf, size_t count)
 {
-	return write_exact(sock->fd, buf, count);
+	size_t sent = 0;
+	ssize_t ret;
+
+	do {
+		ret = send(sock->fd, buf + sent, count - sent, 0);
+		if (ret <= 0)
+			return ret;
+		sent += ret;
+	} while (sent != count);
+
+	return sent;
 }
 
 int sk_fd(const struct sk *sock)
