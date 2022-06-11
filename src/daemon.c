@@ -1196,7 +1196,6 @@ static int prog_mgmt_loop(struct isochron_daemon *prog)
 			.events = POLLIN | POLLERR | POLLPRI,
 		},
 	};
-	bool socket_closed;
 	int rc = 0;
 	int cnt;
 
@@ -1224,10 +1223,10 @@ static int prog_mgmt_loop(struct isochron_daemon *prog)
 			if (prog->have_client) {
 				rc = isochron_mgmt_event(prog->mgmt_sock,
 							 prog->mgmt_handler,
-							 prog, &socket_closed);
-				if (socket_closed)
+							 prog);
+				if (sk_closed(prog->mgmt_sock))
 					prog_close_client_stats_session(prog);
-				if (rc)
+				else if (rc)
 					break;
 			} else {
 				rc = prog_client_connect_event(prog);

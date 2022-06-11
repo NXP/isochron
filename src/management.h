@@ -366,7 +366,7 @@ isochron_mgmt_handler_create(const struct isochron_mgmt_ops *ops);
 void isochron_mgmt_handler_destroy(struct isochron_mgmt_handler *handler);
 
 int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
-			void *priv, bool *socket_closed);
+			void *priv);
 
 int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 			     struct isochron_error *err);

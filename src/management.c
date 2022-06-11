@@ -120,7 +120,6 @@ int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 	struct isochron_management_message *msg;
 	unsigned char buf[BUFSIZ];
 	struct isochron_tlv *tlv;
-	ssize_t len;
 
 	memset(buf, 0, sizeof(*msg) + sizeof(*tlv));
 
@@ -134,12 +133,7 @@ int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 	tlv->management_id = __cpu_to_be16(mid);
 	tlv->length_field = __cpu_to_be32(size);
 
-	len = sk_send(sock, buf, sizeof(*msg) + sizeof(*tlv));
-	if (len < 0)
-		return len;
-	if (len == 0)
-		return -ECONNRESET;
-	return 0;
+	return sk_send(sock, buf, sizeof(*msg) + sizeof(*tlv));
 }
 
 void isochron_send_empty_tlv(struct sk *sock, enum isochron_management_id mid)
@@ -151,20 +145,25 @@ int isochron_collect_rcv_log(struct sk *sock, struct isochron_log *rcv_log)
 {
 	struct isochron_management_message msg;
 	struct isochron_tlv tlv;
-	ssize_t len;
 	int rc;
 
 	rc = isochron_send_tlv(sock, ISOCHRON_GET, ISOCHRON_MID_LOG, 0);
 	if (rc)
 		return rc;
 
-	len = sk_recv(sock, &msg, sizeof(msg), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &msg, sizeof(msg), 0);
+	if (rc) {
+		sk_err(sock, rc,
+		       "Failed to receive GET response message header for log: %m\n");
+		return rc;
+	}
 
-	len = sk_recv(sock, &tlv, sizeof(tlv), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &tlv, sizeof(tlv), 0);
+	if (rc) {
+		sk_err(sock, rc,
+		       "Failed to receive GET response TLV for log: %m\n");
+		return rc;
+	}
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION ||
 	    msg.action != ISOCHRON_RESPONSE ||
@@ -180,14 +179,18 @@ int isochron_collect_rcv_log(struct sk *sock, struct isochron_log *rcv_log)
 static int isochron_drain_sk(struct sk *sock, size_t len)
 {
 	unsigned char junk[BUFSIZ];
-	ssize_t ret;
+	int rc;
 
 	while (len) {
 		size_t count = min(len, (size_t)BUFSIZ);
 
-		ret = sk_recv(sock, junk, count, 0);
-		if (ret <= 0)
-			return ret ? ret : -ECONNRESET;
+		rc = sk_recv(sock, junk, count, 0);
+		if (rc) {
+			sk_err(sock, rc,
+			       "Error while draining %zu bytes from socket: %m\n",
+			       len);
+			return rc;
+		}
 		len -= count;
 	};
 
@@ -201,16 +204,18 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 	size_t payload_length, tlv_length;
 	struct isochron_tlv tlv;
 	__be32 rc_be;
-	ssize_t len;
 	int rc;
 
 	rc = isochron_send_tlv(sock, ISOCHRON_GET_ERROR, mid, 0);
 	if (rc)
 		return rc;
 
-	len = sk_recv(sock, &msg, sizeof(msg), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &msg, sizeof(msg), 0);
+	if (rc) {
+		sk_err(sock, rc,
+		       "Failed to receive GET_ERR response message header: %m\n");
+		return rc;
+	}
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
 		fprintf(stderr,
@@ -239,9 +244,11 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 		return -EBADMSG;
 	}
 
-	len = sk_recv(sock, &tlv, sizeof(tlv), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &tlv, sizeof(tlv), 0);
+	if (rc) {
+		sk_err(sock, rc, "Failed to receive GET_ERR response TLV: %m\n");
+		return rc;
+	}
 
 	payload_length -= sizeof(tlv);
 
@@ -283,9 +290,12 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 		return -EBADMSG;
 	}
 
-	len = sk_recv(sock, &rc_be, sizeof(rc_be), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &rc_be, sizeof(rc_be), 0);
+	if (rc) {
+		sk_err(sock, rc, "Failed to receive error code for MID %s: %m\n",
+		       mid_to_string(mid));
+		return rc;
+	}
 
 	err->rc = (int)__be32_to_cpu(rc_be);
 	memset(err->extack, 0, ISOCHRON_EXTACK_SIZE);
@@ -300,9 +310,13 @@ int isochron_query_mid_error(struct sk *sock, enum isochron_management_id mid,
 	}
 
 	if (payload_length) {
-		len = sk_recv(sock, err->extack, payload_length, 0);
-		if (len <= 0)
-			return len ? len : -ECONNRESET;
+		rc = sk_recv(sock, err->extack, payload_length, 0);
+		if (rc) {
+			sk_err(sock, rc,
+			       "Failed to receive extack for MID %s: %m\n",
+			       mid_to_string(mid));
+			return rc;
+		}
 	}
 
 	return 0;
@@ -328,16 +342,22 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 	struct isochron_management_message msg;
 	size_t payload_length, tlv_length;
 	struct isochron_tlv tlv;
-	ssize_t len;
 	int rc;
 
 	rc = isochron_send_tlv(sock, ISOCHRON_GET, mid, 0);
-	if (rc)
+	if (rc) {
+		sk_err(sock, rc, "Failed to send GET message for MID %s: %m\n",
+		       mid_to_string(mid));
 		return rc;
+	}
 
-	len = sk_recv(sock, &msg, sizeof(msg), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &msg, sizeof(msg), 0);
+	if (rc) {
+		sk_err(sock, rc,
+		       "Failed to receive response message header for MID %s: %m\n",
+		       mid_to_string(mid));
+		return rc;
+	}
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
 		fprintf(stderr,
@@ -376,9 +396,12 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		return -EBADMSG;
 	}
 
-	len = sk_recv(sock, &tlv, sizeof(tlv), 0);
-	if (len <= 0)
-		return len ? len : -ECONNRESET;
+	rc = sk_recv(sock, &tlv, sizeof(tlv), 0);
+	if (rc) {
+		sk_err(sock, rc, "Failed to receive TLV header for MID %s: %m\n",
+		       mid_to_string(mid));
+		return rc;
+	}
 
 	tlv_length = __be32_to_cpu(tlv.length_field);
 	if (tlv_length != data_len) {
@@ -421,9 +444,13 @@ int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 	}
 
 	if (data_len) {
-		len = sk_recv(sock, data, data_len, 0);
-		if (len <= 0)
-			return len ? len : -ECONNRESET;
+		rc = sk_recv(sock, data, data_len, 0);
+		if (rc) {
+			sk_err(sock, rc,
+			       "Failed to receive management data for MID %s: %m\n",
+			       mid_to_string(mid));
+			return rc;
+		}
 	}
 
 	return 0;
@@ -544,7 +571,6 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 	size_t payload_length, tlv_length;
 	struct isochron_tlv tlv;
 	unsigned char *tmp_buf;
-	ssize_t len;
 	int rc;
 
 	tmp_buf = malloc(data_len);
@@ -552,39 +578,33 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 		return -ENOMEM;
 
 	rc = isochron_send_tlv(sock, ISOCHRON_SET, mid, data_len);
-	if (rc) {
-		free(tmp_buf);
-		return rc;
-	}
+	if (rc)
+		goto out;
 
-	len = sk_send(sock, data, data_len);
-	if (len <= 0) {
-		free(tmp_buf);
-		return len ? len : -ECONNRESET;
-	}
+	rc = sk_send(sock, data, data_len);
+	if (rc)
+		goto out;
 
-	len = sk_recv(sock, &msg, sizeof(msg), 0);
-	if (len <= 0) {
-		free(tmp_buf);
-		return len ? len : -ECONNRESET;
-	}
+	rc = sk_recv(sock, &msg, sizeof(msg), 0);
+	if (rc)
+		goto out;
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
 		fprintf(stderr,
 			"Failed to update MID %s: unexpected message version %d in response\n",
 			mid_to_string(mid), msg.version);
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
 	if (msg.action != ISOCHRON_RESPONSE) {
 		fprintf(stderr,
 			"Failed to update MID %s: unexpected action %d in response\n",
 			mid_to_string(mid), msg.action);
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
 	payload_length = __be32_to_cpu(msg.payload_length);
@@ -602,18 +622,16 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 		rc = isochron_drain_sk(sock, payload_length);
 		if (rc)
-			return rc;
+			goto out;
 
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
-	len = sk_recv(sock, &tlv, sizeof(tlv), 0);
-	if (len <= 0) {
-		free(tmp_buf);
-		return len ? len : -ECONNRESET;
-	}
+	rc = sk_recv(sock, &tlv, sizeof(tlv), 0);
+	if (rc)
+		goto out;
 
 	tlv_length = __be32_to_cpu(tlv.length_field);
 	if (tlv_length != data_len) {
@@ -623,11 +641,11 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 		rc = isochron_drain_sk(sock, tlv_length);
 		if (rc)
-			return rc;
+			goto out;
 
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
 	if (__be16_to_cpu(tlv.tlv_type) != ISOCHRON_TLV_MANAGEMENT) {
@@ -637,11 +655,11 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 		rc = isochron_drain_sk(sock, tlv_length);
 		if (rc)
-			return rc;
+			goto out;
 
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
 	if (__be16_to_cpu(tlv.management_id) != mid) {
@@ -652,31 +670,30 @@ static int isochron_update_mid(struct sk *sock, enum isochron_management_id mid,
 
 		rc = isochron_drain_sk(sock, tlv_length);
 		if (rc)
-			return rc;
+			goto out;
 
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
-	len = sk_recv(sock, tmp_buf, data_len, 0);
-	if (len <= 0) {
-		free(tmp_buf);
-		return len ? len : -ECONNRESET;
-	}
+	rc = sk_recv(sock, tmp_buf, data_len, 0);
+	if (rc)
+		goto out;
 
 	if (memcmp(tmp_buf, data, data_len)) {
 		fprintf(stderr,
 			"Failed to update MID %s: unexpected reply contents\n",
 			mid_to_string(mid));
-		free(tmp_buf);
 		isochron_print_mid_error(sock, mid);
-		return -EBADMSG;
+		rc = -EBADMSG;
+		goto out;
 	}
 
+out:
 	free(tmp_buf);
 
-	return 0;
+	return rc;
 }
 
 int isochron_update_packet_count(struct sk *sock, long count)
@@ -1064,7 +1081,7 @@ static void isochron_tlv_next(struct isochron_tlv **tlv, size_t *len)
 }
 
 int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
-			void *priv, bool *socket_closed)
+			void *priv)
 {
 	struct isochron_management_message msg;
 	const struct isochron_mgmt_ops *ops;
@@ -1073,14 +1090,13 @@ int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 	unsigned char buf[BUFSIZ];
 	struct isochron_tlv *tlv;
 	size_t parsed_len = 0;
-	ssize_t len;
+	size_t len;
+	int rc;
 
-	*socket_closed = false;
-
-	len = sk_recv(sock, &msg, sizeof(msg), 0);
-	if (len <= 0) {
-		*socket_closed = len == 0;
-		return len;
+	rc = sk_recv(sock, &msg, sizeof(msg), 0);
+	if (rc) {
+		sk_err(sock, rc, "Failed to receive message header: %m\n");
+		return rc;
 	}
 
 	if (msg.version != ISOCHRON_MANAGEMENT_VERSION) {
@@ -1105,10 +1121,10 @@ int isochron_mgmt_event(struct sk *sock, struct isochron_mgmt_handler *handler,
 		return 0;
 	}
 
-	len = sk_recv(sock, buf, len, 0);
-	if (len <= 0) {
-		*socket_closed = len == 0;
-		return len;
+	rc = sk_recv(sock, buf, len, 0);
+	if (rc) {
+		sk_err(sock, rc, "Failed to receive message body: %m\n");
+		return rc;
 	}
 
 	tlv = (struct isochron_tlv *)buf;

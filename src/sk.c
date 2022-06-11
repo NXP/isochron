@@ -39,6 +39,7 @@ struct sk {
 	int family;
 	int fd;
 	struct sk_addr *sa;
+	bool closed;
 };
 
 static int __sk_bind_ipv4(int fd, const struct in_addr *a, int port)
@@ -326,39 +327,48 @@ void sk_close(struct sk *sock)
 	free(sock);
 }
 
-ssize_t sk_recv(const struct sk *sock, void *buf, size_t len, int flags)
+int sk_recv(struct sk *sock, void *buf, size_t len, int flags)
 {
 	size_t received = 0;
 	ssize_t ret;
 
 	do {
 		ret = recv(sock->fd, buf + received, len - received, flags);
-		if (ret <= 0)
-			return ret;
+		if (ret <= 0) {
+			sock->closed = ret == 0;
+			return ret ? -errno : -ECONNRESET;
+		}
 		received += ret;
 	} while (received != len);
 
-	return received;
+	return 0;
 }
 
-ssize_t sk_send(const struct sk *sock, const void *buf, size_t count)
+int sk_send(struct sk *sock, const void *buf, size_t count)
 {
 	size_t sent = 0;
 	ssize_t ret;
 
 	do {
 		ret = send(sock->fd, buf + sent, count - sent, 0);
-		if (ret <= 0)
-			return ret;
+		if (ret <= 0) {
+			sock->closed = ret == 0;
+			return ret ? -errno : -ECONNRESET;
+		}
 		sent += ret;
 	} while (sent != count);
 
-	return sent;
+	return 0;
 }
 
 int sk_fd(const struct sk *sock)
 {
 	return sock->fd;
+}
+
+bool sk_closed(const struct sk *sock)
+{
+	return sock->closed;
 }
 
 static struct sk_addr *sk_addr_create_l2(const unsigned char addr[ETH_ALEN],

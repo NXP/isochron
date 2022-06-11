@@ -683,7 +683,6 @@ static int server_loop(struct isochron_rcv *prog)
 		},
 	};
 	__u32 sched_policy = SCHED_OTHER;
-	bool socket_closed;
 	int l2_pfd, l4_pfd;
 	int pfd_num;
 	int rc = 0;
@@ -739,10 +738,10 @@ static int server_loop(struct isochron_rcv *prog)
 			if (prog->have_client) {
 				rc = isochron_mgmt_event(prog->mgmt_sock,
 							 prog->mgmt_handler,
-							 prog, &socket_closed);
-				if (socket_closed)
+							 prog);
+				if (sk_closed(prog->mgmt_sock))
 					prog_close_client_stats_session(prog);
-				if (rc)
+				else if (rc)
 					break;
 			} else {
 				rc = prog_client_connect_event(prog);

@@ -39,8 +39,9 @@ int sk_listen_tcp(const struct ip_address *ip, int port, int backlog,
 		  struct sk **listen_sock);
 int sk_accept(const struct sk *listen_sock, struct sk **sock);
 int sk_connect_tcp(const struct ip_address *ip, int port, struct sk **sock);
-ssize_t sk_recv(const struct sk *sock, void *buf, size_t len, int flags);
-ssize_t sk_send(const struct sk *sock, const void *buf, size_t count);
+int sk_recv(struct sk *sock, void *buf, size_t len, int flags);
+int sk_send(struct sk *sock, const void *buf, size_t count);
+bool sk_closed(const struct sk *sock);
 
 /* Connection-less */
 int sk_udp(const struct ip_address *dest, int port, struct sk **sock);
@@ -62,9 +63,17 @@ int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 /* Common */
 void sk_close(struct sk *sock);
 int sk_fd(const struct sk *sock);
+void sk_err(const struct sk *sock, int rc, const char *fmt, ...);
 
 /* Others */
 int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info);
 int sk_validate_ts_info(const char if_name[IFNAMSIZ]);
+
+#define sk_err(sock, rc, ...) \
+	do { \
+		if (!sk_closed(sock)) { \
+			pr_err(rc, __VA_ARGS__); \
+		} \
+	} while (0);
 
 #endif
