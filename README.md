@@ -1,6 +1,8 @@
 isochron
 ========
 
+[![Coverity Scan Build Status](https://scan.coverity.com/projects/25104/badge.svg)](https://scan.coverity.com/projects/isochron)
+
 This is a standalone program created for the purpose of testing the TSN
 offloads of compatible hardware (time-aware scheduling, frame preemption,
 cut-through switching etc).
