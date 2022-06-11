@@ -100,15 +100,10 @@ static const char * const trace_marker_paths[] = {
 
 int trace_mark_open(void)
 {
-	struct stat st;
 	unsigned int i;
-	int rc, fd;
+	int fd;
 
 	for (i = 0; i < ARRAY_SIZE(trace_marker_paths); i++) {
-		rc = stat(trace_marker_paths[i], &st);
-		if (rc < 0)
-			continue;
-
 		fd = open(trace_marker_paths[i], O_WRONLY);
 		if (fd < 0)
 			continue;
