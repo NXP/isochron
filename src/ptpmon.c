@@ -309,7 +309,13 @@ static int uds_bind(const char uds_local[UNIX_PATH_MAX])
 		return -errno;
 	}
 
-	chmod(uds_local, UDS_FILEMODE);
+	err = chmod(uds_local, UDS_FILEMODE);
+	if (err) {
+		fprintf(stderr, "Failed to change mode of %s to %o: %m\n",
+			uds_local, UDS_FILEMODE);
+		close(fd);
+		return -errno;
+	}
 
 	return fd;
 }
