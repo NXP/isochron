@@ -1291,10 +1291,12 @@ static int prog_redirect_output(struct isochron_daemon *prog)
 	}
 
 	dup2(dev_null, STDIN_FILENO);
+	close(dev_null);
 
 	if (!strlen(prog->log_filename)) {
-		dup2(dev_null, STDOUT_FILENO);
-		dup2(dev_null, STDERR_FILENO);
+		/* Redirect stdout and stderr to /dev/null too */
+		dup2(STDIN_FILENO, STDOUT_FILENO);
+		dup2(STDIN_FILENO, STDERR_FILENO);
 		return 0;
 	}
 
