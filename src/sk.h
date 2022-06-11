@@ -24,7 +24,7 @@ struct isochron_timestamp {
  * @rx_filters:       driver level receive options for the HWTSTAMP ioctl.
  */
 struct sk_ts_info {
-	int valid;
+	bool valid;
 	int phc_index;
 	unsigned int so_timestamping;
 	unsigned int tx_types;

@@ -829,7 +829,7 @@ int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info)
 	close(fd);
 
 	/* copy the necessary data to sk_info */
-	sk_info->valid = 1;
+	sk_info->valid = true;
 	sk_info->phc_index = info.phc_index;
 	sk_info->so_timestamping = info.so_timestamping;
 	sk_info->tx_types = info.tx_types;
