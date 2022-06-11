@@ -728,11 +728,16 @@ int isochron_update_node_role(struct sk *sock, enum isochron_role role)
 	return isochron_update_mid(sock, ISOCHRON_MID_NODE_ROLE, &r, sizeof(r));
 }
 
-int isochron_update_if_name(struct sk *sock, const char *if_name)
+int isochron_update_if_name(struct sk *sock, const char if_name[IFNAMSIZ])
 {
 	struct isochron_if_name ifn = {};
+	int rc;
 
-	strcpy(ifn.name, if_name);
+	rc = if_name_copy(ifn.name, if_name);
+	if (rc) {
+		fprintf(stderr, "Truncation while copying string\n");
+		return rc;
+	}
 
 	return isochron_update_mid(sock, ISOCHRON_MID_IF_NAME,
 				   &ifn, sizeof(ifn));
@@ -825,11 +830,16 @@ int isochron_update_transport_specific(struct sk *sock, int transport_specific)
 				   &t, sizeof(t));
 }
 
-int isochron_update_uds(struct sk *sock, const char *uds_remote)
+int isochron_update_uds(struct sk *sock, const char uds_remote[UNIX_PATH_MAX])
 {
 	struct isochron_uds u = {};
+	int rc;
 
-	strcpy(u.name, uds_remote);
+	rc = uds_copy(u.name, uds_remote);
+	if (rc) {
+		fprintf(stderr, "Truncation while copying string\n");
+		return rc;
+	}
 
 	return isochron_update_mid(sock, ISOCHRON_MID_UDS, &u, sizeof(u));
 }
@@ -945,10 +955,15 @@ int isochron_update_utc_offset(struct sk *sock, int offset)
 int isochron_update_ip_destination(struct sk *sock, struct ip_address *addr)
 {
 	struct isochron_ip_address i;
+	int rc;
 
 	i.family = __cpu_to_be32(addr->family);
 	memcpy(i.addr, &addr->addr6, 16);
-	strcpy(i.bound_if_name, addr->bound_if_name);
+	rc = if_name_copy(i.bound_if_name, addr->bound_if_name);
+	if (rc) {
+		fprintf(stderr, "Truncation while copying string\n");
+		return rc;
+	}
 
 	return isochron_update_mid(sock, ISOCHRON_MID_IP_DESTINATION,
 				   &i, sizeof(i));

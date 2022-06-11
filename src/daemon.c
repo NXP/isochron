@@ -266,14 +266,20 @@ static int prog_update_source_mac(void *priv, void *ptr, char *extack)
 static int prog_update_if_name(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
 	struct isochron_if_name *n = ptr;
+	int rc;
 
-	if (!prog->send) {
+	if (!send) {
 		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	strcpy(prog->send->if_name, n->name);
+	rc = if_name_copy(send->if_name, n->name);
+	if (rc) {
+		mgmt_extack(extack, "Truncation while copying string");
+		return rc;
+	}
 
 	return 0;
 }
@@ -444,14 +450,20 @@ static int prog_update_ptpmon_enabled(void *priv, void *ptr, char *extack)
 static int prog_update_uds(void *priv, void *ptr, char *extack)
 {
 	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
 	struct isochron_uds *u = ptr;
+	int rc;
 
-	if (!prog->send) {
+	if (!send) {
 		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	strcpy(prog->send->uds_remote, u->name);
+	rc = uds_copy(send->uds_remote, u->name);
+	if (rc) {
+		mgmt_extack(extack, "Truncation while copying string");
+		return rc;
+	}
 
 	return 0;
 }
@@ -610,15 +622,21 @@ static int prog_update_ip_destination(void *priv, void *ptr, char *extack)
 {
 	struct isochron_ip_address *i = ptr;
 	struct isochron_daemon *prog = priv;
+	struct isochron_send *send = prog->send;
+	int rc;
 
-	if (!prog->send) {
+	if (!send) {
 		mgmt_extack(extack, "Sender role not instantiated");
 		return -EINVAL;
 	}
 
-	prog->send->ip_destination.family = __be32_to_cpu(i->family);
-	memcpy(&prog->send->ip_destination.addr6, i->addr, 16);
-	strcpy(prog->send->ip_destination.bound_if_name, i->bound_if_name);
+	send->ip_destination.family = __be32_to_cpu(i->family);
+	rc = if_name_copy(send->ip_destination.bound_if_name,
+			  i->bound_if_name);
+	if (rc) {
+		mgmt_extack(extack, "Truncation while copying string");
+		return rc;
+	}
 
 	return 0;
 }

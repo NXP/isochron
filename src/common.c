@@ -10,7 +10,6 @@
 #include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
-#include <linux/if.h>
 #include <sys/stat.h>
 #include <sys/timex.h>
 #include <sys/types.h>
@@ -258,4 +257,34 @@ int ptpmon_query_port_state_by_name(struct ptpmon *ptpmon, const char *iface,
 out:
 	ptpmon_free_tried_ports(tried_ports, tries);
 	return rc;
+}
+
+int if_name_copy(char dest[IFNAMSIZ], const char src[IFNAMSIZ])
+{
+	char buf[IFNAMSIZ + 1];
+
+	memcpy(buf, src, IFNAMSIZ);
+	buf[IFNAMSIZ] = 0;
+
+	if (strlen(buf) == IFNAMSIZ)
+		return -EINVAL;
+
+	strcpy(dest, buf);
+
+	return 0;
+}
+
+int uds_copy(char dest[UNIX_PATH_MAX], const char src[UNIX_PATH_MAX])
+{
+	char buf[UNIX_PATH_MAX + 1];
+
+	memcpy(buf, src, UNIX_PATH_MAX);
+	buf[UNIX_PATH_MAX] = 0;
+
+	if (strlen(buf) == UNIX_PATH_MAX)
+		return -EINVAL;
+
+	strcpy(dest, buf);
+
+	return 0;
 }

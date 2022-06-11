@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <libmnl/libmnl.h>
 #include <linux/types.h>
+#include <net/if.h>
 #include <netinet/ether.h>
 #include <sched.h>
 #include <stdbool.h>
@@ -266,5 +267,8 @@ static inline __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 no
 
 	return base_time + (n + 1) * cycle_time;
 }
+
+int if_name_copy(char dest[IFNAMSIZ], const char src[IFNAMSIZ]);
+int uds_copy(char dest[IFNAMSIZ], const char src[IFNAMSIZ]);
 
 #endif
