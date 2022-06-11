@@ -68,6 +68,7 @@ void sk_err(const struct sk *sock, int rc, const char *fmt, ...);
 /* Others */
 int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info);
 int sk_validate_ts_info(const char if_name[IFNAMSIZ]);
+int sk_get_ether_addr(const char if_name[IFNAMSIZ], unsigned char *addr);
 
 #define sk_err(sock, rc, ...) \
 	do { \

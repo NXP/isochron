@@ -902,3 +902,35 @@ int sk_validate_ts_info(const char if_name[IFNAMSIZ])
 
 	return 0;
 }
+
+int sk_get_ether_addr(const char if_name[IFNAMSIZ], unsigned char *addr)
+{
+	struct ifreq if_mac;
+	int fd, rc;
+
+	if (strlen(if_name) >= IFNAMSIZ) {
+		fprintf(stderr, "Interface name %s too long\n", if_name);
+		return -EINVAL;
+	}
+
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0) {
+		perror("Failed to open socket");
+		return -errno;
+	}
+
+	memset(&if_mac, 0, sizeof(struct ifreq));
+	strcpy(if_mac.ifr_name, if_name);
+
+	rc = ioctl(fd, SIOCGIFHWADDR, &if_mac);
+	close(fd);
+
+	if (rc < 0) {
+		perror("SIOCGIFHWADDR");
+		return -errno;
+	}
+
+	ether_addr_copy(addr, (unsigned char *)if_mac.ifr_hwaddr.sa_data);
+
+	return 0;
+}

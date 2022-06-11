@@ -230,33 +230,6 @@ static int multicast_listen(int fd, unsigned int if_index,
 	return -1;
 }
 
-static int if_get_ether_addr(const char *if_name, unsigned char *addr)
-{
-	struct ifreq if_mac;
-	int fd, rc;
-
-	fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd < 0) {
-		perror("Failed to open socket");
-		return -errno;
-	}
-
-	memset(&if_mac, 0, sizeof(struct ifreq));
-	strcpy(if_mac.ifr_name, if_name);
-
-	rc = ioctl(fd, SIOCGIFHWADDR, &if_mac);
-	close(fd);
-
-	if (rc < 0) {
-		perror("SIOCGIFHWADDR");
-		return -errno;
-	}
-
-	ether_addr_copy(addr, (unsigned char *)if_mac.ifr_hwaddr.sa_data);
-
-	return 0;
-}
-
 static int prog_init_l2_sock(struct isochron_rcv *prog)
 {
 	int fd, rc;
@@ -265,7 +238,7 @@ static int prog_init_l2_sock(struct isochron_rcv *prog)
 		return 0;
 
 	if (is_zero_ether_addr(prog->dest_mac)) {
-		rc = if_get_ether_addr(prog->if_name, prog->dest_mac);
+		rc = sk_get_ether_addr(prog->if_name, prog->dest_mac);
 		if (rc)
 			return rc;
 	}
