@@ -268,7 +268,6 @@ const char *mid_to_string(enum isochron_management_id mid);
 
 int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 		      enum isochron_management_id mid, size_t size);
-void isochron_send_empty_tlv(struct sk *sock, enum isochron_management_id mid);
 int isochron_collect_rcv_log(struct sk *sock, struct isochron_log *rcv_log);
 int isochron_query_mid(struct sk *sock, enum isochron_management_id mid,
 		       void *data, size_t data_len);

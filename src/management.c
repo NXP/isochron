@@ -136,7 +136,8 @@ int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 	return sk_send(sock, buf, sizeof(*msg) + sizeof(*tlv));
 }
 
-void isochron_send_empty_tlv(struct sk *sock, enum isochron_management_id mid)
+static void isochron_send_empty_tlv(struct sk *sock,
+				    enum isochron_management_id mid)
 {
 	isochron_send_tlv(sock, ISOCHRON_RESPONSE, mid, 0);
 }
