@@ -55,7 +55,7 @@ struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,
 int sk_sendmsg(struct sk *sock, const struct sk_msg *msg, int flags);
 int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 	       struct isochron_timestamp *tstamp, int flags, int timeout);
-int sk_timestamping_init(struct sk *sock, const char *if_name, bool on);
+int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on);
 int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 	       struct isochron_timestamp *tstamp, int flags, int timeout);
 

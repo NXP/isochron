@@ -594,7 +594,7 @@ int sk_bind_udp(const struct ip_address *dest, int port, struct sk **sock)
 }
 
 static void init_ifreq(struct ifreq *ifreq, struct hwtstamp_config *cfg,
-		       const char *if_name)
+		       const char if_name[IFNAMSIZ])
 {
 	memset(ifreq, 0, sizeof(*ifreq));
 	memset(cfg, 0, sizeof(*cfg));
@@ -604,7 +604,8 @@ static void init_ifreq(struct ifreq *ifreq, struct hwtstamp_config *cfg,
 	ifreq->ifr_data = (void *) cfg;
 }
 
-static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
+static int hwts_init(int fd, const char if_name[IFNAMSIZ], int rx_filter,
+		     int tx_type)
 {
 	struct hwtstamp_config cfg;
 	struct ifreq ifreq;
@@ -633,10 +634,15 @@ static int hwts_init(int fd, const char *if_name, int rx_filter, int tx_type)
 	return 0;
 }
 
-int sk_timestamping_init(struct sk *sock, const char *if_name, bool on)
+int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on)
 {
 	int rc, filter, flags, tx_type;
 	int fd = sock->fd;
+
+	if (strlen(if_name) >= IFNAMSIZ) {
+		fprintf(stderr, "Interface name %s too long\n", if_name);
+		return -EINVAL;
+	}
 
 	flags = SOF_TIMESTAMPING_TX_HARDWARE |
 		SOF_TIMESTAMPING_RX_HARDWARE |
