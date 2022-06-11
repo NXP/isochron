@@ -64,7 +64,7 @@ void sk_close(struct sk *sock);
 int sk_fd(const struct sk *sock);
 
 /* Others */
-int sk_get_ts_info(const char *name, struct sk_ts_info *sk_info);
-int sk_validate_ts_info(const char *if_name);
+int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info);
+int sk_validate_ts_info(const char if_name[IFNAMSIZ]);
 
 #endif

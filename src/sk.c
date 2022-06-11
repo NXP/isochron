@@ -794,11 +794,16 @@ int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 	return len;
 }
 
-int sk_get_ts_info(const char *name, struct sk_ts_info *sk_info)
+int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info)
 {
 	struct ethtool_ts_info info;
 	struct ifreq ifr;
 	int fd, err;
+
+	if (strlen(name) >= IFNAMSIZ) {
+		fprintf(stderr, "Interface name %s too long\n", name);
+		return -EINVAL;
+	}
 
 	memset(sk_info, 0, sizeof(struct sk_ts_info));
 
@@ -833,7 +838,7 @@ int sk_get_ts_info(const char *name, struct sk_ts_info *sk_info)
 	return 0;
 }
 
-int sk_validate_ts_info(const char *if_name)
+int sk_validate_ts_info(const char if_name[IFNAMSIZ])
 {
 	struct sk_ts_info ts_info;
 	int rc;
