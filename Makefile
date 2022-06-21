@@ -39,6 +39,13 @@ src := \
 	syncmon.o \
 	sysmon.o
 
+symlinks := \
+	isochron-daemon \
+	isochron-orchestrate \
+	isochron-send \
+	isochron-rcv \
+	isochron-report
+
 objs := $(addprefix src/, $(src))
 deps := $(patsubst %.o, %.d, $(objs))
 
@@ -98,6 +105,8 @@ install-manpages: $(manpages)
 
 install-binaries: $(TARGET)
 	install -m 0755 -D $(TARGET) $(DESTDIR)${bindir}/isochron
+	$(foreach symlink, $(symlinks), \
+		ln -sf $(TARGET) $(DESTDIR)${bindir}/$(symlink);)
 
 install-completion: bash-completion/isochron
 	install -m 0644 -D $< $(DESTDIR)${datarootdir}/bash-completion/completions/isochron
