@@ -269,6 +269,6 @@ static inline __s64 future_base_time(__s64 base_time, __s64 cycle_time, __s64 no
 }
 
 int if_name_copy(char dest[IFNAMSIZ], const char src[IFNAMSIZ]);
-int uds_copy(char dest[IFNAMSIZ], const char src[IFNAMSIZ]);
+int uds_copy(char dest[UNIX_PATH_MAX], const char src[UNIX_PATH_MAX]);
 
 #endif
