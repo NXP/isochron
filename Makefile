@@ -21,6 +21,7 @@ bindir ?= ${exec_prefix}/bin
 datarootdir ?= ${prefix}/share
 mandir ?= ${datarootdir}/man
 PKG_CONFIG ?= pkg-config
+INSTALL ?= install
 
 src := \
 	argparser.o \
@@ -100,15 +101,15 @@ clean:
 	rm -f docs/man/*
 
 install-manpages: $(manpages)
-	$(foreach manpage, $^, install -m 0644 -D $(manpage) \
+	$(foreach manpage, $^, $(INSTALL) -m 0644 -D $(manpage) \
 		$(call get_manpage_destination,$(manpage));)
 
 install-binaries: $(TARGET)
-	install -m 0755 -D $(TARGET) $(DESTDIR)${bindir}/isochron
+	$(INSTALL) -m 0755 -D $(TARGET) $(DESTDIR)${bindir}/isochron
 	$(foreach symlink, $(symlinks), \
 		ln -sf $(TARGET) $(DESTDIR)${bindir}/$(symlink);)
 
 install-completion: bash-completion/isochron
-	install -m 0644 -D $< $(DESTDIR)${datarootdir}/bash-completion/completions/isochron
+	$(INSTALL) -m 0644 -D $< $(DESTDIR)${datarootdir}/bash-completion/completions/isochron
 
 install: install-binaries install-manpages install-completion
