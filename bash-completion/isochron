@@ -1,14 +1,50 @@
-__isochron_subprog_complete() {
-	local prog=$1 && shift
-	local subprog=$1 && shift
+__isochron_subprog_complete()
+{
 	local prev=$1 && shift
 	local cur=$1 && shift
-	local words=("$@")
-
-	local helptext="$(${prog} ${subprog} --help 2>&1)"
+	local prog=$1 && shift
+	local subprog
+	local words
+	local helptext
 	local long_opts=()
 	local short_opts=()
 	local wordlist=""
+
+	case "$(basename ${prog} 2> /dev/null)" in
+	isochron)
+		if [ $# -lt 1 ]; then
+			return
+		fi
+
+		subprog=$1 && shift
+		;;
+	isochron-daemon)
+		prog="isochron"
+		subprog="daemon"
+		;;
+	isochron-orchestrate)
+		prog="isochron"
+		subprog="orchestrate"
+		;;
+	isochron-report)
+		prog="isochron"
+		subprog="report"
+		;;
+	isochron-rcv)
+		prog="isochron"
+		subprog="rcv"
+		;;
+	isochron-send)
+		prog="isochron"
+		subprog="send"
+		;;
+	*)
+		return
+		;;
+	esac
+
+	words=("$@")
+	helptext="$(${prog} ${subprog} --help 2>&1)"
 
 	while IFS= read -r line; do
 		local filepath=false
@@ -74,12 +110,11 @@ __isochron_subprog_complete() {
 	COMPREPLY=( $(compgen -W "${wordlist}" -- "${cur}") )
 }
 
-__isochron_complete() {
+__isochron_complete()
+{
 	local cur=""
 	local prev=""
 	local words=()
-	local prog=""
-	local subprog=""
 
 	_get_comp_words_by_ref -n : cur prev words
 
@@ -88,20 +123,12 @@ __isochron_complete() {
 		return
 	fi
 
-	if [ ${#words[*]} -lt 2 ]; then
-		return
-	fi
-
-	prog="${words[0]}"
-	subprog="${words[1]}"
-
-	case "${subprog}" in
-	daemon|orchestrate|send|rcv|report)
-		__isochron_subprog_complete "${prog}" "${subprog}" "${prev}" "${cur}" ${words[@]}
-		;;
-	*)
-		;;
-	esac
+	__isochron_subprog_complete "${prev}" "${cur}" ${words[@]}
 }
 
 complete -F __isochron_complete isochron
+complete -F __isochron_complete isochron-daemon
+complete -F __isochron_complete isochron-orchestrate
+complete -F __isochron_complete isochron-send
+complete -F __isochron_complete isochron-rcv
+complete -F __isochron_complete isochron-report

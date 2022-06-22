@@ -111,5 +111,7 @@ install-binaries: $(TARGET)
 
 install-completion: bash-completion/isochron
 	$(INSTALL) -m 0644 -D $< $(DESTDIR)${datarootdir}/bash-completion/completions/isochron
+	$(foreach symlink, $(symlinks), \
+		ln -sf $(TARGET) $(DESTDIR)${datarootdir}/bash-completion/completions/$(symlink);)
 
 install: install-binaries install-manpages install-completion
