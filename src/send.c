@@ -1001,7 +1001,6 @@ void isochron_send_teardown_sysmon(struct isochron_send *prog)
 
 int isochron_send_init_data_sock(struct isochron_send *prog)
 {
-	struct ifreq if_mac;
 	int fd, rc;
 
 	/* Open socket to send on */
@@ -1023,17 +1022,11 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 		goto out_close;
 	}
 
-	/* Get the MAC address of the interface to send on */
-	memset(&if_mac, 0, sizeof(struct ifreq));
-	strcpy(if_mac.ifr_name, prog->if_name);
-	if (ioctl(fd, SIOCGIFHWADDR, &if_mac) < 0) {
-		perror("SIOCGIFHWADDR failed");
-		goto out_close;
+	if (is_zero_ether_addr(prog->src_mac)) {
+		rc = sk_get_ether_addr(prog->if_name, prog->src_mac);
+		if (rc)
+			goto out_close;
 	}
-
-	if (is_zero_ether_addr(prog->src_mac))
-		ether_addr_copy(prog->src_mac,
-			        (unsigned char *)if_mac.ifr_hwaddr.sa_data);
 
 	if (prog->txtime) {
 		static struct sock_txtime sk_txtime = {
