@@ -227,24 +227,16 @@ out:
 static int prog_init_l4_sock(struct isochron_rcv *prog)
 {
 	struct ip_address any = {};
-	int fd, rc;
+	int rc;
 
 	if (!prog->l4)
 		return 0;
 
+	if_name_copy(any.bound_if_name, prog->if_name);
+
 	rc = sk_bind_udp(&any, prog->data_port, &prog->l4_sock);
 	if (rc)
 		return rc;
-
-	fd = sk_fd(prog->l4_sock);
-
-	/* Bind to device */
-	rc = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, prog->if_name,
-			IFNAMSIZ - 1);
-	if (rc < 0) {
-		perror("setsockopt(SO_BINDTODEVICE) on data socket failed");
-		goto out;
-	}
 
 	rc = sk_timestamping_init(prog->l4_sock, prog->if_name, true);
 	if (rc) {
@@ -252,7 +244,7 @@ static int prog_init_l4_sock(struct isochron_rcv *prog)
 		goto out;
 	}
 
-	prog->l4_data_fd = fd;
+	prog->l4_data_fd = sk_fd(prog->l4_sock);
 
 	return 0;
 
