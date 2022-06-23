@@ -306,7 +306,7 @@ static int prog_init_l4_sock(struct isochron_rcv *prog)
 	return 0;
 
 out:
-	close(fd);
+	sk_close(prog->l4_sock);
 	return -errno;
 }
 
