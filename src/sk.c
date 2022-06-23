@@ -820,6 +820,36 @@ int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 	return len;
 }
 
+int sk_set_priority(const struct sk *sock, int priority)
+{
+	if (setsockopt(sock->fd, SOL_SOCKET, SO_PRIORITY, &priority,
+		       sizeof(int))) {
+		perror("setsockopt(SO_PRIORITY) failed");
+		return -errno;
+	}
+
+	return 0;
+}
+
+int sk_enable_txtime(const struct sk *sock, bool deadline)
+{
+	static struct sock_txtime sk_txtime = {
+		.clockid = CLOCK_TAI,
+		.flags = SOF_TXTIME_REPORT_ERRORS,
+	};
+
+	if (deadline)
+		sk_txtime.flags |= SOF_TXTIME_DEADLINE_MODE;
+
+	if (setsockopt(sock->fd, SOL_SOCKET, SO_TXTIME, &sk_txtime,
+		       sizeof(sk_txtime))) {
+		perror("setsockopt(SO_TXTIME) failed");
+		return -errno;
+	}
+
+	return 0;
+}
+
 int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info)
 {
 	struct ethtool_ts_info info;

@@ -1001,7 +1001,7 @@ void isochron_send_teardown_sysmon(struct isochron_send *prog)
 
 int isochron_send_init_data_sock(struct isochron_send *prog)
 {
-	int fd, rc;
+	int rc;
 
 	/* Open socket to send on */
 	if (prog->l2)
@@ -1013,14 +1013,9 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 	if (rc)
 		goto out;
 
-	fd = sk_fd(prog->data_sock);
-
-	rc = setsockopt(fd, SOL_SOCKET, SO_PRIORITY, &prog->priority,
-			sizeof(int));
-	if (rc < 0) {
-		perror("setsockopt on data socket failed");
+	rc = sk_set_priority(prog->data_sock, prog->priority);
+	if (rc)
 		goto out_close;
-	}
 
 	if (is_zero_ether_addr(prog->src_mac)) {
 		rc = sk_get_ether_addr(prog->if_name, prog->src_mac);
@@ -1029,28 +1024,15 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 	}
 
 	if (prog->txtime) {
-		static struct sock_txtime sk_txtime = {
-			.clockid = CLOCK_TAI,
-			.flags = SOF_TXTIME_REPORT_ERRORS,
-		};
-
-		if (prog->deadline)
-			sk_txtime.flags |= SOF_TXTIME_DEADLINE_MODE;
-
-		rc = setsockopt(fd, SOL_SOCKET, SO_TXTIME,
-				&sk_txtime, sizeof(sk_txtime));
-		if (rc) {
-			perror("SO_TXTIME on data socket failed");
+		rc = sk_enable_txtime(prog->data_sock, prog->deadline);
+		if (rc)
 			goto out_close;
-		}
 	}
 
 	if (prog->do_ts) {
 		rc = sk_validate_ts_info(prog->if_name);
-		if (rc) {
-			errno = -rc;
+		if (rc)
 			goto out_close;
-		}
 
 		rc = sk_timestamping_init(prog->data_sock, prog->if_name, true);
 		if (rc < 0)
@@ -1060,7 +1042,7 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 	prog->msg = sk_msg_create(prog->data_sock, prog->sendbuf, prog->tx_len,
 				  CMSG_SPACE(sizeof(__s64)));
 	if (!prog->msg) {
-		errno = -ENOMEM;
+		rc = -ENOMEM;
 		goto out_close;
 	}
 
@@ -1074,7 +1056,7 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 out_close:
 	sk_close(prog->data_sock);
 out:
-	return -errno;
+	return rc;
 }
 
 void isochron_send_teardown_data_sock(struct isochron_send *prog)
