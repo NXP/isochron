@@ -1,9 +1,9 @@
 VERSION := $(shell ./setlocalversion)
-MY_CFLAGS := -DVERSION=\"${VERSION}\" $(CFLAGS)
-MY_CFLAGS += -Wall -Wextra -Werror -Wno-error=sign-compare \
+MY_CPPFLAGS := -DVERSION=\"${VERSION}\" $(CPPFLAGS)
+MY_CPPFLAGS += $(shell ./toolchain_deps.sh "$(CC)" "$(MY_CPPFLAGS)")
+MY_CFLAGS := -Wall -Wextra -Werror -Wno-error=sign-compare \
 	     -Wno-error=missing-field-initializers \
-	     -Wno-unused-parameter
-MY_CFLAGS += $(shell ./toolchain_deps.sh "$(CC)" "$(MY_CFLAGS)")
+	     -Wno-unused-parameter $(CFLAGS)
 MY_LDFLAGS := $(LDFLAGS)
 CHECK := sparse
 CHECKFLAGS := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
@@ -91,9 +91,9 @@ $(TARGET): $(objs)
 	$(CC) $^ -o $@ $(MY_LDFLAGS) -lm -pthread
 
 %.o: %.c
-	$(CC) $(MY_CFLAGS) -MMD -c $< -o $@
+	$(CC) $(MY_CPPFLAGS) $(MY_CFLAGS) -MMD -c $< -o $@
 ifeq ($(C),1)
-	$(CHECK) $(CHECKFLAGS) $(MY_CFLAGS) $<
+	$(CHECK) $(CHECKFLAGS) $(MY_CPPFLAGS) $(MY_CFLAGS) $<
 endif
 
 clean:
