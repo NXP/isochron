@@ -850,6 +850,52 @@ int sk_enable_txtime(const struct sk *sock, bool deadline)
 	return 0;
 }
 
+/* Borrowed from raw_configure in linuxptp */
+int sk_multicast_listen(const struct sk *sock, unsigned int if_index,
+			unsigned char *macaddr, bool enable)
+{
+	struct packet_mreq mreq;
+	int rc, option;
+
+	if (enable)
+		option = PACKET_ADD_MEMBERSHIP;
+	else
+		option = PACKET_DROP_MEMBERSHIP;
+
+	memset(&mreq, 0, sizeof(mreq));
+	mreq.mr_ifindex = if_index;
+	mreq.mr_type = PACKET_MR_MULTICAST;
+	mreq.mr_alen = ETH_ALEN;
+	ether_addr_copy(mreq.mr_address, macaddr);
+
+	rc = setsockopt(sock->fd, SOL_PACKET, option, &mreq, sizeof(mreq));
+	if (!rc)
+		return 0;
+
+	perror("setsockopt PACKET_MR_MULTICAST failed");
+
+	mreq.mr_ifindex = if_index;
+	mreq.mr_type = PACKET_MR_ALLMULTI;
+	mreq.mr_alen = 0;
+	rc = setsockopt(sock->fd, SOL_PACKET, option, &mreq, sizeof(mreq));
+	if (!rc)
+		return 0;
+
+	perror("setsockopt PACKET_MR_ALLMULTI failed");
+
+	mreq.mr_ifindex = if_index;
+	mreq.mr_type = PACKET_MR_PROMISC;
+	mreq.mr_alen = 0;
+	rc = setsockopt(sock->fd, SOL_PACKET, option, &mreq, sizeof(mreq));
+	if (!rc)
+		return 0;
+
+	perror("setsockopt PACKET_MR_PROMISC failed");
+
+	fprintf(stderr, "all socket options failed\n");
+	return -1;
+}
+
 int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info)
 {
 	struct ethtool_ts_info info;

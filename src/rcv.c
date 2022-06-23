@@ -184,52 +184,6 @@ static int app_loop(struct isochron_rcv *prog, __u8 *rcvbuf, size_t len,
 	return 0;
 }
 
-/* Borrowed from raw_configure in linuxptp */
-static int multicast_listen(int fd, unsigned int if_index,
-			    unsigned char *macaddr, bool enable)
-{
-	struct packet_mreq mreq;
-	int rc, option;
-
-	if (enable)
-		option = PACKET_ADD_MEMBERSHIP;
-	else
-		option = PACKET_DROP_MEMBERSHIP;
-
-	memset(&mreq, 0, sizeof(mreq));
-	mreq.mr_ifindex = if_index;
-	mreq.mr_type = PACKET_MR_MULTICAST;
-	mreq.mr_alen = ETH_ALEN;
-	ether_addr_copy(mreq.mr_address, macaddr);
-
-	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
-	if (!rc)
-		return 0;
-
-	perror("setsockopt PACKET_MR_MULTICAST failed");
-
-	mreq.mr_ifindex = if_index;
-	mreq.mr_type = PACKET_MR_ALLMULTI;
-	mreq.mr_alen = 0;
-	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
-	if (!rc)
-		return 0;
-
-	perror("setsockopt PACKET_MR_ALLMULTI failed");
-
-	mreq.mr_ifindex = if_index;
-	mreq.mr_type = PACKET_MR_PROMISC;
-	mreq.mr_alen = 0;
-	rc = setsockopt(fd, SOL_PACKET, option, &mreq, sizeof(mreq));
-	if (!rc)
-		return 0;
-
-	perror("setsockopt PACKET_MR_PROMISC failed");
-
-	fprintf(stderr, "all socket options failed\n");
-	return -1;
-}
-
 static int prog_init_l2_sock(struct isochron_rcv *prog)
 {
 	int fd, rc;
@@ -251,18 +205,15 @@ static int prog_init_l2_sock(struct isochron_rcv *prog)
 	fd = sk_fd(prog->l2_sock);
 
 	if (is_multicast_ether_addr(prog->dest_mac)) {
-		rc = multicast_listen(fd, prog->if_index, prog->dest_mac, true);
-		if (rc) {
-			perror("multicast_listen");
+		rc = sk_multicast_listen(prog->l2_sock, prog->if_index,
+					 prog->dest_mac, true);
+		if (rc)
 			goto out;
-		}
 	}
 
 	rc = sk_timestamping_init(prog->l2_sock, prog->if_name, true);
-	if (rc) {
-		errno = -rc;
+	if (rc)
 		goto out;
-	}
 
 	prog->l2_data_fd = fd;
 
@@ -270,7 +221,7 @@ static int prog_init_l2_sock(struct isochron_rcv *prog)
 
 out:
 	sk_close(prog->l2_sock);
-	return -errno;
+	return rc;
 }
 
 static int prog_init_l4_sock(struct isochron_rcv *prog)
@@ -316,8 +267,8 @@ static void prog_teardown_l2_sock(struct isochron_rcv *prog)
 		return;
 
 	if (is_multicast_ether_addr(prog->dest_mac))
-		multicast_listen(prog->l2_data_fd, prog->if_index,
-				 prog->dest_mac, false);
+		sk_multicast_listen(prog->l2_sock, prog->if_index,
+				    prog->dest_mac, false);
 
 	sk_close(prog->l2_sock);
 	prog->l2_sock = NULL;

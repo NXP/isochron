@@ -59,6 +59,8 @@ int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on);
 int sk_set_priority(const struct sk *sock, int priority);
 int sk_enable_txtime(const struct sk *sock, bool deadline);
+int sk_multicast_listen(const struct sk *sock, unsigned int if_index,
+			unsigned char *macaddr, bool enable);
 
 /* Common */
 void sk_close(struct sk *sock);
