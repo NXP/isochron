@@ -57,8 +57,6 @@ int sk_sendmsg(struct sk *sock, const struct sk_msg *msg, int flags);
 int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 	       struct isochron_timestamp *tstamp, int flags, int timeout);
 int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on);
-int sk_recvmsg(struct sk *sock, void *buf, int buflen,
-	       struct isochron_timestamp *tstamp, int flags, int timeout);
 
 /* Common */
 void sk_close(struct sk *sock);
