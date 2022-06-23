@@ -1001,7 +1001,6 @@ void isochron_send_teardown_sysmon(struct isochron_send *prog)
 
 int isochron_send_init_data_sock(struct isochron_send *prog)
 {
-	struct ifreq if_idx;
 	struct ifreq if_mac;
 	int fd, rc;
 
@@ -1021,14 +1020,6 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 			sizeof(int));
 	if (rc < 0) {
 		perror("setsockopt on data socket failed");
-		goto out_close;
-	}
-
-	/* Get the index of the interface to send on */
-	memset(&if_idx, 0, sizeof(struct ifreq));
-	strcpy(if_idx.ifr_name, prog->if_name);
-	if (ioctl(fd, SIOCGIFINDEX, &if_idx) < 0) {
-		perror("SIOCGIFINDEX failed");
 		goto out_close;
 	}
 
