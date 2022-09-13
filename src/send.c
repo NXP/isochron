@@ -556,20 +556,25 @@ static int prog_init_syncmon(struct isochron_send *prog)
 		return -ENOMEM;
 	}
 
-	if (prog->omit_sync || prog->omit_remote_sync) {
-		remote_sn = syncmon_add_remote_receiver_no_sync(syncmon,
-								"remote",
+	/* Instantiate syncmon node for the remote end only if --client
+	 * was specified, otherwise we don't know how to reach it.
+	 */
+	if (prog->mgmt_sock) {
+		if (prog->omit_sync || prog->omit_remote_sync) {
+			remote_sn = syncmon_add_remote_receiver_no_sync(syncmon,
+									"remote",
+									prog->mgmt_sock,
+									sn);
+		} else {
+			remote_sn = syncmon_add_remote_receiver(syncmon, "remote",
 								prog->mgmt_sock,
-								sn);
-	} else {
-		remote_sn = syncmon_add_remote_receiver(syncmon, "remote",
-							prog->mgmt_sock,
-							sn,
-							prog->sync_threshold);
-	}
-	if (!remote_sn) {
-		syncmon_destroy(syncmon);
-		return -ENOMEM;
+								sn,
+								prog->sync_threshold);
+		}
+		if (!remote_sn) {
+			syncmon_destroy(syncmon);
+			return -ENOMEM;
+		}
 	}
 
 	syncmon_init(syncmon);
