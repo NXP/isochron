@@ -46,12 +46,6 @@ OPTIONS
     incoming connections. This socket is used for management and
     statistics. Optional, defaults to port 5000.
 
-`-s`, `--frame-size` <`NUMBER`>
-
-:   specify the size of test frames. The size is counted from the first
-    octet of the destination MAC address until the last octet of data
-    before the FCS.
-
 `-S`, `--stats-address` <`NUMBER`>
 
 :   specify the IP address on which the receiver program is listening
