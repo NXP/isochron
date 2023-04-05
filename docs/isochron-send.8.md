@@ -108,7 +108,8 @@ OPTIONS
 
 :   specify the size of test frames. The size is counted from the first
     octet of the destination MAC address until the last octet of data
-    before the FCS.
+    before the FCS. This is different from the IEEE 802.3 definition of
+    frame size which includes the FCS.
 
 `-T`, `--no-ts`
 
