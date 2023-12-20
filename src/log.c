@@ -1098,7 +1098,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 		      __s64 *cycle_time, __s64 *window_size)
 {
 	struct isochron_log_file_header header;
-	size_t len;
+	ssize_t len;
 	int fd, rc;
 	int flags;
 
@@ -1111,8 +1111,8 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, &header, sizeof(header));
 	if (len <= 0) {
-		perror("Failed to read log header from file");
-		rc = len;
+		rc = len ?: -ENODATA;
+		pr_err(rc, "Failed to read log header from file: %m\n");
 		goto out_close;
 	}
 
@@ -1151,8 +1151,8 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, send_log->buf, send_log->size);
 	if (len <= 0) {
-		perror("Failed to read sender log");
-		rc = len;
+		rc = len ?: -ENODATA;
+		pr_err(rc, "Failed to read sender log: %m\n");
 		goto out_send_log_teardown;
 	}
 
@@ -1170,8 +1170,8 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 
 	len = read_exact(fd, rcv_log->buf, rcv_log->size);
 	if (len <= 0) {
-		perror("Failed to read receiver log");
-		rc = len;
+		rc = len ?: -ENODATA;
+		pr_err(rc, "Failed to read receiver log: %m\n");
 		goto out_rcv_log_teardown;
 	}
 
@@ -1206,9 +1206,9 @@ int isochron_log_save(const char *file, const struct isochron_log *send_log,
 		.cycle_time	= __cpu_to_be64(cycle_time),
 		.window_size	= __cpu_to_be64(window_size),
 	};
+	int fd, rc = 0;
 	int flags = 0;
-	size_t len;
-	int fd;
+	ssize_t len;
 
 	if (omit_sync)
 		flags |= ISOCHRON_FLAG_OMIT_SYNC;
@@ -1236,26 +1236,27 @@ int isochron_log_save(const char *file, const struct isochron_log *send_log,
 
 	len = write_exact(fd, &header, sizeof(header));
 	if (len <= 0) {
-		perror("Failed to write log header to file");
-		close(fd);
-		return len;
+		rc = len ?: -ENODATA;
+		pr_err(rc, "Failed to write log header to file: %m\n");
+		goto out;
 	}
 
 	len = write_exact(fd, send_log->buf, send_log->size);
 	if (len <= 0) {
-		perror("Failed to write send log to file");
-		close(fd);
-		return len;
+		rc = len ?: -ENODATA;
+		pr_err(rc, "Failed to write send log to file: %m\n");
+		goto out;
 	}
 
 	len = write_exact(fd, rcv_log->buf, rcv_log->size);
 	if (len <= 0) {
-		perror("Failed to write receive log to file");
-		close(fd);
-		return len;
+		rc = len ?: -ENODATA;
+		pr_err(rc, "Failed to write receive log to file: %m\n");
+		goto out;
 	}
 
+out:
 	close(fd);
 
-	return 0;
+	return rc;
 }
