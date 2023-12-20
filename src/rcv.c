@@ -358,6 +358,11 @@ static int prog_forward_sysmon_offset(void *priv, char *extack)
 {
 	struct isochron_rcv *prog = priv;
 
+	if (!prog->sysmon) {
+		mgmt_extack(extack, "Sync monitoring absent");
+		return -EINVAL;
+	}
+
 	return isochron_forward_sysmon_offset(prog->mgmt_sock, prog->sysmon,
 					      extack);
 }
@@ -742,8 +747,14 @@ static void prog_teardown_ptpmon(struct isochron_rcv *prog)
 static int prog_init_sysmon(struct isochron_rcv *prog)
 {
 	prog->sysmon = sysmon_create(prog->if_name, prog->num_readings);
-	if (!prog->sysmon)
+	if (!prog->sysmon) {
+		if (prog->omit_hwts)
+			return 0;
+
+		fprintf(stderr, "Unable to measure PHC offset of %s to CLOCK_REALTIME, use --omit-hwts to override\n",
+			prog->if_name);
 		return -ENOMEM;
+	}
 
 	sysmon_print_method(prog->sysmon);
 
@@ -752,7 +763,8 @@ static int prog_init_sysmon(struct isochron_rcv *prog)
 
 static void prog_teardown_sysmon(struct isochron_rcv *prog)
 {
-	sysmon_destroy(prog->sysmon);
+	if (prog->sysmon)
+		sysmon_destroy(prog->sysmon);
 }
 
 static int prog_init_mgmt_listen_sock(struct isochron_rcv *prog)
