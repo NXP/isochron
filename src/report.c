@@ -12,18 +12,7 @@
 struct isochron_report {
 	struct isochron_log send_log;
 	struct isochron_log rcv_log;
-	long packet_count;
-	long frame_size;
-	bool omit_sync;
-	bool do_ts;
-	bool txtime;
-	bool taprio;
-	bool deadline;
-	__s64 base_time;
-	__s64 advance_time;
-	__s64 shift_time;
-	__s64 cycle_time;
-	__s64 window_size;
+	struct isochron_log_metadata metadata;
 	bool summary;
 	unsigned long start;
 	unsigned long stop;
@@ -140,26 +129,18 @@ int isochron_report_main(int argc, char *argv[])
 		return rc;
 
 	rc = isochron_log_load(prog.input_file, &prog.send_log, &prog.rcv_log,
-			       &prog.packet_count, &prog.frame_size,
-			       &prog.omit_sync, &prog.do_ts, &prog.taprio,
-			       &prog.txtime, &prog.deadline, &prog.base_time,
-			       &prog.advance_time, &prog.shift_time,
-			       &prog.cycle_time, &prog.window_size);
+			       &prog.metadata);
 	if (rc)
 		return rc;
 
 	if (!prog.start)
 		prog.start = 1;
 	if (!prog.stop)
-		prog.stop = prog.packet_count;
+		prog.stop = prog.metadata.packet_count;
 
-	rc = isochron_print_stats(&prog.send_log, &prog.rcv_log,
+	rc = isochron_print_stats(&prog.send_log, &prog.rcv_log, &prog.metadata,
 				  prog.printf_fmt, prog.printf_args,
-				  prog.start, prog.stop, prog.summary,
-				  prog.omit_sync, prog.taprio,
-				  prog.txtime, prog.base_time,
-				  prog.advance_time, prog.shift_time,
-				  prog.cycle_time, prog.window_size);
+				  prog.start, prog.stop, prog.summary);
 
 	isochron_log_teardown(&prog.send_log);
 	isochron_log_teardown(&prog.rcv_log);

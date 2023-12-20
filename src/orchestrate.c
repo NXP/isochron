@@ -512,6 +512,7 @@ static int prog_collect_logs(struct isochron_orch *prog)
 {
 	struct isochron_orch_node *node, *sender;
 	struct isochron_log send_log, rcv_log;
+	struct isochron_log_metadata metadata;
 	struct isochron_send *send;
 	int rc;
 
@@ -537,14 +538,23 @@ static int prog_collect_logs(struct isochron_orch *prog)
 			return rc;
 		}
 
+		metadata = (struct isochron_log_metadata) {
+			.packet_count = send->iterations,
+			.frame_size = send->tx_len,
+			.omit_sync = send->omit_sync,
+			.do_ts = send->do_ts,
+			.taprio = send->taprio,
+			.txtime = send->txtime,
+			.deadline = send->deadline,
+			.base_time = send->base_time,
+			.advance_time = send->advance_time,
+			.shift_time = send->shift_time,
+			.cycle_time = send->cycle_time,
+			.window_size = send->window_size,
+		};
+
 		rc = isochron_log_save(send->output_file, &send_log,
-				       &rcv_log, send->iterations,
-				       send->tx_len, send->omit_sync,
-				       send->do_ts, send->taprio,
-				       send->txtime, send->deadline,
-				       send->base_time, send->advance_time,
-				       send->shift_time, send->cycle_time,
-				       send->window_size);
+				       &rcv_log, &metadata);
 		isochron_log_teardown(&send_log);
 		isochron_log_teardown(&rcv_log);
 

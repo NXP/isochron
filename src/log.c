@@ -427,15 +427,14 @@ static struct isochron_rcv_pkt_data
 static void
 isochron_printf_vars_get(const struct isochron_send_pkt_data *send_pkt,
 			 const struct isochron_rcv_pkt_data *rcv_pkt,
-			 __s64 base_time, __s64 advance_time, __s64 shift_time,
-			 __s64 cycle_time, __s64 window_size,
+			 const struct isochron_log_metadata *metadata,
 			 struct isochron_printf_variables *v)
 {
-	v->base_time = base_time;
-	v->advance_time = advance_time;
-	v->shift_time = shift_time;
-	v->cycle_time = cycle_time;
-	v->window_size = window_size;
+	v->base_time = metadata->base_time;
+	v->advance_time = metadata->advance_time;
+	v->shift_time = metadata->shift_time;
+	v->cycle_time = metadata->cycle_time;
+	v->window_size = metadata->window_size;
 	v->tx_scheduled = (__s64 )__be64_to_cpu(send_pkt->scheduled);
 	v->tx_wakeup = (__s64 )__be64_to_cpu(send_pkt->wakeup);
 	v->tx_hwts = (__s64 )__be64_to_cpu(send_pkt->hwts);
@@ -852,11 +851,9 @@ static void isochron_print_metric_stats(const char *name,
 
 int isochron_print_stats(struct isochron_log *send_log,
 			 struct isochron_log *rcv_log,
+			 const struct isochron_log_metadata *metadata,
 			 const char *printf_fmt, const char *printf_args,
-			 unsigned long start, unsigned long stop, bool summary,
-			 bool omit_sync, bool taprio, bool txtime,
-			 __s64 base_time, __s64 advance_time, __s64 shift_time,
-			 __s64 cycle_time, __s64 window_size)
+			 unsigned long start, unsigned long stop, bool summary)
 {
 	struct isochron_rcv_pkt_data dummy_rcv_pkt = {};
 	struct isochron_metric_stats sender_latency_ms;
@@ -911,16 +908,16 @@ int isochron_print_stats(struct isochron_log *send_log,
 			not_received++;
 		}
 
-		isochron_printf_vars_get(send_pkt, rcv_pkt, base_time,
-					 advance_time, shift_time, cycle_time,
-					 window_size, &v);
+		isochron_printf_vars_get(send_pkt, rcv_pkt, metadata, &v);
 
 		rc = isochron_printf_one_packet(&v, printf_fmt, printf_args);
 		if (rc)
 			goto out;
 
-		if (summary && !missing)
-			isochron_process_stat(&v, &stats, taprio, txtime);
+		if (summary && !missing) {
+			isochron_process_stat(&v, &stats, metadata->taprio,
+					      metadata->txtime);
+		}
 	}
 
 	if (!summary)
@@ -947,19 +944,19 @@ int isochron_print_stats(struct isochron_log *send_log,
 	stats.path_delay_mean /= stats.frame_count;
 
 	if (llabs((long long)stats.tx_sync_offset_mean) > NSEC_PER_SEC &&
-	    !omit_sync) {
+	    !metadata->omit_sync) {
 		printf("Sender PHC not synchronized (mean PHC to system time "
 		       "diff %.3lf ns larger than 1 second)\n",
 		       stats.tx_sync_offset_mean);
 	}
 	if (llabs((long long)stats.rx_sync_offset_mean) > NSEC_PER_SEC &&
-	    !omit_sync) {
+	    !metadata->omit_sync) {
 		printf("Receiver PHC not synchronized (mean PHC to system time "
 		       "diff %.3lf ns larger than 1 second)\n",
 		       stats.rx_sync_offset_mean);
 	}
 	if (llabs((long long)stats.path_delay_mean) > NSEC_PER_SEC &&
-	    !omit_sync) {
+	    !metadata->omit_sync) {
 		printf("Sender and receiver not synchronized (mean path delay "
 		       "%.3lf ns larger than 1 second)\n",
 		       stats.path_delay_mean);
@@ -998,7 +995,7 @@ int isochron_print_stats(struct isochron_log *send_log,
 	isochron_metric_compute_stats(&stats, &ms,
 				      offsetof(struct isochron_packet_metrics,
 					       latency_budget), false);
-	if (taprio || txtime)
+	if (metadata->taprio || metadata->txtime)
 		isochron_print_metric_stats("MAC latency", &ms);
 	else
 		isochron_print_metric_stats("Application latency budget", &ms);
@@ -1030,20 +1027,20 @@ int isochron_print_stats(struct isochron_log *send_log,
 	isochron_print_metric_stats("Arrival latency", &ms);
 
 	printf("Sending one packet takes on average %.3lf%% of the cycle time (min %.3lf%% max %.3lf%%)\n",
-	       100.0f * sender_latency_ms.mean / cycle_time,
-	       100.0f * sender_latency_ms.min / cycle_time,
-	       100.0f * sender_latency_ms.max / cycle_time);
+	       100.0f * sender_latency_ms.mean / metadata->cycle_time,
+	       100.0f * sender_latency_ms.min / metadata->cycle_time,
+	       100.0f * sender_latency_ms.max / metadata->cycle_time);
 	printf("Waking up takes on average %.3lf%% of the cycle time (min %.3lf%% max %.3lf%%)\n",
-	       100.0f * wakeup_latency_ms.mean / cycle_time,
-	       100.0f * wakeup_latency_ms.min / cycle_time,
-	       100.0f * wakeup_latency_ms.max / cycle_time);
+	       100.0f * wakeup_latency_ms.mean / metadata->cycle_time,
+	       100.0f * wakeup_latency_ms.min / metadata->cycle_time,
+	       100.0f * wakeup_latency_ms.max / metadata->cycle_time);
 	printf("Driver takes on average %.3lf%% of the cycle time to send a packet (min %.3lf%% max %.3lf%%)\n",
-	       100.0f * driver_latency_ms.mean / cycle_time,
-	       100.0f * driver_latency_ms.min / cycle_time,
-	       100.0f * driver_latency_ms.max / cycle_time);
+	       100.0f * driver_latency_ms.mean / metadata->cycle_time,
+	       100.0f * driver_latency_ms.min / metadata->cycle_time,
+	       100.0f * driver_latency_ms.max / metadata->cycle_time);
 
 	/* HW TX deadline misses */
-	if (!taprio && !txtime)
+	if (!metadata->taprio && !metadata->txtime)
 		printf("HW TX deadline misses: %d (%.3lf%%)\n",
 		       stats.hw_tx_deadline_misses,
 		       100.0f * stats.hw_tx_deadline_misses / stats.frame_count);
@@ -1091,11 +1088,8 @@ int isochron_log_for_each_pkt(struct isochron_log *log, size_t pkt_size,
 }
 
 int isochron_log_load(const char *file, struct isochron_log *send_log,
-		      struct isochron_log *rcv_log, long *packet_count,
-		      long *frame_size, bool *omit_sync, bool *do_ts,
-		      bool *taprio, bool *txtime, bool *deadline,
-		      __s64 *base_time, __s64 *advance_time, __s64 *shift_time,
-		      __s64 *cycle_time, __s64 *window_size)
+		      struct isochron_log *rcv_log,
+		      struct isochron_log_metadata *metadata)
 {
 	struct isochron_log_file_header header;
 	ssize_t len;
@@ -1123,19 +1117,19 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 	}
 
 	flags = __be16_to_cpu(header.flags);
-	*omit_sync = !!(flags & ISOCHRON_FLAG_OMIT_SYNC);
-	*do_ts = !!(flags & ISOCHRON_FLAG_DO_TS);
-	*taprio = !!(flags & ISOCHRON_FLAG_TAPRIO);
-	*txtime = !!(flags & ISOCHRON_FLAG_TXTIME);
-	*deadline = !!(flags & ISOCHRON_FLAG_DEADLINE);
+	metadata->omit_sync = !!(flags & ISOCHRON_FLAG_OMIT_SYNC);
+	metadata->do_ts = !!(flags & ISOCHRON_FLAG_DO_TS);
+	metadata->taprio = !!(flags & ISOCHRON_FLAG_TAPRIO);
+	metadata->txtime = !!(flags & ISOCHRON_FLAG_TXTIME);
+	metadata->deadline = !!(flags & ISOCHRON_FLAG_DEADLINE);
 
-	*packet_count = __be32_to_cpu(header.packet_count);
-	*frame_size = __be16_to_cpu(header.frame_size);
-	*base_time = (__s64 )__be64_to_cpu(header.base_time);
-	*advance_time = (__s64 )__be64_to_cpu(header.advance_time);
-	*shift_time = (__s64 )__be64_to_cpu(header.shift_time);
-	*cycle_time = (__s64 )__be64_to_cpu(header.cycle_time);
-	*window_size = (__s64 )__be64_to_cpu(header.window_size);
+	metadata->packet_count = __be32_to_cpu(header.packet_count);
+	metadata->frame_size = __be16_to_cpu(header.frame_size);
+	metadata->base_time = (__s64 )__be64_to_cpu(header.base_time);
+	metadata->advance_time = (__s64 )__be64_to_cpu(header.advance_time);
+	metadata->shift_time = (__s64 )__be64_to_cpu(header.shift_time);
+	metadata->cycle_time = (__s64 )__be64_to_cpu(header.cycle_time);
+	metadata->window_size = (__s64 )__be64_to_cpu(header.window_size);
 
 	if (lseek(fd, __be64_to_cpu(header.send_log_start), SEEK_SET) < 0) {
 		perror("Failed to seek to the sender log");
@@ -1190,35 +1184,32 @@ out:
 }
 
 int isochron_log_save(const char *file, const struct isochron_log *send_log,
-		      const struct isochron_log *rcv_log, long packet_count,
-		      long frame_size, bool omit_sync, bool do_ts, bool taprio,
-		      bool txtime, bool deadline, __s64 base_time,
-		      __s64 advance_time, __s64 shift_time, __s64 cycle_time,
-		      __s64 window_size)
+		      const struct isochron_log *rcv_log,
+		      const struct isochron_log_metadata *metadata)
 {
 	struct isochron_log_file_header header = {
 		.version	= __cpu_to_be32(ISOCHRON_LOG_VERSION),
-		.packet_count	= __cpu_to_be32(packet_count),
-		.frame_size	= __cpu_to_be16(frame_size),
-		.base_time	= __cpu_to_be64(base_time),
-		.advance_time	= __cpu_to_be64(advance_time),
-		.shift_time	= __cpu_to_be64(shift_time),
-		.cycle_time	= __cpu_to_be64(cycle_time),
-		.window_size	= __cpu_to_be64(window_size),
+		.packet_count	= __cpu_to_be32(metadata->packet_count),
+		.frame_size	= __cpu_to_be16(metadata->frame_size),
+		.base_time	= __cpu_to_be64(metadata->base_time),
+		.advance_time	= __cpu_to_be64(metadata->advance_time),
+		.shift_time	= __cpu_to_be64(metadata->shift_time),
+		.cycle_time	= __cpu_to_be64(metadata->cycle_time),
+		.window_size	= __cpu_to_be64(metadata->window_size),
 	};
 	int fd, rc = 0;
 	int flags = 0;
 	ssize_t len;
 
-	if (omit_sync)
+	if (metadata->omit_sync)
 		flags |= ISOCHRON_FLAG_OMIT_SYNC;
-	if (do_ts)
+	if (metadata->do_ts)
 		flags |= ISOCHRON_FLAG_DO_TS;
-	if (taprio)
+	if (metadata->taprio)
 		flags |= ISOCHRON_FLAG_TAPRIO;
-	if (txtime)
+	if (metadata->txtime)
 		flags |= ISOCHRON_FLAG_TXTIME;
-	if (deadline)
+	if (metadata->deadline)
 		flags |= ISOCHRON_FLAG_DEADLINE;
 
 	memcpy(header.magic, isochron_magic, strlen(isochron_magic));

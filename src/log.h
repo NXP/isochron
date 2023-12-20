@@ -36,6 +36,21 @@ struct isochron_log {
 	char		*buf;
 };
 
+struct isochron_log_metadata {
+	long packet_count;
+	long frame_size;
+	bool omit_sync;
+	bool do_ts;
+	bool taprio;
+	bool txtime;
+	bool deadline;
+	__s64 base_time;
+	__s64 advance_time;
+	__s64 shift_time;
+	__s64 cycle_time;
+	__s64 window_size;
+};
+
 int isochron_log_init(struct isochron_log *log, size_t size);
 void *isochron_log_get_entry(struct isochron_log *log, size_t entry_size,
 			     int index);
@@ -56,26 +71,18 @@ int isochron_log_rcv_pkt(struct isochron_log *log,
 
 int isochron_print_stats(struct isochron_log *send_log,
 			 struct isochron_log *rcv_log,
+			 const struct isochron_log_metadata *metadata,
 			 const char *printf_fmt, const char *printf_args,
-			 unsigned long start, unsigned long stop, bool summary,
-			 bool omit_sync, bool taprio, bool txtime,
-			 __s64 base_time, __s64 advance_time, __s64 shift_time,
-			 __s64 cycle_time, __s64 window_size);
+			 unsigned long start, unsigned long stop, bool summary);
 
 size_t isochron_log_buf_tlv_size(struct isochron_log *log);
 
 int isochron_log_load(const char *file, struct isochron_log *send_log,
-		      struct isochron_log *rcv_log, long *packet_count,
-		      long *frame_size, bool *omit_sync, bool *do_ts,
-		      bool *taprio, bool *txtime, bool *deadline,
-		      __s64 *base_time, __s64 *advance_time, __s64 *shift_time,
-		      __s64 *cycle_time, __s64 *window_size);
+		      struct isochron_log *rcv_log,
+		      struct isochron_log_metadata *metadata);
 
 int isochron_log_save(const char *file, const struct isochron_log *send_log,
-		      const struct isochron_log *rcv_log, long packet_count,
-		      long frame_size, bool omit_sync, bool do_ts, bool taprio,
-		      bool txtime, bool deadline, __s64 base_time,
-		      __s64 advance_time, __s64 shift_time, __s64 cycle_time,
-		      __s64 window_size);
+		      const struct isochron_log *rcv_log,
+		      const struct isochron_log_metadata *metadata);
 
 #endif

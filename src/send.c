@@ -903,13 +903,23 @@ static int prog_end_session(struct isochron_send *prog, bool save_log)
 	}
 
 	if (save_log && strlen(prog->output_file)) {
+		struct isochron_log_metadata metadata = {
+			.packet_count = prog->iterations,
+			.frame_size = prog->tx_len,
+			.omit_sync = prog->omit_sync,
+			.do_ts = prog->do_ts,
+			.taprio = prog->taprio,
+			.txtime = prog->txtime,
+			.deadline = prog->deadline,
+			.base_time = prog->base_time,
+			.advance_time = prog->advance_time,
+			.shift_time = prog->shift_time,
+			.cycle_time = prog->cycle_time,
+			.window_size = prog->window_size,
+		};
+
 		rc = isochron_log_save(prog->output_file, &prog->log, &rcv_log,
-				       prog->iterations, prog->tx_len,
-				       prog->omit_sync, prog->do_ts,
-				       prog->taprio, prog->txtime,
-				       prog->deadline, prog->base_time,
-				       prog->advance_time, prog->shift_time,
-				       prog->cycle_time, prog->window_size);
+				       &metadata);
 	}
 
 	isochron_log_teardown(&rcv_log);
