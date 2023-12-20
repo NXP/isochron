@@ -164,5 +164,5 @@ int isochron_report_main(int argc, char *argv[])
 	isochron_log_teardown(&prog.send_log);
 	isochron_log_teardown(&prog.rcv_log);
 
-	return 0;
+	return rc;
 }
