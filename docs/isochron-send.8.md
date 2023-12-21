@@ -160,6 +160,13 @@ OPTIONS
     therefore no ptp4l instance runs on it, so the sync status cannot be
     monitored. Optional, defaults to false.
 
+`-Y`, `--omit-hwts`
+
+:   when set, the program will only collect software TX timestamps.
+    This allows operating (with reduced functionality) on interfaces
+    which do not support hardware timestamping. In the packet log,
+    hardware TX timestamps are saved as 0. Optional, defaults to false.
+
 `-m`, `--tracemark`
 
 :   when set, the sender will write to the kernel's ftrace buffer in

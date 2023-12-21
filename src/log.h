@@ -40,6 +40,7 @@ struct isochron_log_metadata {
 	long packet_count;
 	long frame_size;
 	bool omit_sync;
+	bool omit_hwts;
 	bool do_ts;
 	bool taprio;
 	bool txtime;

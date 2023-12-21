@@ -138,6 +138,13 @@ OPTIONS
     readouts should be performed before picking the fastest one.
     Optional, defaults to 5.
 
+`-Y`, `--omit-hwts`
+
+:   when set, the program will only collect software RX timestamps.
+    This allows operating (with reduced functionality) on interfaces
+    which do not support hardware timestamping. In the packet log,
+    hardware RX timestamps are saved as 0. Optional, defaults to false.
+
 EXAMPLES
 ========
 

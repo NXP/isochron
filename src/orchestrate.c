@@ -542,6 +542,7 @@ static int prog_collect_logs(struct isochron_orch *prog)
 			.packet_count = send->iterations,
 			.frame_size = send->tx_len,
 			.omit_sync = send->omit_sync,
+			.omit_hwts = send->omit_hwts,
 			.do_ts = send->do_ts,
 			.taprio = send->taprio,
 			.txtime = send->txtime,

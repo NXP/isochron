@@ -56,7 +56,8 @@ struct cmsghdr *sk_msg_add_cmsg(struct sk_msg *msg, int level, int type,
 int sk_sendmsg(struct sk *sock, const struct sk_msg *msg, int flags);
 int sk_recvmsg(struct sk *sock, void *buf, int buflen,
 	       struct isochron_timestamp *tstamp, int flags, int timeout);
-int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on);
+int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on,
+			 bool omit_hwts);
 int sk_set_priority(const struct sk *sock, int priority);
 int sk_enable_txtime(const struct sk *sock, bool deadline);
 int sk_multicast_listen(const struct sk *sock, unsigned int if_index,
@@ -69,7 +70,7 @@ void sk_err(const struct sk *sock, int rc, const char *fmt, ...);
 
 /* Others */
 int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info);
-int sk_validate_ts_info(const char if_name[IFNAMSIZ]);
+int sk_validate_ts_info(const char if_name[IFNAMSIZ], bool omit_hwts);
 int sk_get_ether_addr(const char if_name[IFNAMSIZ], unsigned char *addr);
 
 #define sk_err(sock, rc, ...) \

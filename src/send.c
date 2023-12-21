@@ -192,9 +192,12 @@ static int prog_log_packet_no_tstamp(struct isochron_send *prog,
 }
 
 static bool
-isochron_pkt_fully_timestamped(struct isochron_send_pkt_data *send_pkt)
+isochron_pkt_fully_timestamped(struct isochron_send *prog,
+			       struct isochron_send_pkt_data *send_pkt)
 {
-	return send_pkt->hwts && send_pkt->swts && send_pkt->sched_ts;
+	bool have_swts = send_pkt->swts && send_pkt->sched_ts;
+
+	return prog->omit_hwts ? have_swts : have_swts && send_pkt->hwts;
 }
 
 static int prog_validate_premature_tx(__u32 seqid, __s64 hwts, __s64 scheduled,
@@ -307,7 +310,7 @@ static int prog_poll_txtstamps(struct isochron_send *prog, int timeout)
 		return -EINVAL;
 	}
 
-	if (isochron_pkt_fully_timestamped(send_pkt)) {
+	if (isochron_pkt_fully_timestamped(prog, send_pkt)) {
 		fprintf(stderr,
 			"received duplicate timestamp for packet key %u already fully timestamped\n",
 			tstamp.tskey);
@@ -340,7 +343,7 @@ static int prog_poll_txtstamps(struct isochron_send *prog, int timeout)
 			return rc;
 	}
 
-	if (isochron_pkt_fully_timestamped(send_pkt))
+	if (isochron_pkt_fully_timestamped(prog, send_pkt))
 		prog->timestamped++;
 
 	return len;
@@ -385,6 +388,7 @@ static int isochron_missing_txts_dump(void *priv, void *pkt)
 {
 	struct isochron_send_pkt_data *send_pkt = pkt;
 	__u32 seqid = __be32_to_cpu(send_pkt->seqid);
+	struct isochron_send *prog = priv;
 	bool missing_sched_ts = false;
 	bool missing_hwts = false;
 	bool missing_swts = false;
@@ -392,7 +396,7 @@ static int isochron_missing_txts_dump(void *priv, void *pkt)
 	if (!seqid)
 		return 1;
 
-	if (!send_pkt->hwts)
+	if (!prog->omit_hwts && !send_pkt->hwts)
 		missing_hwts = true;
 	if (!send_pkt->swts)
 		missing_swts = true;
@@ -907,6 +911,7 @@ static int prog_end_session(struct isochron_send *prog, bool save_log)
 			.packet_count = prog->iterations,
 			.frame_size = prog->tx_len,
 			.omit_sync = prog->omit_sync,
+			.omit_hwts = prog->omit_hwts,
 			.do_ts = prog->do_ts,
 			.taprio = prog->taprio,
 			.txtime = prog->txtime,
@@ -1040,11 +1045,12 @@ int isochron_send_init_data_sock(struct isochron_send *prog)
 	}
 
 	if (prog->do_ts) {
-		rc = sk_validate_ts_info(prog->if_name);
+		rc = sk_validate_ts_info(prog->if_name, prog->omit_hwts);
 		if (rc)
 			goto out_close;
 
-		rc = sk_timestamping_init(prog->data_sock, prog->if_name, true);
+		rc = sk_timestamping_init(prog->data_sock, prog->if_name, true,
+					  prog->omit_hwts);
 		if (rc < 0)
 			goto out_close;
 	}
@@ -1781,6 +1787,14 @@ int isochron_send_parse_args(int argc, char **argv, struct isochron_send *prog)
 			.type = PROG_ARG_UNSIGNED,
 			.unsigned_ptr = {
 				.ptr = &prog->cpumask,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-Y",
+			.long_opt = "--omit-hwts",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->omit_hwts,
 			},
 			.optional = true,
 		},

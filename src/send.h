@@ -52,6 +52,7 @@ struct isochron_send {
 	long vid;
 	bool do_ts;
 	bool quiet;
+	bool omit_hwts;
 	long etype;
 	bool omit_sync;
 	bool omit_remote_sync;

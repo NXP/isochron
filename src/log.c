@@ -24,6 +24,7 @@
 #define ISOCHRON_FLAG_TAPRIO		BIT(2)
 #define ISOCHRON_FLAG_TXTIME		BIT(3)
 #define ISOCHRON_FLAG_DEADLINE		BIT(4)
+#define ISOCHRON_FLAG_OMIT_HWTS		BIT(5)
 
 static const char *isochron_magic = "ISOCHRON";
 
@@ -1122,6 +1123,7 @@ int isochron_log_load(const char *file, struct isochron_log *send_log,
 	metadata->taprio = !!(flags & ISOCHRON_FLAG_TAPRIO);
 	metadata->txtime = !!(flags & ISOCHRON_FLAG_TXTIME);
 	metadata->deadline = !!(flags & ISOCHRON_FLAG_DEADLINE);
+	metadata->omit_hwts = !!(flags & ISOCHRON_FLAG_OMIT_HWTS);
 
 	metadata->packet_count = __be32_to_cpu(header.packet_count);
 	metadata->frame_size = __be16_to_cpu(header.frame_size);
@@ -1211,6 +1213,8 @@ int isochron_log_save(const char *file, const struct isochron_log *send_log,
 		flags |= ISOCHRON_FLAG_TXTIME;
 	if (metadata->deadline)
 		flags |= ISOCHRON_FLAG_DEADLINE;
+	if (metadata->omit_hwts)
+		flags |= ISOCHRON_FLAG_OMIT_HWTS;
 
 	memcpy(header.magic, isochron_magic, strlen(isochron_magic));
 	header.flags = __cpu_to_be16(flags);

@@ -654,7 +654,8 @@ static int hwts_init(int fd, const char if_name[IFNAMSIZ], int rx_filter,
 	return 0;
 }
 
-int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on)
+int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on,
+			 bool omit_hwts)
 {
 	int rc, filter, flags, tx_type;
 	int fd = sock->fd;
@@ -664,26 +665,29 @@ int sk_timestamping_init(struct sk *sock, const char if_name[IFNAMSIZ], bool on)
 		return -EINVAL;
 	}
 
-	flags = SOF_TIMESTAMPING_TX_HARDWARE |
-		SOF_TIMESTAMPING_RX_HARDWARE |
-		SOF_TIMESTAMPING_TX_SOFTWARE |
+	flags = SOF_TIMESTAMPING_TX_SOFTWARE |
 		SOF_TIMESTAMPING_RX_SOFTWARE |
 		SOF_TIMESTAMPING_TX_SCHED |
 		SOF_TIMESTAMPING_SOFTWARE |
-		SOF_TIMESTAMPING_RAW_HARDWARE |
-		SOF_TIMESTAMPING_OPT_TX_SWHW |
 		SOF_TIMESTAMPING_OPT_ID;
 
-	filter = HWTSTAMP_FILTER_ALL;
+	if (!omit_hwts) {
+		flags |= SOF_TIMESTAMPING_TX_HARDWARE |
+			 SOF_TIMESTAMPING_RX_HARDWARE |
+			 SOF_TIMESTAMPING_RAW_HARDWARE |
+			 SOF_TIMESTAMPING_OPT_TX_SWHW;
 
-	if (on)
-		tx_type = HWTSTAMP_TX_ON;
-	else
-		tx_type = HWTSTAMP_TX_OFF;
+		filter = HWTSTAMP_FILTER_ALL;
 
-	rc = hwts_init(fd, if_name, filter, tx_type);
-	if (rc)
-		return rc;
+		if (on)
+			tx_type = HWTSTAMP_TX_ON;
+		else
+			tx_type = HWTSTAMP_TX_OFF;
+
+		rc = hwts_init(fd, if_name, filter, tx_type);
+		if (rc)
+			return rc;
+	}
 
 	rc = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING,
 			&flags, sizeof(flags));
@@ -938,7 +942,7 @@ int sk_get_ts_info(const char name[IFNAMSIZ], struct sk_ts_info *sk_info)
 	return 0;
 }
 
-int sk_validate_ts_info(const char if_name[IFNAMSIZ])
+int sk_validate_ts_info(const char if_name[IFNAMSIZ], bool omit_hwts)
 {
 	struct sk_ts_info ts_info;
 	int rc;
@@ -951,12 +955,12 @@ int sk_validate_ts_info(const char if_name[IFNAMSIZ])
 	if (!ts_info.valid)
 		return -EINVAL;
 
-	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_TX_HARDWARE)) {
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_TX_HARDWARE) && !omit_hwts) {
 		fprintf(stderr,
 			"Driver not capable of SOF_TIMESTAMPING_TX_HARDWARE, continuing anyway\n");
 	}
 
-	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_RX_HARDWARE)) {
+	if (!(ts_info.so_timestamping & SOF_TIMESTAMPING_RX_HARDWARE) && !omit_hwts) {
 		fprintf(stderr,
 			"Driver not capable of SOF_TIMESTAMPING_RX_HARDWARE, continuing anyway\n");
 	}

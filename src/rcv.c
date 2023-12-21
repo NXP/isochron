@@ -51,6 +51,7 @@ struct isochron_rcv {
 	bool client_waiting_for_log;
 	bool data_fd_timed_out;
 	bool quiet;
+	bool omit_hwts;
 	long etype;
 	long stats_port;
 	struct ip_address stats_addr;
@@ -211,7 +212,8 @@ static int prog_init_l2_sock(struct isochron_rcv *prog)
 			goto out;
 	}
 
-	rc = sk_timestamping_init(prog->l2_sock, prog->if_name, true);
+	rc = sk_timestamping_init(prog->l2_sock, prog->if_name, true,
+				  prog->omit_hwts);
 	if (rc)
 		goto out;
 
@@ -238,7 +240,8 @@ static int prog_init_l4_sock(struct isochron_rcv *prog)
 	if (rc)
 		return rc;
 
-	rc = sk_timestamping_init(prog->l4_sock, prog->if_name, true);
+	rc = sk_timestamping_init(prog->l4_sock, prog->if_name, true,
+				  prog->omit_hwts);
 	if (rc) {
 		errno = -rc;
 		goto out;
@@ -857,7 +860,7 @@ static int prog_init(struct isochron_rcv *prog)
 	if (rc)
 		goto out_close_rtnl;
 
-	rc = sk_validate_ts_info(prog->if_name);
+	rc = sk_validate_ts_info(prog->if_name, prog->omit_hwts);
 	if (rc)
 		goto out_close_rtnl;
 
@@ -1050,6 +1053,14 @@ static int prog_parse_args(int argc, char **argv, struct isochron_rcv *prog)
 			.type = PROG_ARG_LONG,
 			.long_ptr = {
 				.ptr = &prog->num_readings,
+			},
+			.optional = true,
+		}, {
+			.short_opt = "-Y",
+			.long_opt = "--omit-hwts",
+			.type = PROG_ARG_BOOL,
+			.boolean_ptr = {
+			        .ptr = &prog->omit_hwts,
 			},
 			.optional = true,
 		},
