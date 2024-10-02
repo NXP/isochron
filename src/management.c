@@ -112,7 +112,7 @@ const char *mid_to_string(enum isochron_management_id mid)
 	default:
 		return "UNKNOWN";
 	}
-};
+}
 
 int isochron_send_tlv(struct sk *sock, enum isochron_management_action action,
 		      enum isochron_management_id mid, size_t size)
