@@ -435,7 +435,7 @@ int prog_parse_np_args(int argc, char **argv, struct prog_arg *prog_args,
 	int rc, i, parsed = 0;
 	bool *parsed_arr;
 
-	parsed_arr = calloc(sizeof(bool), prog_args_size);
+	parsed_arr = calloc(prog_args_size, sizeof(bool));
 	if (!parsed_arr)
 		return -ENOMEM;
 

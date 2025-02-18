@@ -1133,7 +1133,7 @@ static int prog_init_receiver_nodes(struct isochron_orch *prog)
 		if (!send->stats_srv.family)
 			continue;
 
-		rcv_node = calloc(sizeof(*rcv_node), 1);
+		rcv_node = calloc(1, sizeof(*rcv_node));
 		if (!rcv_node)
 			return -ENOMEM;
 
@@ -1342,13 +1342,13 @@ static int prog_parse_input_file_linewise(struct isochron_orch *prog,
 				break;
 			}
 
-			curr_node = calloc(sizeof(*curr_node), 1);
+			curr_node = calloc(1, sizeof(*curr_node));
 			if (!curr_node) {
 				rc = -ENOMEM;
 				break;
 			}
 
-			send = calloc(sizeof(*send), 1);
+			send = calloc(1, sizeof(*send));
 			if (!send) {
 				free(curr_node);
 				rc = -ENOMEM;
