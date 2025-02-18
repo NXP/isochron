@@ -88,7 +88,7 @@ void ns_sprintf(char *buf, __s64 ns)
 {
 	struct timespec ts = ns_to_timespec(ns);
 
-	snprintf(buf, TIMESPEC_BUFSIZ, "%ld.%09ld", ts.tv_sec, ts.tv_nsec);
+	snprintf(buf, TIMESPEC_BUFSIZ, "%lld.%09ld", (long long)ts.tv_sec, ts.tv_nsec);
 }
 
 static const char * const trace_marker_paths[] = {
