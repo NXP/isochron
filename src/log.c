@@ -1056,7 +1056,7 @@ out:
 
 int isochron_log_init(struct isochron_log *log, size_t size)
 {
-	log->buf = calloc(sizeof(char), size);
+	log->buf = calloc(size, sizeof(char));
 	if (!log->buf)
 		return -ENOMEM;
 
