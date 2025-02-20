@@ -458,7 +458,7 @@ isochron_printf_signed_int(char *buf, const char *buf_end_ptr,
 
 	switch (vc->size) {
 	case sizeof(__s64):
-		sprintf(tmp, "%lld", *var64);
+		sprintf(tmp, "%lld", (long long)*var64);
 		break;
 	case sizeof(__s32):
 		sprintf(tmp, "%d", *var32);
@@ -495,7 +495,7 @@ isochron_printf_unsigned_int(char *buf, const char *buf_end_ptr,
 
 	switch (vc->size) {
 	case sizeof(__u64):
-		sprintf(tmp, "%llu", *var64);
+		sprintf(tmp, "%llu", (unsigned long long)*var64);
 		break;
 	case sizeof(__u32):
 		sprintf(tmp, "%u", *var32);
@@ -532,7 +532,7 @@ isochron_printf_hex_int(char *buf, const char *buf_end_ptr,
 
 	switch (vc->size) {
 	case sizeof(__u64):
-		sprintf(tmp, "%llx", *var64);
+		sprintf(tmp, "%llx", (unsigned long long)*var64);
 		break;
 	case sizeof(__u32):
 		sprintf(tmp, "%x", *var32);
@@ -845,8 +845,8 @@ static void isochron_print_metric_stats(const char *name,
 {
 	printf("%s: min %lld max %lld mean %.3lf stddev %.3lf, "
 	       "min at seqid %d, max at seqid %d\n",
-	       name, ms->min, ms->max, ms->mean, ms->stddev,
-	       ms->seqid_of_min, ms->seqid_of_max);
+	       name, (long long)ms->min, (long long)ms->max, ms->mean,
+	       ms->stddev, ms->seqid_of_min, ms->seqid_of_max);
 }
 
 int isochron_print_stats(struct isochron_log *send_log,
@@ -925,12 +925,13 @@ int isochron_print_stats(struct isochron_log *send_log,
 
 	if (not_tx_timestamped) {
 		printf("Packets not completely TX timestamped: %llu (%.3lf%%)\n",
-		       not_tx_timestamped,
+		       (unsigned long long)not_tx_timestamped,
 		       100.0f * not_tx_timestamped / pkt_arr_size);
 	}
 
 	if (not_received) {
-		printf("Packets not received: %llu (%.3lf%%)\n", not_received,
+		printf("Packets not received: %llu (%.3lf%%)\n",
+		       (unsigned long long)not_received,
 		       100.0f * not_received / pkt_arr_size);
 	}
 

@@ -331,8 +331,8 @@ static void syncmon_print_sync_stats_double(struct syncmon_node *send,
 	ns_sprintf(now_buf, now);
 
 	printf("isochron[%s]: %s ptpmon %10lld sysmon %10lld receiver ptpmon %10lld sysmon %10lld\n",
-	       now_buf, send->name, send->ptpmon_offset, send->sysmon_offset,
-	       rcv->ptpmon_offset, rcv->sysmon_offset);
+	       now_buf, send->name, (long long)send->ptpmon_offset, (long long)send->sysmon_offset,
+	       (long long)rcv->ptpmon_offset, (long long)rcv->sysmon_offset);
 }
 
 static void syncmon_print_sync_stats_single(struct syncmon_node *send)
@@ -347,7 +347,8 @@ static void syncmon_print_sync_stats_single(struct syncmon_node *send)
 
 	/* In case --omit-remote-sync is used */
 	printf("isochron[%s]: %s ptpmon %10lld sysmon %10lld\n",
-	       now_buf, send->name, send->ptpmon_offset, send->sysmon_offset);
+	       now_buf, send->name, (long long)send->ptpmon_offset,
+	       (long long)send->sysmon_offset);
 }
 
 static bool syncmon_sync_ok(struct syncmon *syncmon)
