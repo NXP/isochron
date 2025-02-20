@@ -83,7 +83,7 @@ static void isochron_node_rtt_after(struct isochron_orch_node *node)
 static void isochron_node_rtt_finalize(struct isochron_orch_node *node)
 {
 	printf("Max TCP round trip time to node %s over %zu measurements is %lld ns\n",
-	       node->name, node->num_rtt_measurements, node->max_rtt);
+	       node->name, node->num_rtt_measurements, (long long)node->max_rtt);
 }
 
 static int prog_query_test_state(struct isochron_orch_node *node,
