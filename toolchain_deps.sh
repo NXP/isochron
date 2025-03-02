@@ -16,4 +16,17 @@ if [ $? = 0 ]; then
 	EXTRA_CFLAGS="${EXTRA_CFLAGS} -DHAVE_TX_SWHW"
 fi
 
+${CC} ${CFLAGS} -x c -o $(mktemp) - > /dev/null 2>&1 << EOF
+#define _GNU_SOURCE
+#include <sched.h>
+
+int main(void)
+{
+	return sched_setattr(0, NULL, 0);
+}
+EOF
+if [ $? = 0 ]; then
+	EXTRA_CFLAGS="${EXTRA_CFLAGS} -DHAVE_SCHED_SETATTR"
+fi
+
 echo ${EXTRA_CFLAGS}

@@ -38,6 +38,7 @@
 
 #define BIT(nr)			(1UL << (nr))
 
+#ifndef HAVE_SCHED_SETATTR
 struct sched_attr {
 	__u32 size;		/* Size of this structure */
 	__u32 sched_policy;	/* Policy (SCHED_*) */
@@ -57,6 +58,7 @@ static inline int sched_setattr(pid_t pid, const struct sched_attr *attr,
 {
 	return syscall(SYS_sched_setattr, pid, attr, flags);
 }
+#endif
 
 #ifndef SO_TXTIME
 #define SO_TXTIME		61
