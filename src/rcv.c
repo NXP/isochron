@@ -6,6 +6,7 @@
  * Initial prototype based on:
  * - https://gist.github.com/austinmarton/2862515
  */
+#define _GNU_SOURCE
 #include <linux/if_packet.h>
 #include <linux/un.h>
 #include <stdio.h>
