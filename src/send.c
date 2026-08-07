@@ -704,6 +704,12 @@ static int prog_send_thread_create(struct isochron_send *prog)
 			.sched_priority = prog->sched_priority,
 		};
 
+		rc = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+		if (rc) {
+			pr_err(-rc, "failed to set sender pthread sched inherit: %m\n");
+			goto err_destroy_attr;
+		}
+
 		rc = pthread_attr_setschedpolicy(&attr, sched_policy);
 		if (rc) {
 			pr_err(-rc, "failed to set sender pthread sched policy: %m\n");
